@@ -43,6 +43,16 @@ class CodecFeatures:
     has_b_frames: bool = False
     ref_frames: int = 0
 
+    # Scene change analysis
+    scene_change_count: int = 0
+    scene_change_rate: float = 0.0      # scene changes per second
+    scene_change_uniformity: float = 0.0  # 1.0 = evenly spaced
+
+    # Frame entropy (visual complexity)
+    entropy_mean: float = 0.0
+    entropy_std: float = 0.0
+    entropy_cv: float = 0.0             # low CV = AI (too uniform visually)
+
     # Computed AI likelihood from codec features only
     codec_ai_score: float = 0.0
 
@@ -62,6 +72,7 @@ def analyze_codec(file_path: str) -> CodecFeatures:
     features = CodecFeatures()
     _extract_stream_info(file_path, features)
     _extract_frame_data(file_path, features)
+    _extract_scene_and_entropy(file_path, features)
     _compute_ai_score(features)
     return features
 
@@ -165,6 +176,77 @@ def _extract_frame_data(file_path: str, features: CodecFeatures):
             features.pts_uniformity = float(max(0, 1 - min(features.pts_jitter_std * 10, 1)))
 
 
+def _extract_scene_and_entropy(file_path: str, features: CodecFeatures):
+    """
+    Detects scene changes and measures per-frame visual entropy.
+    AI videos: few scene changes, very uniform entropy.
+    Real footage: irregular scene changes, variable entropy.
+    """
+    cmd = [
+        "ffmpeg", "-i", file_path,
+        "-vf", f"select='gt(scene,0.3)',metadata=print:file=-",
+        "-frames:v", str(MAX_FRAMES_TO_SAMPLE),
+        "-an", "-f", "null", "-",
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=20
+        )
+        import re
+        scene_times = [float(m.group(1)) for m in re.finditer(r"pts_time:([\d.]+)", result.stderr)]
+        features.scene_change_count = len(scene_times)
+
+        duration_hint = None
+        dur_match = re.search(r"Duration:\s*([\d:]+\.[\d]+)", result.stderr)
+        if dur_match:
+            parts = dur_match.group(1).split(":")
+            duration_hint = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+        if duration_hint and duration_hint > 0:
+            features.scene_change_rate = features.scene_change_count / duration_hint
+
+        if len(scene_times) >= 2:
+            gaps = np.diff(scene_times)
+            mean_gap = np.mean(gaps)
+            if mean_gap > 0:
+                uniformity = 1 - min(np.std(gaps) / mean_gap, 1.0)
+                features.scene_change_uniformity = float(uniformity)
+    except Exception:
+        pass
+
+    # Frame entropy via lavfi
+    entropy_cmd = [
+        "ffprobe", "-v", "quiet",
+        "-f", "lavfi",
+        "-i", f"movie={file_path},entropy",
+        "-show_frames",
+        "-show_entries", "frame_tags=lavfi.entropy.entropy.normal.Y",
+        "-print_format", "json",
+        "-read_intervals", f"%+#{MAX_FRAMES_TO_SAMPLE}",
+    ]
+    try:
+        output = subprocess.check_output(entropy_cmd, stderr=subprocess.DEVNULL, timeout=15)
+        data = json.loads(output)
+        entropies = []
+        for frame in data.get("frames", []):
+            tags = frame.get("tags", {})
+            e = tags.get("lavfi.entropy.entropy.normal.Y")
+            if e is not None:
+                try:
+                    entropies.append(float(e))
+                except ValueError:
+                    pass
+
+        if len(entropies) >= 5:
+            arr = np.array(entropies)
+            features.entropy_mean = float(np.mean(arr))
+            features.entropy_std = float(np.std(arr))
+            if features.entropy_mean > 0:
+                features.entropy_cv = features.entropy_std / features.entropy_mean
+    except Exception:
+        pass
+
+
 def _compute_ai_score(features: CodecFeatures):
     score = 0.0
     weight_total = 0.0
@@ -192,6 +274,19 @@ def _compute_ai_score(features: CodecFeatures):
         skew_score = max(0, 1 - abs(features.frame_size_skewness) / 3)
         score += skew_score * 0.25
         weight_total += 0.25
+
+    # Low entropy CV = frames are too visually uniform = AI signal
+    if features.entropy_cv > 0:
+        entropy_score = max(0, 1 - features.entropy_cv * 8)
+        score += entropy_score * 0.20
+        weight_total += 0.20
+
+    # Few or zero scene changes relative to duration = AI signal
+    if features.scene_change_rate >= 0:
+        # Real videos: ~0.3-2 scene changes/sec; AI: often 0-0.1
+        scene_score = max(0, 1 - features.scene_change_rate * 3)
+        score += scene_score * 0.15
+        weight_total += 0.15
 
     if weight_total > 0:
         features.codec_ai_score = score / weight_total

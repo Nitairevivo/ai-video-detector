@@ -2,8 +2,8 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
-models/trained_model.joblib
-data/training_samples.json
+# models/trained_model.joblib  — included so Railway gets the trained model
+# data/training_samples.json   — included for retraining on deploy
 .env
 node_modules/
 .next/
@@ -11,3 +11,4 @@ web/.next/
 web/node_modules/
 mobile/node_modules/
 *.log
+.vercel

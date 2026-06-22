@@ -135,8 +135,10 @@ class VideoAIClassifier:
             "has_b_frames", "ref_frames",
             "moov_before_mdat", "has_fragmented_mp4", "has_proprietary_box",
             "container_ai_score",
-            "file_size_mb", "duration_seconds", "bitrate_kbps",
-            "fps", "width", "height",
+            "has_audio", "is_fully_silent", "silence_ratio", "audio_rms_cv", "audio_ai_score",
+            "scene_change_rate", "scene_change_uniformity",
+            "entropy_mean", "entropy_std", "entropy_cv",
+            "fps",
         ]
         importances = clf.feature_importances_
         return dict(sorted(

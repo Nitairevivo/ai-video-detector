@@ -51,8 +51,13 @@ def detect(
         ml_prob, _ = classifier.predict(result.feature_vector)
         if ml_prob is not None:
             confidence = result.confidence * 0.4 + ml_prob * 0.6
+            if result.method == "No AI markers detected":
+                method = f"ML model ({ml_prob*100:.0f}%) + signal analysis"
+            else:
+                method = result.method
         else:
             confidence = result.confidence
+            method = result.method
 
         is_ai = confidence >= 0.5
         color = "red" if is_ai else "green"
@@ -61,7 +66,7 @@ def detect(
         panel_content = (
             f"[bold {color}]{verdict}[/bold {color}]\n"
             f"Confidence: [bold]{confidence * 100:.1f}%[/bold]\n"
-            f"Method: {result.method}\n"
+            f"Method: {method}\n"
         )
         if result.ai_tool:
             panel_content += f"Tool: [bold]{result.ai_tool}[/bold]\n"
@@ -122,6 +127,31 @@ def train():
         console.print(f"[green]Model trained successfully![/green]")
         console.print(f"  Samples: {result['samples_used']} ({result['ai_samples']} AI, {result['real_samples']} Real)")
         console.print(f"  Cross-val AUC: {result['cv_auc_mean']:.3f} ± {result['cv_auc_std']:.3f}")
+
+
+@app.command()
+def importance():
+    """Show which features the ML model relies on most."""
+    from models.classifier import get_classifier
+    classifier = get_classifier()
+    imp = classifier.feature_importance()
+    if imp is None:
+        console.print("[red]Model not trained yet. Run [bold]train[/bold] first.[/red]")
+        raise typer.Exit(1)
+
+    table = Table(title="Feature Importance (top 15)", box=box.ROUNDED)
+    table.add_column("Rank", style="dim", width=5)
+    table.add_column("Feature", style="cyan")
+    table.add_column("Importance", style="bold")
+    table.add_column("Weight", style="green")
+
+    total = sum(imp.values())
+    for rank, (feat, val) in enumerate(list(imp.items())[:15], 1):
+        bar = "█" * int(val / max(imp.values()) * 20)
+        pct = f"{val / total * 100:.1f}%"
+        table.add_row(str(rank), feat, f"{val:.4f}", f"{bar} {pct}")
+
+    console.print(table)
 
 
 @app.command()

@@ -5,7 +5,6 @@ import {
   AppState, Platform,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { useShareIntent } from "expo-share-intent";
 
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 
@@ -133,21 +132,8 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const lastChecked = useRef<string>("");
 
-  // iOS Share Extension: receives URL when user shares from TikTok/Reels/YouTube
-  const { shareIntent, resetShareIntent, hasShareIntent } = useShareIntent();
-
+  // Auto-detect clipboard on app focus (both iOS and Android)
   useEffect(() => {
-    if (!hasShareIntent) return;
-    const url = shareIntent?.webUrl || shareIntent?.text;
-    if (url && url.startsWith("http")) {
-      resetShareIntent();
-      detect(url);
-    }
-  }, [hasShareIntent, shareIntent]);
-
-  // Android: auto-detect clipboard on app focus
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
       try {

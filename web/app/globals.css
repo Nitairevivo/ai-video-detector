@@ -1,15 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07070f;
+  --background: #06060f;
   --foreground: #e8e8f0;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 body {
@@ -18,9 +11,14 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
 @keyframes pulse-ring {
   0% { transform: scale(0.9); opacity: 1; }
-  100% { transform: scale(1.4); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
 }
 
 @keyframes scan-line {
@@ -28,10 +26,19 @@ body {
   100% { top: 100%; }
 }
 
-.scan-line {
-  animation: scan-line 1.5s ease-in-out infinite;
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.pulse-ring {
-  animation: pulse-ring 1.5s ease-out infinite;
+.animate-float { animation: float 4s ease-in-out infinite; }
+.scan-line { animation: scan-line 1.5s ease-in-out infinite; }
+.pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
+
+.shimmer-text {
+  background: linear-gradient(90deg, #818cf8, #a78bfa, #c084fc, #a78bfa, #818cf8);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
 }
