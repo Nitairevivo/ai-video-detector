@@ -5,18 +5,25 @@ import os
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Body
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request, Header, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
 
 from analyzer import extract_features
 from models.classifier import get_classifier
+from api.database import init_db, create_key, lookup_key, record_request, get_key_by_email, TIERS
+from api.billing import create_checkout_session, handle_webhook
+
+# Init DB on startup
+init_db()
 
 app = FastAPI(
-    title="AI Video Detector",
-    description="Detects AI-generated videos by reading file signatures — no frame decoding required.",
-    version="1.0.0",
+    title="AI Video Detector API",
+    description="Detect AI-generated videos by reading file signatures — no frame decoding required.",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -25,6 +32,43 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── API Key auth ──────────────────────────────────────────────────────────────
+
+FREE_ENDPOINTS = {"/", "/register", "/docs", "/openapi.json", "/stripe/webhook"}
+
+def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
+    """
+    Validate API key from X-Api-Key header.
+    Skips auth for public endpoints and for the web app's own requests
+    (identified by Referer pointing to our Vercel domain).
+    """
+    if request.url.path in FREE_ENDPOINTS:
+        return None
+
+    # Allow our own web app to call without key
+    referer = request.headers.get("referer", "")
+    if "web-zeta-ecru-80.vercel.app" in referer or "localhost" in referer:
+        return None
+
+    if not x_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required. Get a free key at https://web-zeta-ecru-80.vercel.app/dashboard",
+            headers={"X-Api-Key-Docs": "https://web-zeta-ecru-80.vercel.app/dashboard"},
+        )
+
+    key = lookup_key(x_api_key)
+    if not key:
+        raise HTTPException(status_code=401, detail="Invalid or inactive API key")
+    if key.over_limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Monthly limit reached ({key.monthly_limit} requests). Upgrade at https://web-zeta-ecru-80.vercel.app/dashboard",
+        )
+
+    record_request(x_api_key)
+    return key
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
@@ -235,3 +279,69 @@ def feature_importance():
     if importance is None:
         return {"error": "Model not trained yet. POST /train first."}
     return {"feature_importance": importance}
+
+
+# ─── API Key management ────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: str
+
+class UpgradeRequest(BaseModel):
+    email: str
+    tier: str  # "pro" or "ultra"
+
+
+@app.post("/register", tags=["billing"])
+def register(body: RegisterRequest):
+    """
+    Get a free API key (50 requests/month).
+    If the email already has a key, returns existing key info instead.
+    """
+    existing = get_key_by_email(body.email)
+    if existing:
+        return {
+            "message": "You already have a key. Check your records for the original key.",
+            "tier": existing.tier,
+            "requests_this_month": existing.requests_this_month,
+            "monthly_limit": existing.monthly_limit,
+            "remaining": existing.remaining,
+        }
+
+    raw_key = create_key(body.email, tier="free")
+    return {
+        "api_key": raw_key,
+        "tier": "free",
+        "monthly_limit": TIERS["free"]["requests_per_month"],
+        "message": "Save this key — it won't be shown again.",
+        "docs": "Include it as X-Api-Key header in every request.",
+    }
+
+
+@app.post("/upgrade", tags=["billing"])
+def upgrade(body: UpgradeRequest):
+    """Returns a Stripe Checkout URL to upgrade to pro/ultra."""
+    if body.tier not in ("pro", "ultra"):
+        raise HTTPException(400, "tier must be 'pro' or 'ultra'")
+    url = create_checkout_session(body.email, body.tier)
+    return {"checkout_url": url}
+
+
+@app.post("/stripe/webhook", tags=["billing"])
+async def stripe_webhook(request: Request):
+    """Stripe sends payment events here."""
+    return await handle_webhook(request)
+
+
+@app.get("/me", tags=["billing"])
+def me(key=Depends(get_api_key)):
+    """Returns usage stats for the authenticated API key."""
+    if not key:
+        raise HTTPException(401, "API key required")
+    return {
+        "email": key.email,
+        "tier": key.tier,
+        "requests_this_month": key.requests_this_month,
+        "monthly_limit": key.monthly_limit,
+        "remaining": key.remaining,
+        "requests_total": key.requests_total,
+    }
