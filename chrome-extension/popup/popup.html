@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Video Detector</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span>AI Video Detector</span>
+    </div>
+    <div class="status" id="status">Checking API...</div>
+  </div>
+
+  <div class="section">
+    <label class="toggle-row">
+      <div class="toggle-info">
+        <span class="toggle-label">Auto-analyze</span>
+        <span class="toggle-desc">Automatically check every video you scroll past</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoAnalyze" />
+        <span class="slider"></span>
+      </label>
+    </label>
+  </div>
+
+  <div class="section">
+    <p class="section-title">ANALYZE A URL</p>
+    <div class="url-row">
+      <input id="urlInput" type="text" placeholder="Paste video URL..." />
+      <button id="analyzeBtn">→</button>
+    </div>
+    <div id="result" class="result hidden"></div>
+  </div>
+
+  <div class="footer">
+    <a href="https://ai-video-detector-production-a305.up.railway.app/docs" target="_blank">API Docs</a>
+    <span>·</span>
+    <span id="cacheCount">0 cached</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
