@@ -21,6 +21,7 @@ type VideoItem = {
   status: "pending" | "analyzing" | "done" | "error";
   result?: DetectionResult;
   error?: string;
+  retries?: number;
 };
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -56,7 +57,7 @@ function ConfidenceMeter({ value, isAI }: { value: number; isAI: boolean }) {
   );
 }
 
-function ResultCard({ item, onRemove }: { item: VideoItem; onRemove: () => void }) {
+function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: () => void; onRetry?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const r = item.result;
 
@@ -71,7 +72,7 @@ function ResultCard({ item, onRemove }: { item: VideoItem; onRemove: () => void 
         </div>
         <div>
           <p className="text-white text-sm font-medium truncate max-w-xs">{item.file.name}</p>
-          <p className="text-gray-500 text-xs mt-0.5">Reading file signatures...</p>
+          <p className="text-gray-500 text-xs mt-0.5">Reading file signatures… · {(item.file.size / 1024 / 1024).toFixed(1)} MB</p>
         </div>
       </div>
     );
@@ -84,6 +85,12 @@ function ResultCard({ item, onRemove }: { item: VideoItem; onRemove: () => void 
         <div className="flex-1 min-w-0">
           <p className="text-white text-sm font-medium truncate">{item.file.name}</p>
           <p className="text-red-400 text-xs mt-0.5">{item.error}</p>
+          {onRetry && (
+            <button onClick={onRetry}
+              className="text-xs text-violet-400 hover:text-violet-300 mt-1.5 transition-colors underline underline-offset-2">
+              Try again
+            </button>
+          )}
         </div>
         <button onClick={onRemove} className="text-gray-600 hover:text-gray-400 text-sm px-2">✕</button>
       </div>
@@ -149,17 +156,28 @@ export default function Home() {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "analyzing" } : i));
     const form = new FormData();
     form.append("file", item.file);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000); // 60s timeout
     try {
-      const res = await fetch(`${API}/detect`, { method: "POST", body: form });
+      const res = await fetch(`${API}/detect`, { method: "POST", body: form, signal: controller.signal });
+      clearTimeout(timeout);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Error ${res.status}`);
+        throw new Error(err.detail || `Server error ${res.status}`);
       }
       const result: DetectionResult = await res.json();
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "done", result } : i));
     } catch (e: unknown) {
+      clearTimeout(timeout);
+      let msg = "Unknown error";
+      if (e instanceof Error) {
+        if (e.name === "AbortError") msg = "Timed out after 60s — try a smaller file";
+        else if (e.message.includes("fetch") || e.message.toLowerCase().includes("load") || e.message.includes("network"))
+          msg = "Network error — check your connection and try again";
+        else msg = e.message;
+      }
       setItems(prev => prev.map(i => i.id === item.id
-        ? { ...i, status: "error", error: e instanceof Error ? e.message : "Unknown error" }
+        ? { ...i, status: "error", error: msg, retries: (i.retries ?? 0) }
         : i));
     }
   }, []);
@@ -174,11 +192,21 @@ export default function Home() {
       status: "pending",
     }));
     setItems(prev => [...prev, ...newItems]);
-    // Analyze all in parallel
-    newItems.forEach(item => analyzeFile(item));
+    // Analyze up to 3 in parallel to avoid overwhelming the server
+    const CONCURRENCY = 3;
+    const chunks: VideoItem[][] = [];
+    for (let i = 0; i < newItems.length; i += CONCURRENCY)
+      chunks.push(newItems.slice(i, i + CONCURRENCY));
+    (async () => {
+      for (const chunk of chunks)
+        await Promise.all(chunk.map(item => analyzeFile(item)));
+    })();
   }, [analyzeFile]);
 
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
+  const retryItem = useCallback((item: VideoItem) => {
+    analyzeFile({ ...item, retries: (item.retries ?? 0) + 1 });
+  }, [analyzeFile]);
   const clearAll = () => setItems([]);
 
   const doneCount = items.filter(i => i.status === "done").length;
@@ -258,7 +286,7 @@ export default function Home() {
         {/* Results list */}
         <div className="space-y-3">
           {items.map(item => (
-            <ResultCard key={item.id} item={item} onRemove={() => removeItem(item.id)} />
+            <ResultCard key={item.id} item={item} onRemove={() => removeItem(item.id)} onRetry={() => retryItem(item)} />
           ))}
         </div>
 

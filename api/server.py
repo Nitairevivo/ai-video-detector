@@ -57,8 +57,8 @@ async def detect(file: UploadFile = File(...)):
         if not chunk:
             raise HTTPException(400, "Empty file")
         tmp.write(chunk)
-        # Drain the rest (so the client connection closes cleanly) but don't store it
-        await file.read()
+        # Do NOT drain remaining bytes — for large files (100MB+) this can hit Railway's
+        # 30s request timeout. The connection closes cleanly without draining.
 
     try:
         result = extract_features(tmp_path)
