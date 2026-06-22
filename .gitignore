@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+models/trained_model.joblib
+data/training_samples.json
+.env
+node_modules/
+.next/
+web/.next/
+web/node_modules/
+mobile/node_modules/
+*.log

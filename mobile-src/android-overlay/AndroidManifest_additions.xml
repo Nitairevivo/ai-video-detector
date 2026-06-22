@@ -1,0 +1,32 @@
+<!--
+  Add these to your app's AndroidManifest.xml:
+
+  Inside <manifest>:
+-->
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.READ_CLIPBOARD" />
+
+<!--
+  Inside <application>:
+-->
+<service
+    android:name=".OverlayService"
+    android:exported="false"
+    android:foregroundServiceType="specialUse" />
+
+<!--
+  Share intent filter — makes the app appear in the Android Share sheet for videos:
+  Inside <activity android:name=".MainActivity">:
+-->
+<intent-filter>
+    <action android:name="android.intent.action.SEND" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <data android:mimeType="video/*" />
+</intent-filter>
+
+<intent-filter>
+    <action android:name="android.intent.action.SEND" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <data android:mimeType="text/plain" />
+</intent-filter>
