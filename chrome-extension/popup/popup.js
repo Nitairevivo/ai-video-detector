@@ -1,11 +1,14 @@
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 
-const statusEl = document.getElementById("status");
+const statusEl   = document.getElementById("status");
+const statusText = document.getElementById("statusText");
 const autoToggle = document.getElementById("autoAnalyze");
-const urlInput = document.getElementById("urlInput");
+const urlInput   = document.getElementById("urlInput");
 const analyzeBtn = document.getElementById("analyzeBtn");
-const resultEl = document.getElementById("result");
-const cacheCountEl = document.getElementById("cacheCount");
+const resultEl   = document.getElementById("result");
+const cacheCount = document.getElementById("cacheCount");
+const aiCount    = document.getElementById("aiCount");
+const aiFoundStat = document.getElementById("aiFoundStat");
 
 // ─── API health check ─────────────────────────────────────────────────────────
 
@@ -13,32 +16,38 @@ async function checkApi() {
   try {
     const res = await fetch(`${API}/`, { signal: AbortSignal.timeout(4000) });
     if (res.ok) {
-      statusEl.textContent = "● Online";
       statusEl.className = "status online";
-    } else {
-      throw new Error();
-    }
+      statusText.textContent = "Online";
+    } else throw new Error();
   } catch {
-    statusEl.textContent = "● Offline";
     statusEl.className = "status offline";
+    statusText.textContent = "Offline";
   }
 }
 
 // ─── Auto-analyze toggle ──────────────────────────────────────────────────────
 
 chrome.storage.sync.get(["autoAnalyze"], ({ autoAnalyze }) => {
-  autoToggle.checked = !!autoAnalyze;
+  autoToggle.checked = autoAnalyze !== false;
 });
 
 autoToggle.addEventListener("change", () => {
   chrome.storage.sync.set({ autoAnalyze: autoToggle.checked });
-  // Notify active tab to start/stop auto mode
   chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, {
-        type: "SET_AUTO_ANALYZE",
-        value: autoToggle.checked,
-      }).catch(() => {});
+    if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: "SET_AUTO_ANALYZE" }).catch(() => {});
+  });
+});
+
+// ─── Stats from active tab ────────────────────────────────────────────────────
+
+chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+  if (!tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, { type: "GET_STATS" }, (stats) => {
+    if (chrome.runtime.lastError || !stats) return;
+    cacheCount.textContent = stats.total ?? 0;
+    if (stats.ai > 0) {
+      aiCount.textContent = stats.ai;
+      aiFoundStat.style.display = "flex";
     }
   });
 });
@@ -48,16 +57,24 @@ autoToggle.addEventListener("change", () => {
 analyzeBtn.addEventListener("click", analyzeUrl);
 urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") analyzeUrl(); });
 
+// Auto-paste from clipboard on popup open
+(async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text?.startsWith("http") && !urlInput.value) urlInput.value = text;
+  } catch {}
+})();
+
 async function analyzeUrl() {
   const url = urlInput.value.trim();
-  if (!url || !url.startsWith("http")) {
+  if (!url.startsWith("http")) {
     urlInput.style.borderColor = "#ef4444";
-    setTimeout(() => (urlInput.style.borderColor = ""), 1500);
+    setTimeout(() => urlInput.style.borderColor = "", 1500);
     return;
   }
 
   analyzeBtn.disabled = true;
-  analyzeBtn.textContent = "⏳";
+  analyzeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" stroke="white" stroke-width="1.5" stroke-dasharray="20" stroke-dashoffset="20" fill="none"><animate attributeName="stroke-dashoffset" from="20" to="0" dur="0.6s" repeatCount="indefinite"/></circle></svg>`;
   resultEl.className = "result hidden";
 
   try {
@@ -66,48 +83,32 @@ async function analyzeUrl() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `Error ${res.status}`);
     }
-
-    const data = await res.json();
-    showResult(data);
+    showResult(await res.json());
   } catch (e) {
     resultEl.className = "result ai";
-    resultEl.innerHTML = `<span class="verdict">Error</span><span class="detail">${e.message}</span>`;
+    resultEl.innerHTML = `<span class="verdict">⚠️ Error</span><span class="detail">${e.message}</span>`;
   } finally {
     analyzeBtn.disabled = false;
-    analyzeBtn.textContent = "→";
+    analyzeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="rotate(45 7 7)"/></svg>`;
   }
 }
 
 function showResult(data) {
   const isAI = data.is_ai_generated;
-  const pct = Math.round(data.confidence * 100);
+  const pct  = Math.round(data.confidence * 100);
   const tool = data.ai_tool_detected;
 
   resultEl.className = `result ${isAI ? "ai" : "real"}`;
   resultEl.innerHTML = `
-    <span class="verdict">${isAI ? "⚠️ AI Generated" : "✅ Authentic"} · ${pct}%</span>
+    <span class="verdict">${isAI ? "🤖 AI Generated" : "✅ Authentic Footage"} · ${pct}%</span>
     ${tool ? `<span class="detail">Tool: <span class="tool">${tool}</span></span>` : ""}
     <span class="detail">${data.detection_method}</span>
+    <div class="conf-bar"><div class="conf-fill" style="width:${pct}%"></div></div>
   `;
 }
-
-// ─── Show how many results are cached in this session ─────────────────────────
-
-chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-  if (!tab?.id) return;
-  chrome.tabs.sendMessage(tab.id, { type: "GET_CACHE_COUNT" }, (count) => {
-    if (chrome.runtime.lastError) return;
-    if (typeof count === "number") {
-      cacheCountEl.textContent = `${count} cached`;
-    }
-  });
-});
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
 
 checkApi();

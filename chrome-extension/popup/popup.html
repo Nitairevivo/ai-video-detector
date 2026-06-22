@@ -1,46 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AI Video Detector</title>
-  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="popup.css"/>
 </head>
 <body>
+  <!-- Header -->
   <div class="header">
     <div class="logo">
-      <div class="logo-dot"></div>
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+        <rect width="22" height="22" rx="6" fill="url(#lg)"/>
+        <path d="M4 11c0 0 2.8-4.5 7-4.5s7 4.5 7 4.5-2.8 4.5-7 4.5S4 11 4 11Z"
+              stroke="white" stroke-width="1.2" stroke-linejoin="round"/>
+        <circle cx="11" cy="11" r="2.2" fill="white"/>
+        <line x1="8.5" y1="11" x2="13.5" y2="11" stroke="#818cf8" stroke-width="0.9"/>
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="22" y2="22">
+            <stop stop-color="#4f46e5"/>
+            <stop offset="1" stop-color="#7c3aed"/>
+          </linearGradient>
+        </defs>
+      </svg>
       <span>AI Video Detector</span>
     </div>
-    <div class="status" id="status">Checking API...</div>
+    <div class="status" id="status">
+      <span class="status-dot"></span>
+      <span id="statusText">Connecting…</span>
+    </div>
   </div>
 
+  <!-- Auto-analyze toggle -->
   <div class="section">
-    <label class="toggle-row">
+    <div class="toggle-row">
       <div class="toggle-info">
         <span class="toggle-label">Auto-analyze</span>
-        <span class="toggle-desc">Automatically check every video you scroll past</span>
+        <span class="toggle-desc">Flag AI videos as you scroll — no tapping needed</span>
       </div>
       <label class="switch">
-        <input type="checkbox" id="autoAnalyze" />
+        <input type="checkbox" id="autoAnalyze"/>
         <span class="slider"></span>
       </label>
-    </label>
+    </div>
   </div>
 
+  <!-- Supported platforms -->
+  <div class="platforms">
+    <span class="platform-pill">🎵 TikTok</span>
+    <span class="platform-pill">📸 Instagram</span>
+    <span class="platform-pill">▶️ YouTube</span>
+    <span class="platform-pill">🐦 X/Twitter</span>
+    <span class="platform-pill">🤖 Reddit</span>
+    <span class="platform-pill">👤 Facebook</span>
+  </div>
+
+  <!-- Manual URL check -->
   <div class="section">
-    <p class="section-title">ANALYZE A URL</p>
+    <p class="section-title">CHECK A URL</p>
     <div class="url-row">
-      <input id="urlInput" type="text" placeholder="Paste video URL..." />
-      <button id="analyzeBtn">→</button>
+      <input id="urlInput" type="url" placeholder="Paste TikTok, Reels, YouTube link…" autocomplete="off"/>
+      <button id="analyzeBtn" title="Analyze">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                transform="rotate(45 7 7)"/>
+        </svg>
+      </button>
     </div>
     <div id="result" class="result hidden"></div>
   </div>
 
+  <!-- Stats -->
   <div class="footer">
-    <a href="https://ai-video-detector-production-a305.up.railway.app/docs" target="_blank">API Docs</a>
-    <span>·</span>
-    <span id="cacheCount">0 cached</span>
+    <div class="stat">
+      <span class="stat-val" id="cacheCount">0</span>
+      <span class="stat-label">checked</span>
+    </div>
+    <div class="stat" id="aiFoundStat" style="display:none">
+      <span class="stat-val ai-val" id="aiCount">0</span>
+      <span class="stat-label">AI found</span>
+    </div>
+    <a href="https://web-zeta-ecru-80.vercel.app" target="_blank" class="footer-link">Open web app ↗</a>
   </div>
 
   <script src="popup.js"></script>

@@ -1,248 +1,238 @@
-/**
- * Content script — runs inside TikTok, Instagram, YouTube, Twitter, Reddit.
- *
- * Strategy per platform:
- *  - TikTok / Instagram Reels: observe video elements, extract src or page URL
- *  - YouTube Shorts: use current page URL directly
- *  - Twitter/X: extract video tweet URL
- *  - Reddit: extract video post URL
- *
- * For each video container found, we inject an "AI?" button.
- * Clicking it sends the URL to our background service worker → API.
- */
+const API = "https://ai-video-detector-production-a305.up.railway.app";
 
-const API_HOST = "https://ai-video-detector-production-a305.up.railway.app";
-
-// Cache results so we don't re-analyze the same URL
 const resultCache = new Map();
-
-// ─── Platform detection ───────────────────────────────────────────────────────
 
 const PLATFORM = (() => {
   const h = location.hostname;
-  if (h.includes("tiktok")) return "tiktok";
+  if (h.includes("tiktok"))    return "tiktok";
   if (h.includes("instagram")) return "instagram";
-  if (h.includes("youtube")) return "youtube";
+  if (h.includes("youtube"))   return "youtube";
   if (h.includes("twitter") || h.includes("x.com")) return "twitter";
-  if (h.includes("reddit")) return "reddit";
+  if (h.includes("reddit"))    return "reddit";
+  if (h.includes("facebook") || h.includes("fb.watch")) return "facebook";
+  if (h.includes("t.me"))      return "telegram";
   return "unknown";
 })();
 
-// ─── Video container selectors per platform ───────────────────────────────────
+// ─── Selectors ────────────────────────────────────────────────────────────────
 
 const SELECTORS = {
-  tiktok: 'div[class*="DivVideoContainer"], article',
-  instagram: 'div[role="dialog"], article, div[class*="x1cy8zhl"]',
-  youtube: "ytd-reel-video-renderer, ytd-shorts",
-  twitter: 'div[data-testid="videoPlayer"]',
-  reddit: 'div[data-testid="post-container"], shreddit-post',
+  tiktok:    'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
+  instagram: 'article, div[role="dialog"], div[class*="x1cy8zhl"]',
+  youtube:   "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer",
+  twitter:   'article[data-testid="tweet"]',
+  reddit:    'shreddit-post, div[data-testid="post-container"]',
+  facebook:  'div[data-pagelet*="FeedUnit"], div[role="article"]',
+  telegram:  'div.message',
 };
 
-// ─── URL extraction per platform ─────────────────────────────────────────────
+// ─── URL extraction ───────────────────────────────────────────────────────────
 
 function getVideoUrl(container) {
-  // 1. Look for a <video> with a real src (not blob:)
-  const video = container.querySelector("video");
-  if (video?.src && !video.src.startsWith("blob:")) {
-    return video.src;
-  }
-
-  // 2. Platform-specific page URL extraction
   switch (PLATFORM) {
     case "tiktok": {
-      // TikTok embeds the video ID in the URL
+      // Prefer a direct /video/ link inside the container
       const link = container.querySelector('a[href*="/video/"]');
       if (link) return link.href;
-      // Or the current page itself is a video
-      if (location.href.includes("/video/")) return location.href;
-      break;
+      // Current page is a single video
+      if (/\/@[^/]+\/video\/\d+/.test(location.pathname)) return location.href;
+      // Feed — try to extract from data attributes
+      const videoId = container.getAttribute("data-video-id") ||
+                      container.querySelector("[data-video-id]")?.getAttribute("data-video-id");
+      if (videoId) {
+        const userLink = container.querySelector("a[href*='/@']");
+        const user = userLink ? new URL(userLink.href).pathname : "/@unknown";
+        return `https://www.tiktok.com${user}/video/${videoId}`;
+      }
+      return null; // don't fall back to generic feed URL
     }
     case "instagram": {
-      // Reels: current URL is the reel
-      if (location.href.includes("/reel/") || location.href.includes("/p/")) {
-        return location.href;
+      const link = container.querySelector('a[href*="/reel/"], a[href*="/p/"], a[href*="/tv/"]');
+      if (link) {
+        const u = new URL(link.href);
+        return "https://www.instagram.com" + u.pathname;
       }
-      break;
+      if (/\/(reel|p|tv)\//.test(location.pathname)) return location.href;
+      return null;
     }
     case "youtube": {
-      // Shorts
-      if (location.href.includes("/shorts/")) return location.href;
-      break;
+      // Shorts — current page
+      if (location.pathname.startsWith("/shorts/")) return location.href;
+      // Regular watch page
+      if (location.pathname === "/watch") return location.href;
+      // In-feed short or video card
+      const link = container.querySelector('a[href^="/shorts/"], a[href*="watch?v="]');
+      if (link) {
+        const u = new URL(link.href, "https://www.youtube.com");
+        return u.href;
+      }
+      return null;
     }
     case "twitter": {
-      const link = container.closest('article')?.querySelector('a[href*="/status/"]');
+      // Look in the article for a status link with a video indicator
+      const article = container.closest?.("article") || container;
+      const link = article.querySelector('a[href*="/status/"]');
       if (link) return link.href;
-      break;
+      return null;
     }
     case "reddit": {
       const link = container.querySelector('a[href*="/comments/"]');
       if (link) return link.href;
-      if (location.href.includes("/comments/")) return location.href;
-      break;
+      if (location.pathname.includes("/comments/")) return location.href;
+      return null;
+    }
+    case "facebook": {
+      const link = container.querySelector('a[href*="/watch/"], a[href*="/reel/"], a[href*="videos/"]');
+      if (link) return link.href;
+      if (/\/(watch|reel|videos)/.test(location.pathname)) return location.href;
+      return null;
     }
   }
-
-  // 3. Fallback: use current page URL
-  return location.href;
+  // Non-blob video src as final fallback
+  const video = container.querySelector("video");
+  if (video?.src && !video.src.startsWith("blob:") && !video.src.startsWith("data:")) return video.src;
+  return null;
 }
 
-// ─── Button injection ─────────────────────────────────────────────────────────
+// ─── Loading state injection ──────────────────────────────────────────────────
 
-function injectButton(container) {
+function injectLoader(container) {
   if (container._aivdInjected) return;
   container._aivdInjected = true;
 
-  // Container must be positioned for absolute children
-  const pos = getComputedStyle(container).position;
-  if (pos === "static") container.style.position = "relative";
+  if (getComputedStyle(container).position === "static")
+    container.style.position = "relative";
 
-  const btn = document.createElement("div");
-  btn.className = "aivd-btn";
-  btn.innerHTML = `<span class="aivd-btn-dot"></span><span>AI?</span>`;
-  btn.title = "Check if this video is AI-generated";
-
-  btn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    await analyze(container, btn);
-  });
-
-  container.appendChild(btn);
+  const loader = document.createElement("div");
+  loader.className = "aivd-loader";
+  loader.innerHTML = `<span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span>`;
+  container.appendChild(loader);
+  return loader;
 }
 
-async function analyze(container, btn) {
+// ─── Analysis ─────────────────────────────────────────────────────────────────
+
+async function analyze(container) {
   const url = getVideoUrl(container);
-  if (!url) return;
+  if (!url) {
+    container._aivdInjected = false; // allow retry
+    return;
+  }
 
   // Return cached result instantly
   if (resultCache.has(url)) {
-    showResult(container, btn, resultCache.get(url));
+    const cached = resultCache.get(url);
+    if (cached.is_ai_generated) showAIBadge(container, cached);
     return;
   }
 
-  // Show loading state
-  btn.innerHTML = `<span class="aivd-btn-dot loading"></span><span>Checking...</span>`;
+  const loader = injectLoader(container);
 
-  const response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url });
-
-  if (!response.ok) {
-    btn.innerHTML = `<span class="aivd-btn-dot" style="background:#ef4444"></span><span>Error</span>`;
-    setTimeout(() => {
-      btn.innerHTML = `<span class="aivd-btn-dot"></span><span>AI?</span>`;
-    }, 3000);
+  let response;
+  try {
+    response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url });
+  } catch {
+    loader?.remove();
+    container._aivdInjected = false;
     return;
   }
+
+  loader?.remove();
+
+  if (!response?.ok) return; // silent fail — don't mark as anything
 
   resultCache.set(url, response.result);
-  showResult(container, btn, response.result);
+
+  // Only show badge if AI — real videos stay clean
+  if (response.result.is_ai_generated) {
+    aiDetectedCount++;
+    showAIBadge(container, response.result);
+  }
 }
 
-function showResult(container, btn, result) {
-  // Remove the "AI?" button
-  btn.remove();
+// ─── AI Badge ─────────────────────────────────────────────────────────────────
 
-  const isAI = result.is_ai_generated;
-  const pct = Math.round(result.confidence * 100);
+function showAIBadge(container, result) {
+  // Don't double-inject
+  if (container.querySelector(".aivd-badge")) return;
+
+  const pct  = Math.round(result.confidence * 100);
   const tool = result.ai_tool_detected;
 
   const badge = document.createElement("div");
-  badge.className = `aivd-result ${isAI ? "ai" : "real"}`;
+  badge.className = "aivd-badge";
   badge.innerHTML = `
-    <span class="aivd-result-dot"></span>
-    <span>${isAI ? (tool ? `AI · ${tool}` : "AI") : "Real"} ${pct}%</span>
+    <svg class="aivd-icon" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M5 8.5l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="aivd-label">AI${tool ? ` · ${tool}` : ""}</span>
+    <span class="aivd-pct">${pct}%</span>
   `;
 
-  let tooltip = null;
-
+  // Tooltip on hover
   badge.addEventListener("mouseenter", () => {
-    tooltip = document.createElement("div");
-    tooltip.className = "aivd-tooltip";
-    tooltip.innerHTML = `
-      <strong>${isAI ? "⚠️ AI-Generated" : "✅ Authentic Footage"}</strong><br>
-      Confidence: <strong>${pct}%</strong><br>
-      ${tool ? `Tool: <span class="aivd-tool">${tool}</span><br>` : ""}
-      Method: ${result.detection_method}
+    const tip = document.createElement("div");
+    tip.className = "aivd-tip";
+    tip.innerHTML = `
+      <div class="aivd-tip-title">🤖 AI-Generated Video</div>
+      <div class="aivd-tip-row"><span>Confidence</span><strong>${pct}%</strong></div>
+      ${tool ? `<div class="aivd-tip-row"><span>Tool</span><strong>${tool}</strong></div>` : ""}
+      <div class="aivd-tip-method">${result.detection_method}</div>
     `;
-    container.appendChild(tooltip);
+    badge.appendChild(tip);
   });
-
   badge.addEventListener("mouseleave", () => {
-    tooltip?.remove();
-    tooltip = null;
+    badge.querySelector(".aivd-tip")?.remove();
   });
 
-  badge.addEventListener("click", (e) => {
-    e.stopPropagation();
-    // Re-analyze on click
-    badge.remove();
-    injectButton(container);
-  });
+  // Click to dismiss
+  badge.addEventListener("click", (e) => { e.stopPropagation(); badge.remove(); });
 
   container.appendChild(badge);
 }
 
+// Stats tracking
+let aiDetectedCount = 0;
+
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "GET_CACHE_COUNT") {
-    sendResponse(resultCache.size);
+  if (msg.type === "GET_STATS") {
+    sendResponse({ total: resultCache.size, ai: aiDetectedCount });
   }
   if (msg.type === "SET_AUTO_ANALYZE") {
-    // Reload page to apply auto-analyze change (simplest approach)
     location.reload();
   }
 });
 
-// ─── Observer — watches for new video containers as user scrolls ──────────────
+// ─── Observer ─────────────────────────────────────────────────────────────────
 
-function observeNewVideos() {
-  const selector = SELECTORS[PLATFORM];
-  if (!selector) return;
+function init() {
+  const sel = SELECTORS[PLATFORM];
+  if (!sel) return;
 
-  // Inject on already-present containers
-  document.querySelectorAll(selector).forEach(injectButton);
+  // IntersectionObserver: analyze when video enters viewport
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting && !entry.target._aivdInjected) {
+        analyze(entry.target);
+      }
+    }
+  }, { threshold: 0.5 });
 
-  // Watch for new ones added to DOM (infinite scroll)
-  const observer = new MutationObserver((mutations) => {
+  const observe = (el) => { if (!el._aivdInjected) io.observe(el); };
+
+  document.querySelectorAll(sel).forEach(observe);
+
+  new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (!(node instanceof Element)) continue;
-        if (node.matches?.(selector)) injectButton(node);
-        node.querySelectorAll?.(selector).forEach(injectButton);
+        if (node.matches?.(sel)) observe(node);
+        node.querySelectorAll?.(sel).forEach(observe);
       }
     }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body, { childList: true, subtree: true });
 }
 
-// ─── Auto-analyze mode (optional, off by default) ────────────────────────────
-
-chrome.storage.sync.get(["autoAnalyze"], ({ autoAnalyze }) => {
-  observeNewVideos();
-
-  if (autoAnalyze) {
-    // Auto-trigger analysis on every new video that scrolls into view
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const container = entry.target;
-        const btn = container.querySelector(".aivd-btn");
-        if (btn) analyze(container, btn);
-      }
-    }, { threshold: 0.8 });
-
-    const sel = SELECTORS[PLATFORM];
-    if (sel) {
-      document.querySelectorAll(sel).forEach(el => observer.observe(el));
-      new MutationObserver((mutations) => {
-        for (const m of mutations) {
-          for (const node of m.addedNodes) {
-            if (node instanceof Element && node.matches?.(sel)) {
-              observer.observe(node);
-            }
-          }
-        }
-      }).observe(document.body, { childList: true, subtree: true });
-    }
-  }
-});
+init();
