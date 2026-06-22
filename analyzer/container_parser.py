@@ -13,13 +13,30 @@ from typing import Optional
 AI_PROPRIETARY_BOXES = {
     b'sora': 'OpenAI Sora',
     b'rnwy': 'Runway',
+    b'rnw2': 'Runway',
     b'pika': 'Pika Labs',
     b'klng': 'Kuaishou Kling',
+    b'kwai': 'Kuaishou Kling',
     b'luai': 'Luma AI',
+    b'luma': 'Luma AI',
     b'veo\x00': 'Google Veo',
+    b'hvid': 'Tencent HunyuanVideo',
+    b'wan2': 'Wan 2.0',
+    b'haip': 'Haiper',
+    b'cgvx': 'CogVideoX',
     b'c2pa': 'C2PA Provenance',
     b'JUMB': 'JUMBF (C2PA)',
     b'uuid': 'UUID Box (check for C2PA)',
+}
+
+# ftyp major brands used exclusively or predominantly by AI tools
+AI_FTYP_BRANDS = {
+    'sora': 'OpenAI Sora',
+    'rnwy': 'Runway',
+    'pika': 'Pika Labs',
+    'klng': 'Kuaishou Kling',
+    'luai': 'Luma AI',
+    'hvid': 'Tencent HunyuanVideo',
 }
 
 # Standard box type ordering for camera-captured MP4 (most cameras follow this)
@@ -169,16 +186,31 @@ def _parse_matroska_header(file_path: str, features: ContainerFeatures):
 def _compute_container_score(features: ContainerFeatures):
     score = 0.0
 
+    # Proprietary AI box found — very strong signal
     if features.ai_tool_from_box and 'C2PA' not in features.ai_tool_from_box:
         score = 0.95
+
+    # ftyp brand is an AI tool brand — definitive
+    if features.ftyp_brand and features.ftyp_brand.lower().strip() in AI_FTYP_BRANDS:
+        score = max(score, 0.96)
+        if not features.ai_tool_from_box:
+            features.ai_tool_from_box = AI_FTYP_BRANDS[features.ftyp_brand.lower().strip()]
+
+    # Compatible brands include an AI brand
+    for brand in features.ftyp_compatible_brands:
+        b = brand.lower().strip()
+        if b in AI_FTYP_BRANDS:
+            score = max(score, 0.80)
+            if not features.ai_tool_from_box:
+                features.ai_tool_from_box = AI_FTYP_BRANDS[b]
+
+    if features.proprietary_boxes:
+        score = max(score, 0.80)
 
     if features.moov_before_mdat:
         score = max(score, 0.55)
 
     if features.has_fragmented_mp4:
         score = max(score, 0.45)
-
-    if features.proprietary_boxes:
-        score = max(score, 0.80)
 
     features.container_ai_score = min(score, 1.0)

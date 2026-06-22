@@ -164,11 +164,11 @@ def _rule_based_decision(
     if codec.entropy_mean > 0 and codec.entropy_mean < 2.0:
         return 0.85, "Extremely low frame entropy (AI synthetic pattern)", ai_tool
 
-    # Tier 5: Audio signals
-    if not audio.has_audio:
-        return 0.80, "No audio track (common in AI-generated video)", ai_tool
-    if audio.is_fully_silent:
-        return 0.78, "Audio track is fully silent", ai_tool
+    # Tier 5: Audio signals (lower weight — many real videos have no audio)
+    if not audio.has_audio and codec.pts_uniformity >= 0.90:
+        return 0.72, "No audio + uniform frame timing (AI pattern)", ai_tool
+    if audio.is_fully_silent and codec.pts_uniformity >= 0.90:
+        return 0.70, "Silent audio + uniform frame timing (AI pattern)", ai_tool
 
     # Tier 6: Statistical codec + audio signals
     combined = (
