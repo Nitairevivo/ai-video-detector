@@ -1,69 +1,41 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity,
-  Platform, SafeAreaView, StatusBar, ScrollView,
-  Alert, AppState, Vibration, TextInput, KeyboardAvoidingView,
+  SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
+  AppState, Platform,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { useShareIntent } from "expo-share-intent";
 
 const API = "https://ai-video-detector-production-a305.up.railway.app";
-
-// Platforms with known video URL patterns — auto-detected from clipboard
-const VIDEO_URL_PATTERNS: { pattern: RegExp; name: string }[] = [
-  { pattern: /tiktok\.com/, name: "TikTok" },
-  { pattern: /instagram\.com\/(reel|p|tv)\//, name: "Instagram" },
-  { pattern: /youtube\.com\/(shorts|watch|live)/, name: "YouTube" },
-  { pattern: /youtu\.be\//, name: "YouTube" },
-  { pattern: /twitter\.com\/.*\/status/, name: "Twitter/X" },
-  { pattern: /x\.com\/.*\/status/, name: "Twitter/X" },
-  { pattern: /reddit\.com\/r\/.*\/comments/, name: "Reddit" },
-  { pattern: /v\.redd\.it\//, name: "Reddit" },
-  { pattern: /facebook\.com\/(watch|reel|videos)/, name: "Facebook" },
-  { pattern: /fb\.watch\//, name: "Facebook" },
-  { pattern: /t\.me\//, name: "Telegram" },
-  { pattern: /snapchat\.com\//, name: "Snapchat" },
-  { pattern: /pin\.it\//, name: "Pinterest" },
-  { pattern: /pinterest\.com\/pin\//, name: "Pinterest" },
-  { pattern: /twitch\.tv\//, name: "Twitch" },
-  { pattern: /clips\.twitch\.tv\//, name: "Twitch" },
-  { pattern: /vimeo\.com\//, name: "Vimeo" },
-  { pattern: /dailymotion\.com\/video/, name: "Dailymotion" },
-  { pattern: /triller\.co\//, name: "Triller" },
-  { pattern: /likee\.video\//, name: "Likee" },
-  { pattern: /kwai\.com\//, name: "Kwai" },
-  { pattern: /zynn\.com\//, name: "Zynn" },
-  { pattern: /rumble\.com\//, name: "Rumble" },
-  { pattern: /odysee\.com\//, name: "Odysee" },
-  { pattern: /bitchute\.com\/video\//, name: "BitChute" },
-  { pattern: /streamable\.com\//, name: "Streamable" },
-  { pattern: /imgur\.com\//, name: "Imgur" },
-  { pattern: /gfycat\.com\//, name: "Gfycat" },
-  { pattern: /medal\.tv\//, name: "Medal" },
-  { pattern: /discord\.com\/channels/, name: "Discord" },
-  { pattern: /\.mp4(\?|$)/, name: "Direct MP4" },
-  { pattern: /\.webm(\?|$)/, name: "Direct WebM" },
-  { pattern: /\.mov(\?|$)/, name: "Direct MOV" },
-];
-
-function detectPlatform(url: string): string | null {
-  for (const { pattern, name } of VIDEO_URL_PATTERNS) {
-    if (pattern.test(url)) return name;
-  }
-  return null;
-}
-
-function isVideoUrl(url: string) {
-  return detectPlatform(url) !== null;
-}
 
 type Result = {
   is_ai_generated: boolean;
   confidence: number;
   ai_tool_detected: string | null;
   detection_method: string;
+  url?: string;
 };
 
-type HistoryItem = Result & { timestamp: string; url: string; platform: string };
+type HistoryItem = Result & { timestamp: string; url: string };
+
+const VIDEO_URL_PATTERNS = [
+  /tiktok\.com/,
+  /instagram\.com\/(reel|p|tv)\//,
+  /youtube\.com\/(shorts|watch|live)/,
+  /youtu\.be\//,
+  /twitter\.com\/.*\/status/,
+  /x\.com\/.*\/status/,
+  /reddit\.com\/r\/.*\/comments/,
+  /v\.redd\.it\//,
+  /facebook\.com\/(watch|reel|videos)/,
+  /fb\.watch\//,
+  /t\.me\//,
+];
+
+function isVideoUrl(url: string) {
+  return VIDEO_URL_PATTERNS.some((p) => p.test(url));
+}
 
 // ─── Result Banner ────────────────────────────────────────────────────────────
 
@@ -93,11 +65,13 @@ function ResultBanner({ result, onDismiss }: { result: Result; onDismiss: () => 
           <View style={[styles.bannerBadge, { backgroundColor: color + "22" }]}>
             <View style={[styles.bannerDot, { backgroundColor: color }]} />
             <Text style={[styles.bannerBadgeText, { color }]}>
-              {isAI ? "AI GENERATED" : "AUTHENTIC"}
+              {isAI ? "🤖 AI GENERATED" : "✅ AUTHENTIC"}
             </Text>
           </View>
           <Text style={styles.bannerTitle}>
-            {isAI ? (result.ai_tool_detected ? `Made with ${result.ai_tool_detected}` : "AI-Generated Video") : "Real Footage"}
+            {isAI
+              ? (result.ai_tool_detected ? `Made with ${result.ai_tool_detected}` : "AI-Generated Video")
+              : "Real Footage"}
           </Text>
           <Text style={styles.bannerMethod} numberOfLines={1}>{result.detection_method}</Text>
         </View>
@@ -113,23 +87,41 @@ function ResultBanner({ result, onDismiss }: { result: Result; onDismiss: () => 
   );
 }
 
-// ─── Platform chip ────────────────────────────────────────────────────────────
+// ─── Floating Button ──────────────────────────────────────────────────────────
 
-const PLATFORM_ICONS: Record<string, string> = {
-  "TikTok": "🎵", "Instagram": "📸", "YouTube": "▶️", "Twitter/X": "🐦",
-  "Reddit": "🤖", "Facebook": "👤", "Telegram": "✈️", "Snapchat": "👻",
-  "Pinterest": "📌", "Twitch": "🟣", "Vimeo": "🎬", "Dailymotion": "📺",
-  "Rumble": "🔴", "Discord": "💬", "Triller": "🎤", "Direct MP4": "🎥",
-  "Direct WebM": "🎥", "Direct MOV": "🎥",
-};
+function FloatingBtn({ onPress, loading }: { onPress: () => void; loading: boolean }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
 
-function PlatformChip({ name }: { name: string }) {
-  const icon = PLATFORM_ICONS[name] ?? "🌐";
+  useEffect(() => {
+    if (loading) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulse.stopAnimation();
+      pulse.setValue(1);
+    }
+  }, [loading]);
+
+  const press = () => {
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+    ]).start();
+    onPress();
+  };
+
   return (
-    <View style={styles.chip}>
-      <Text style={styles.chipIcon}>{icon}</Text>
-      <Text style={styles.chipText}>{name}</Text>
-    </View>
+    <Animated.View style={[styles.fab, { transform: [{ scale: Animated.multiply(scale, pulse) }] }]}>
+      <TouchableOpacity style={[styles.fabBtn, loading && styles.fabLoading]} onPress={press} activeOpacity={0.85}>
+        <Text style={styles.fabIcon}>{loading ? "⏳" : "🔍"}</Text>
+        {!loading && <Text style={styles.fabLabel}>CHECK</Text>}
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -139,11 +131,21 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [manualUrl, setManualUrl] = useState("");
-  const [tab, setTab] = useState<"scan" | "history">("scan");
-  const lastChecked = useRef("");
+  const lastChecked = useRef<string>("");
 
-  // Android: auto-detect when returning to app with a video URL in clipboard
+  // iOS Share Extension: receives URL when user shares from TikTok/Reels/YouTube
+  const { shareIntent, resetShareIntent, hasShareIntent } = useShareIntent();
+
+  useEffect(() => {
+    if (!hasShareIntent) return;
+    const url = shareIntent?.webUrl || shareIntent?.text;
+    if (url && url.startsWith("http")) {
+      resetShareIntent();
+      detect(url);
+    }
+  }, [hasShareIntent, shareIntent]);
+
+  // Android: auto-detect clipboard on app focus
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = AppState.addEventListener("change", async (state) => {
@@ -163,7 +165,6 @@ export default function App() {
     setLoading(true);
     setResult(null);
     Vibration.vibrate(30);
-    const platform = detectPlatform(url) ?? "Other";
     try {
       const res = await fetch(`${API}/detect-url`, {
         method: "POST",
@@ -172,8 +173,9 @@ export default function App() {
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data: Result = await res.json();
-      setResult(data);
-      setHistory(prev => [{ ...data, timestamp: new Date().toLocaleTimeString(), url, platform }, ...prev.slice(0, 49)]);
+      const item = { ...data, timestamp: new Date().toLocaleTimeString(), url };
+      setResult(item);
+      setHistory(prev => [item, ...prev.slice(0, 29)]);
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch (e: unknown) {
       Alert.alert("Detection Failed", e instanceof Error ? e.message : "Unknown error");
@@ -182,26 +184,22 @@ export default function App() {
     }
   }, []);
 
-  const checkClipboard = useCallback(async () => {
+  const onFloatingPress = useCallback(async () => {
     try {
-      const text = (await Clipboard.getStringAsync()).trim();
+      const text = await Clipboard.getStringAsync();
       if (!text?.startsWith("http")) {
         Alert.alert(
-          "No URL in clipboard",
-          "Copy a video link from any app, then tap Scan.",
+          "Copy a link first",
+          "In TikTok:\n1. Tap Share on a video\n2. Tap 'Copy Link'\n3. Come back and tap 🔍\n\nOn iOS you can also use the Share Sheet directly.",
           [{ text: "OK" }]
         );
         return;
       }
       if (!isVideoUrl(text)) {
-        Alert.alert(
-          "Analyze this URL?",
-          text.slice(0, 120) + (text.length > 120 ? "..." : ""),
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Analyze anyway", onPress: () => detect(text) },
-          ]
-        );
+        Alert.alert("Analyze this URL?", text.slice(0, 100), [
+          { text: "Cancel", style: "cancel" },
+          { text: "Analyze", onPress: () => detect(text) },
+        ]);
         return;
       }
       detect(text);
@@ -210,262 +208,161 @@ export default function App() {
     }
   }, [detect]);
 
-  const submitManual = useCallback(() => {
-    const url = manualUrl.trim();
-    if (!url.startsWith("http")) {
-      Alert.alert("Invalid URL", "Enter a full URL starting with https://");
-      return;
-    }
-    setManualUrl("");
-    detect(url);
-  }, [manualUrl, detect]);
-
-  const allPlatforms = Object.keys(PLATFORM_ICONS).filter(k => !k.startsWith("Direct"));
-
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#07070f" />
 
       {result && <ResultBanner result={result} onDismiss={() => setResult(null)} />}
+      <FloatingBtn onPress={onFloatingPress} loading={loading} />
 
-      {/* Tab bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity style={[styles.tabBtn, tab === "scan" && styles.tabBtnActive]} onPress={() => setTab("scan")}>
-          <Text style={[styles.tabText, tab === "scan" && styles.tabTextActive]}>Scan</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBtn, tab === "history" && styles.tabBtnActive]} onPress={() => setTab("history")}>
-          <Text style={[styles.tabText, tab === "history" && styles.tabTextActive]}>
-            History {history.length > 0 ? `(${history.length})` : ""}
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Text style={styles.titleSmall}>AI VIDEO</Text>
+          <Text style={styles.title}>DETECTOR</Text>
+          <Text style={styles.subtitle}>
+            {Platform.OS === "ios"
+              ? "Share any video from TikTok, Reels or YouTube directly to this app"
+              : "Copy a TikTok/Reels link, then tap 🔍 below"}
           </Text>
-        </TouchableOpacity>
-      </View>
+        </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-
-          {tab === "scan" && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>
+            {Platform.OS === "ios" ? "📱 How to use on iOS" : "📱 How to use on Android"}
+          </Text>
+          {Platform.OS === "ios" ? (
             <>
-              {/* Header */}
-              <View style={styles.header}>
-                <View style={styles.headerBadge}>
-                  <View style={styles.headerDot} />
-                  <Text style={styles.headerBadgeText}>LIVE · Model AUC 99.8%</Text>
-                </View>
-                <Text style={styles.title}>AI Video{"\n"}Detector</Text>
-                <Text style={styles.subtitle}>
-                  Reads binary signatures inside the file — works on any platform.
-                </Text>
-              </View>
+              <Step n={1} text="Open TikTok, Instagram or YouTube" />
+              <Step n={2} text="Tap Share on any video" />
+              <Step n={3} text='Select "AI Detector" from the share sheet' />
+              <Step n={4} text="Result appears here in 2–3 seconds" />
+            </>
+          ) : (
+            <>
+              <Step n={1} text="Open TikTok, Instagram or YouTube" />
+              <Step n={2} text='Tap Share → "Copy Link"' />
+              <Step n={3} text="Switch back here and tap 🔍" />
+              <Step n={4} text="Result appears in 2–3 seconds" />
+            </>
+          )}
+        </View>
 
-              {/* Scan from clipboard */}
-              <TouchableOpacity
-                style={[styles.scanBtn, loading && styles.scanBtnLoading]}
-                onPress={checkClipboard}
-                activeOpacity={0.85}
-                disabled={loading}
-              >
-                <Text style={styles.scanIcon}>{loading ? "⏳" : "📋"}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.scanText}>{loading ? "Analyzing..." : "Scan from Clipboard"}</Text>
-                  <Text style={styles.scanSub}>
-                    {loading ? "Reading binary file signatures..." : "Copy a link from any app, then tap here"}
-                  </Text>
-                </View>
+        {history.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>RECENT</Text>
+              <TouchableOpacity onPress={() => setHistory([])}>
+                <Text style={styles.clearBtn}>Clear</Text>
               </TouchableOpacity>
+            </View>
+            {history.map((item, i) => (
+              <TouchableOpacity key={i} style={styles.historyRow} onPress={() => setResult(item)}>
+                <View style={[styles.historyDot, { backgroundColor: item.is_ai_generated ? "#ef4444" : "#22c55e" }]} />
+                <View style={styles.historyInfo}>
+                  <Text style={styles.historyTitle}>
+                    {item.is_ai_generated
+                      ? (item.ai_tool_detected ? `🤖 AI · ${item.ai_tool_detected}` : "🤖 AI Generated")
+                      : "✅ Authentic Footage"}
+                  </Text>
+                  <Text style={styles.historyUrl} numberOfLines={1}>{item.url}</Text>
+                </View>
+                <Text style={[styles.historyPct, { color: item.is_ai_generated ? "#ef4444" : "#22c55e" }]}>
+                  {Math.round(item.confidence * 100)}%
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-              {/* Manual URL input */}
-              <View style={styles.manualCard}>
-                <Text style={styles.manualLabel}>Or paste a URL manually</Text>
-                <View style={styles.manualRow}>
-                  <TextInput
-                    style={styles.manualInput}
-                    placeholder="https://..."
-                    placeholderTextColor="#333"
-                    value={manualUrl}
-                    onChangeText={setManualUrl}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    returnKeyType="go"
-                    onSubmitEditing={submitManual}
-                  />
-                  <TouchableOpacity
-                    style={[styles.manualBtn, (!manualUrl || loading) && styles.manualBtnDisabled]}
-                    onPress={submitManual}
-                    disabled={!manualUrl || loading}
-                  >
-                    <Text style={styles.manualBtnText}>Go</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Supported platforms */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Works on 30+ platforms</Text>
-                <View style={styles.chipGrid}>
-                  {allPlatforms.map(name => (
-                    <PlatformChip key={name} name={name} />
-                  ))}
-                  <View style={styles.chip}>
-                    <Text style={styles.chipIcon}>🌐</Text>
-                    <Text style={styles.chipText}>Any video URL</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* How it works */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>How to use</Text>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepNum}><Text style={styles.stepNumText}>1</Text></View>
-                  <Text style={styles.stepText}>Open any app (TikTok, YouTube, Telegram, Instagram...)</Text>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepNum}><Text style={styles.stepNumText}>2</Text></View>
-                  <Text style={styles.stepText}>Tap Share → Copy Link on any video</Text>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepNum}><Text style={styles.stepNumText}>3</Text></View>
-                  <Text style={styles.stepText}>Come back here, tap "Scan from Clipboard"</Text>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepNum}><Text style={styles.stepNumText}>4</Text></View>
-                  <Text style={styles.stepText}>Result in 2-4 seconds with confidence %</Text>
-                </View>
-              </View>
-            </>
-          )}
-
-          {tab === "history" && (
-            <>
-              {history.length === 0 ? (
-                <View style={styles.empty}>
-                  <Text style={styles.emptyIcon}>🎬</Text>
-                  <Text style={styles.emptyText}>No scans yet</Text>
-                  <Text style={styles.emptySub}>Go to Scan tab to analyze a video</Text>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.sectionTitle}>RECENT SCANS ({history.length})</Text>
-                  {history.map((item, i) => {
-                    const isAI = item.is_ai_generated;
-                    const color = isAI ? "#f97316" : "#22c55e";
-                    const pct = Math.round(item.confidence * 100);
-                    const icon = PLATFORM_ICONS[item.platform] ?? "🌐";
-                    return (
-                      <TouchableOpacity key={i} style={styles.historyRow} onPress={() => { setResult(item); setTab("scan"); }}>
-                        <View style={[styles.historyDot, { backgroundColor: color }]} />
-                        <View style={styles.historyInfo}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                            <Text style={{ fontSize: 13 }}>{icon}</Text>
-                            <Text style={styles.historyTitle}>
-                              {isAI ? (item.ai_tool_detected ? `AI · ${item.ai_tool_detected}` : "AI Generated") : "Authentic"}
-                            </Text>
-                          </View>
-                          <Text style={styles.historyUrl} numberOfLines={1}>{item.url.replace(/https?:\/\/(www\.)?/, "")}</Text>
-                          <Text style={styles.historyPlatform}>{item.platform}</Text>
-                        </View>
-                        <View style={styles.historyRight}>
-                          <Text style={[styles.historyPct, { color }]}>{pct}%</Text>
-                          <Text style={styles.historyTime}>{item.timestamp}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </>
-              )}
-            </>
-          )}
-
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {history.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>🎬</Text>
+            <Text style={styles.emptyText}>No videos analyzed yet</Text>
+            <Text style={styles.emptyHint}>
+              {Platform.OS === "ios"
+                ? "Share a video from TikTok to get started"
+                : "Copy a TikTok link and tap 🔍"}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function Step({ n, text }: { n: number; text: string }) {
+  return (
+    <View style={styles.step}>
+      <View style={styles.stepNum}>
+        <Text style={styles.stepNumText}>{n}</Text>
+      </View>
+      <Text style={styles.stepText}>{text}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#07070f" },
-  scroll: { padding: 20, paddingBottom: 50, gap: 16 },
-
-  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.07)" },
-  tabBtn: { flex: 1, paddingVertical: 12, alignItems: "center" },
-  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: "#6366f1" },
-  tabText: { color: "#444", fontSize: 14, fontWeight: "600" },
-  tabTextActive: { color: "#fff" },
+  scroll: { padding: 20, paddingBottom: 140, gap: 20 },
 
   banner: {
-    position: "absolute", top: 0, left: 12, right: 12, zIndex: 999,
-    borderRadius: 16, borderWidth: 1, overflow: "hidden",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5, shadowRadius: 20, elevation: 20,
+    position: "absolute", top: 50, left: 12, right: 12,
+    zIndex: 9999, borderRadius: 18, borderWidth: 1, overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6, shadowRadius: 24, elevation: 24,
   },
   bannerBar: { height: 3 },
-  bannerBody: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
-  bannerLeft: { flex: 1, gap: 4 },
+  bannerBody: { flexDirection: "row", alignItems: "center", padding: 16, gap: 12 },
+  bannerLeft: { flex: 1, gap: 5 },
   bannerBadge: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   bannerDot: { width: 5, height: 5, borderRadius: 3 },
-  bannerBadgeText: { fontSize: 9, fontWeight: "800", letterSpacing: 1 },
-  bannerTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  bannerMethod: { color: "#666", fontSize: 11 },
-  bannerCircle: { width: 60, height: 60, borderRadius: 30, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
+  bannerBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
+  bannerTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  bannerMethod: { color: "#555", fontSize: 11 },
+  bannerCircle: { width: 64, height: 64, borderRadius: 32, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },
-  bannerClose: { position: "absolute", top: 10, right: 10, padding: 4 },
-  bannerCloseText: { color: "#444", fontSize: 13 },
+  bannerClose: { position: "absolute", top: 10, right: 12, padding: 6 },
+  bannerCloseText: { color: "#444", fontSize: 14 },
 
-  header: { paddingTop: 8, gap: 10 },
-  headerBadge: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  headerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22c55e" },
-  headerBadgeText: { color: "#888", fontSize: 11 },
-  title: { color: "#fff", fontSize: 36, fontWeight: "800", letterSpacing: -1, lineHeight: 42 },
-  subtitle: { color: "#555", fontSize: 14, lineHeight: 20 },
-
-  scanBtn: {
-    backgroundColor: "#6366f1",
-    borderRadius: 18, padding: 18,
-    flexDirection: "row", alignItems: "center", gap: 14,
-    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+  fab: { position: "absolute", bottom: 44, right: 24, zIndex: 9998 },
+  fabBtn: {
+    width: 68, height: 68, borderRadius: 34,
+    backgroundColor: "#6366f1", alignItems: "center", justifyContent: "center",
+    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.7, shadowRadius: 16, elevation: 16,
   },
-  scanBtnLoading: { backgroundColor: "#3730a3" },
-  scanIcon: { fontSize: 28 },
-  scanText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  scanSub: { color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 2 },
+  fabLoading: { backgroundColor: "#2a2a3a" },
+  fabIcon: { fontSize: 24 },
+  fabLabel: { color: "#fff", fontSize: 8, fontWeight: "800", letterSpacing: 1 },
 
-  manualCard: { backgroundColor: "#0e0e1a", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", gap: 10 },
-  manualLabel: { color: "#666", fontSize: 12, fontWeight: "600", letterSpacing: 0.5 },
-  manualRow: { flexDirection: "row", gap: 8 },
-  manualInput: { flex: 1, backgroundColor: "#161624", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  manualBtn: { backgroundColor: "#6366f1", borderRadius: 10, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" },
-  manualBtnDisabled: { backgroundColor: "#2d2d4a" },
-  manualBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  header: { paddingTop: 8, gap: 4 },
+  titleSmall: { color: "#6366f1", fontSize: 12, fontWeight: "800", letterSpacing: 4 },
+  title: { color: "#fff", fontSize: 38, fontWeight: "900", letterSpacing: -1 },
+  subtitle: { color: "#555", fontSize: 14, lineHeight: 20, marginTop: 4 },
 
-  card: { backgroundColor: "#0e0e1a", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", gap: 10 },
-  cardTitle: { color: "#fff", fontWeight: "700", fontSize: 14, marginBottom: 4 },
+  card: { backgroundColor: "#0d0d1a", borderRadius: 18, padding: 18, borderWidth: 1, borderColor: "#ffffff0a", gap: 12 },
+  cardTitle: { color: "#ccc", fontWeight: "700", fontSize: 14, marginBottom: 2 },
 
-  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  chip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  chipIcon: { fontSize: 12 },
-  chipText: { color: "#aaa", fontSize: 11, fontWeight: "600" },
+  step: { flexDirection: "row", alignItems: "center", gap: 12 },
+  stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#6366f115", borderWidth: 1, borderColor: "#6366f140", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  stepNumText: { color: "#818cf8", fontSize: 12, fontWeight: "700" },
+  stepText: { color: "#888", fontSize: 13, flex: 1, lineHeight: 18 },
 
-  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  stepNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(99,102,241,0.15)", borderWidth: 1, borderColor: "rgba(99,102,241,0.3)", alignItems: "center", justifyContent: "center", marginTop: 1 },
-  stepNumText: { color: "#818cf8", fontSize: 11, fontWeight: "700" },
-  stepText: { color: "#888", fontSize: 13, flex: 1, lineHeight: 20 },
+  section: { gap: 10 },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sectionTitle: { color: "#444", fontSize: 10, fontWeight: "700", letterSpacing: 1.5 },
+  clearBtn: { color: "#444", fontSize: 12 },
 
-  sectionTitle: { color: "#333", fontSize: 10, fontWeight: "700", letterSpacing: 1 },
-  historyRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#0e0e1a", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", marginBottom: 6 },
+  historyRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#0d0d1a", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#ffffff08" },
   historyDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  historyInfo: { flex: 1, gap: 2 },
-  historyTitle: { color: "#ddd", fontSize: 13, fontWeight: "600" },
-  historyUrl: { color: "#444", fontSize: 11 },
-  historyPlatform: { color: "#333", fontSize: 10 },
-  historyRight: { alignItems: "flex-end", gap: 2 },
-  historyPct: { fontSize: 15, fontWeight: "800" },
-  historyTime: { color: "#333", fontSize: 10 },
+  historyInfo: { flex: 1, gap: 3 },
+  historyTitle: { color: "#ccc", fontSize: 13, fontWeight: "600" },
+  historyUrl: { color: "#444", fontSize: 10 },
+  historyPct: { fontSize: 16, fontWeight: "800" },
 
-  empty: { alignItems: "center", paddingVertical: 60, gap: 8 },
-  emptyIcon: { fontSize: 44 },
-  emptyText: { color: "#333", fontSize: 16, fontWeight: "600" },
-  emptySub: { color: "#222", fontSize: 13 },
+  empty: { alignItems: "center", paddingVertical: 60, gap: 10 },
+  emptyIcon: { fontSize: 48 },
+  emptyText: { color: "#444", fontSize: 15, fontWeight: "600" },
+  emptyHint: { color: "#333", fontSize: 12, textAlign: "center", lineHeight: 18 },
 });

@@ -10,6 +10,7 @@ import numpy as np
 from .metadata_reader import MetadataResult, read_metadata
 from .codec_analyzer import CodecFeatures, analyze_codec
 from .container_parser import ContainerFeatures, parse_container
+from .audio_analyzer import AudioFeatures, analyze_audio
 
 
 @dataclass
@@ -27,10 +28,11 @@ def extract_features(file_path: str) -> DetectionResult:
     meta = read_metadata(file_path)
     codec = analyze_codec(file_path)
     container = parse_container(file_path)
+    audio = analyze_audio(file_path)
 
-    signals = _collect_signals(meta, codec, container)
+    signals = _collect_signals(meta, codec, container, audio)
     feature_vector = _build_vector(signals)
-    confidence, method, ai_tool = _rule_based_decision(meta, codec, container, signals)
+    confidence, method, ai_tool = _rule_based_decision(meta, codec, container, audio, signals)
 
     return DetectionResult(
         file_path=file_path,
@@ -47,6 +49,7 @@ def _collect_signals(
     meta: MetadataResult,
     codec: CodecFeatures,
     container: ContainerFeatures,
+    audio: AudioFeatures,
 ) -> dict:
     return {
         # Metadata signals
@@ -73,6 +76,20 @@ def _collect_signals(
         "has_proprietary_box": int(len(container.proprietary_boxes) > 0),
         "container_ai_score": container.container_ai_score,
 
+        # Audio signals
+        "has_audio": int(audio.has_audio),
+        "is_fully_silent": int(audio.is_fully_silent),
+        "silence_ratio": audio.silence_ratio,
+        "audio_rms_cv": audio.audio_rms_cv or 0.0,
+        "audio_ai_score": audio.audio_ai_score,
+
+        # Scene & entropy signals
+        "scene_change_rate": codec.scene_change_rate,
+        "scene_change_uniformity": codec.scene_change_uniformity,
+        "entropy_mean": codec.entropy_mean,
+        "entropy_std": codec.entropy_std,
+        "entropy_cv": codec.entropy_cv,
+
         # File-level
         "file_size_mb": meta.file_size_bytes / (1024 * 1024),
         "duration_seconds": meta.duration_seconds or 0.0,
@@ -95,8 +112,12 @@ def _build_vector(signals: dict) -> list:
         "has_b_frames", "ref_frames",
         "moov_before_mdat", "has_fragmented_mp4", "has_proprietary_box",
         "container_ai_score",
-        "file_size_mb", "duration_seconds", "bitrate_kbps",
-        "fps", "width", "height",
+        "has_audio", "is_fully_silent", "silence_ratio", "audio_rms_cv", "audio_ai_score",
+        "scene_change_rate", "scene_change_uniformity",
+        "entropy_mean", "entropy_std", "entropy_cv",
+        # NOTE: file_size_mb, duration_seconds, bitrate_kbps, width, height intentionally
+        # excluded from ML — they correlate with dataset source, not AI generation.
+        "fps",
     ]
     return [float(signals.get(k, 0.0)) for k in keys]
 
@@ -105,6 +126,7 @@ def _rule_based_decision(
     meta: MetadataResult,
     codec: CodecFeatures,
     container: ContainerFeatures,
+    audio: AudioFeatures,
     signals: dict,
 ) -> tuple[float, str, Optional[str]]:
     """
@@ -134,13 +156,30 @@ def _rule_based_decision(
         # C2PA present but not flagged as AI — still suspicious
         return 0.60, "C2PA provenance present (origin unverified)", None
 
-    # Tier 3: Statistical codec signals
-    combined_codec = (codec.codec_ai_score * 0.6 + container.container_ai_score * 0.4)
-    if combined_codec > 0.75:
-        return combined_codec, "Statistical codec fingerprint analysis", ai_tool
+    # Tier 3: Frame timing — AI video = perfectly uniform PTS (pts_uniformity near 1.0)
+    if codec.pts_uniformity >= 0.97:
+        return 0.88, "Perfect frame timing uniformity (AI signature)", ai_tool
 
-    if combined_codec > 0.55:
-        return combined_codec, "Weak codec fingerprint — inconclusive", None
+    # Tier 4: Very low entropy = AI-generated frames look uniform / synthetic
+    if codec.entropy_mean > 0 and codec.entropy_mean < 2.0:
+        return 0.85, "Extremely low frame entropy (AI synthetic pattern)", ai_tool
 
-    # Tier 4: Insufficient evidence
-    return max(0.05, combined_codec), "No AI markers detected", None
+    # Tier 5: Audio signals
+    if not audio.has_audio:
+        return 0.80, "No audio track (common in AI-generated video)", ai_tool
+    if audio.is_fully_silent:
+        return 0.78, "Audio track is fully silent", ai_tool
+
+    # Tier 6: Statistical codec + audio signals
+    combined = (
+        codec.codec_ai_score * 0.45
+        + container.container_ai_score * 0.25
+        + audio.audio_ai_score * 0.30
+    )
+    if combined > 0.70:
+        return combined, "Statistical fingerprint: codec + audio patterns", ai_tool
+    if combined > 0.50:
+        return combined, "Weak statistical signal — inconclusive", None
+
+    # Tier 7: Insufficient evidence
+    return max(0.05, combined), "No AI markers detected", None
