@@ -119,14 +119,68 @@ def train_model():
     return result
 
 
+PLATFORM_DOMAINS = [
+    "tiktok.com", "instagram.com", "youtube.com", "youtu.be",
+    "twitter.com", "x.com", "reddit.com", "v.redd.it",
+    "facebook.com", "fb.watch", "t.me", "snapchat.com",
+    "pinterest.com", "pin.it", "twitch.tv", "clips.twitch.tv",
+    "vimeo.com", "dailymotion.com", "triller.co", "rumble.com",
+    "odysee.com", "bitchute.com", "streamable.com", "medal.tv",
+    "likee.video", "kwai.com",
+]
+
+def _is_platform_url(url: str) -> bool:
+    return any(d in url for d in PLATFORM_DOMAINS)
+
+
+def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
+    """Use yt-dlp to download first ~10MB of video from social platforms."""
+    import subprocess, shutil
+    ytdlp = shutil.which("yt-dlp")
+    if not ytdlp:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                ytdlp,
+                "--no-playlist",
+                "--format", "mp4/best[ext=mp4]/best",
+                "--max-filesize", "10m",
+                "--output", tmp_path,
+                "--no-warnings",
+                "--quiet",
+                url,
+            ],
+            timeout=30,
+            capture_output=True,
+        )
+        return result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1000
+    except Exception:
+        return False
+
+
+def _download_direct(url: str, tmp_path: str) -> bool:
+    """Direct HTTP download for plain video URLs (cdn links, .mp4, etc.)."""
+    DOWNLOAD_LIMIT = 10 * 1024 * 1024
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read(DOWNLOAD_LIMIT)
+        if len(data) < 1000:
+            return False
+        with open(tmp_path, "wb") as f:
+            f.write(data)
+        return True
+    except Exception:
+        return False
+
+
 @app.post("/detect-url")
 async def detect_url(url: str = Body(..., embed=True)):
     """
-    Detect AI from a direct video URL (used by browser extension).
-    Downloads only the first 2MB (headers + container) for fast analysis.
+    Detect AI from any video URL: TikTok, YouTube, Instagram, Telegram, direct MP4, etc.
+    Uses yt-dlp for platform URLs, direct HTTP for CDN links.
     """
-    DOWNLOAD_LIMIT = 2 * 1024 * 1024  # 2MB is enough for metadata
-
     if not url.startswith(("http://", "https://")):
         raise HTTPException(400, "Invalid URL")
 
@@ -136,17 +190,20 @@ async def detect_url(url: str = Body(..., embed=True)):
             suffix = ext
             break
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp_path = tmp.name
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                tmp.write(resp.read(DOWNLOAD_LIMIT))
-        except Exception as e:
-            os.unlink(tmp_path)
-            raise HTTPException(400, f"Failed to download URL: {e}")
+    tmp_path = tempfile.mktemp(suffix=suffix)
 
     try:
+        ok = False
+        if _is_platform_url(url):
+            ok = _download_with_ytdlp(url, tmp_path)
+        if not ok:
+            ok = _download_direct(url, tmp_path)
+        if not ok:
+            # Last resort: try yt-dlp even if not a known platform
+            ok = _download_with_ytdlp(url, tmp_path)
+        if not ok:
+            raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
+
         result = extract_features(tmp_path)
         classifier = get_classifier()
         ml_prob, _ = classifier.predict(result.feature_vector)
@@ -167,7 +224,8 @@ async def detect_url(url: str = Body(..., embed=True)):
             "detection_method": method,
         }
     finally:
-        os.unlink(tmp_path)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 @app.get("/model/importance")
