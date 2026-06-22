@@ -28,6 +28,9 @@ app.add_middleware(
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+# We only need the first 10MB for metadata + container analysis.
+# Codec frame analysis (ffprobe) reads directly from disk and is already limited to 120 frames.
+FAST_READ_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 @app.get("/")
@@ -48,10 +51,14 @@ async def detect(file: UploadFile = File(...)):
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        content = await file.read()
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(413, "File too large (max 2GB)")
-        tmp.write(content)
+        # Read first 10MB — enough for all metadata + container signals.
+        # ffprobe for codec analysis reads the file separately on disk.
+        chunk = await file.read(FAST_READ_BYTES)
+        if not chunk:
+            raise HTTPException(400, "Empty file")
+        tmp.write(chunk)
+        # Drain the rest (so the client connection closes cleanly) but don't store it
+        await file.read()
 
     try:
         result = extract_features(tmp_path)

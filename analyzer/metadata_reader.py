@@ -121,7 +121,7 @@ def _read_ffprobe(file_path: str, result: MetadataResult):
         file_path
     ]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=30)
+        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=8)
         data = json.loads(output)
     except Exception:
         return

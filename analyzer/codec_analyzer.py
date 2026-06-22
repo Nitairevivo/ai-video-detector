@@ -55,7 +55,7 @@ AI_SUSPICIOUS_COMBOS = [
     ("av1", "Main", "yuv420p"),
 ]
 
-MAX_FRAMES_TO_SAMPLE = 2000  # read at most this many frames for speed
+MAX_FRAMES_TO_SAMPLE = 120  # ~4 seconds at 30fps — enough for statistical patterns
 
 
 def analyze_codec(file_path: str) -> CodecFeatures:
@@ -75,7 +75,7 @@ def _extract_stream_info(file_path: str, features: CodecFeatures):
         file_path
     ]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=30)
+        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=8)
         data = json.loads(output)
         streams = data.get("streams", [])
         if not streams:
@@ -103,7 +103,7 @@ def _extract_frame_data(file_path: str, features: CodecFeatures):
         file_path
     ]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=60)
+        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=10)
         data = json.loads(output)
     except Exception:
         return
