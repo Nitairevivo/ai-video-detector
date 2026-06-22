@@ -6,9 +6,30 @@ import subprocess
 import json
 import struct
 import os
+import shutil
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+
+
+def _ffprobe_path() -> str:
+    # Prefer system ffprobe, then imageio-ffmpeg bundled binary
+    system = shutil.which("ffprobe")
+    if system:
+        return system
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        # ffprobe sits next to ffmpeg
+        probe = Path(exe).parent / "ffprobe"
+        if probe.exists():
+            return str(probe)
+    except Exception:
+        pass
+    return "ffprobe"  # fallback, will error if not found
+
+
+FFPROBE = _ffprobe_path()
 
 
 KNOWN_AI_TOOLS = {
@@ -94,7 +115,7 @@ def read_metadata(file_path: str) -> MetadataResult:
 
 def _read_ffprobe(file_path: str, result: MetadataResult):
     cmd = [
-        "ffprobe", "-v", "quiet",
+        FFPROBE, "-v", "quiet",
         "-print_format", "json",
         "-show_format", "-show_streams",
         file_path

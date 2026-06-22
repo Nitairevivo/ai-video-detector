@@ -1,4 +1,4 @@
-const API_BASE = "https://your-api-domain.com"; // change to your deployed API
+const API_BASE = "https://ai-video-detector-production-a305.up.railway.app";
 
 export type DetectionResult = {
   is_ai_generated: boolean;

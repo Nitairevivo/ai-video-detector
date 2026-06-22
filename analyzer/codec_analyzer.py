@@ -8,6 +8,7 @@ import json
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional
+from .metadata_reader import FFPROBE
 
 
 @dataclass
@@ -67,7 +68,7 @@ def analyze_codec(file_path: str) -> CodecFeatures:
 
 def _extract_stream_info(file_path: str, features: CodecFeatures):
     cmd = [
-        "ffprobe", "-v", "quiet",
+        FFPROBE, "-v", "quiet",
         "-select_streams", "v:0",
         "-show_streams",
         "-print_format", "json",
@@ -93,7 +94,7 @@ def _extract_stream_info(file_path: str, features: CodecFeatures):
 
 def _extract_frame_data(file_path: str, features: CodecFeatures):
     cmd = [
-        "ffprobe", "-v", "quiet",
+        FFPROBE, "-v", "quiet",
         "-select_streams", "v:0",
         "-show_frames",
         "-show_entries", "frame=pkt_size,pts_time,key_frame,pict_type",
