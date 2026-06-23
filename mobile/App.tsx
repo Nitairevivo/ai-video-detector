@@ -10,14 +10,21 @@ import { detectVideoUrl, DetectionResult } from "./services/detector";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
-const DOWNLOAD_URL = "https://expo.dev/accounts/052676/projects/verifai/builds/235002ee-b51b-4843-bc06-90f5e7f74612";
+const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/8g8dvWcl6JRyVgbOFgE_x_D0KyO2Fh9X9M-QEFRJGA0.apk";
+const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
 const VIDEO_URL_PATTERNS = [
-  /tiktok\.com/, /instagram\.com\/(reel|p|tv)\//,
-  /youtube\.com\/(shorts|watch|live)/, /youtu\.be\//,
-  /twitter\.com\/.*\/status/, /x\.com\/.*\/status/,
-  /reddit\.com\/r\/.*\/comments/, /v\.redd\.it\//,
-  /facebook\.com\/(watch|reel|videos)/, /fb\.watch\//,
+  /tiktok\.com/, /vm\.tiktok\.com/,
+  /instagram\.com/, /facebook\.com/, /fb\.watch\//,
+  /youtube\.com/, /youtu\.be\//,
+  /twitter\.com/, /x\.com/,
+  /reddit\.com/, /v\.redd\.it\//,
+  /snapchat\.com/, /pinterest\.com\/pin/,
+  /twitch\.tv/, /clips\.twitch\.tv/,
+  /vimeo\.com/, /dailymotion\.com/,
+  /streamable\.com/, /triller\.co/,
+  /likee\.video/, /kwai\.com/,
+  /douyin\.com/, /bilibili\.com/,
 ];
 const isVideoUrl = (url: string) => VIDEO_URL_PATTERNS.some((p) => p.test(url));
 
@@ -90,7 +97,7 @@ function PremiumModal({ visible, onClose }: { visible: boolean; onClose: () => v
           </View>
 
           {/* CTA */}
-          <TouchableOpacity style={pm.cta} activeOpacity={0.85}>
+          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => { onClose(); Linking.openURL(PREMIUM_URL); }}>
             <Text style={pm.ctaText}>התחל ניסיון חינם</Text>
           </TouchableOpacity>
 
@@ -169,16 +176,14 @@ function ResultBanner({ result, onDismiss }: { result: DetectionResult; onDismis
 type HistoryItem = DetectionResult & { timestamp: string; url: string };
 
 function HistoryRow({ item, onPress }: { item: HistoryItem; onPress: () => void }) {
-  const { color } = getVerdictStyle(item);
+  const { color, label, title } = getVerdictStyle(item);
   return (
     <TouchableOpacity style={styles.historyRow} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.historyBar, { backgroundColor: color }]} />
       <View style={styles.historyInfo}>
-        <Text style={styles.historyTitle}>
-          {item.is_ai_generated ? (item.ai_tool_detected ? `🤖 ${item.ai_tool_detected}` : "🤖 AI Generated") : "✅ Authentic"}
-        </Text>
+        <Text style={styles.historyTitle}>{title}</Text>
+        <Text style={[styles.historyUrl, { color: color + "99" }]} numberOfLines={1}>{label}</Text>
         <Text style={styles.historyUrl} numberOfLines={1}>{item.url}</Text>
-        <Text style={styles.historyTime}>{item.timestamp}</Text>
       </View>
       <View style={[styles.historyPctWrap, { borderColor: color + "66" }]}>
         <Text style={[styles.historyPct, { color }]}>{Math.round(item.confidence * 100)}%</Text>
@@ -293,8 +298,9 @@ function AppInner() {
     }
   }, [detect]);
 
-  const aiCount = history.filter((h) => h.is_ai_generated).length;
-  const realCount = history.length - aiCount;
+  const aiCount = history.filter((h) => (h as any).verdict === "ai_generated").length;
+  const editedCount = history.filter((h) => (h as any).verdict === "ai_edited").length;
+  const realCount = history.filter((h) => (h as any).verdict === "real").length;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -325,17 +331,17 @@ function AppInner() {
           {/* Stats row */}
           {history.length > 0 && (
             <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statNum}>{history.length}</Text>
-                <Text style={styles.statLabel}>נסרקו</Text>
-              </View>
               <View style={[styles.statBox, { borderColor: "#ef444433" }]}>
                 <Text style={[styles.statNum, { color: "#ef4444" }]}>{aiCount}</Text>
-                <Text style={styles.statLabel}>AI</Text>
+                <Text style={styles.statLabel}>🤖 AI</Text>
+              </View>
+              <View style={[styles.statBox, { borderColor: "#a855f733" }]}>
+                <Text style={[styles.statNum, { color: "#a855f7" }]}>{editedCount}</Text>
+                <Text style={styles.statLabel}>✏️ נערך</Text>
               </View>
               <View style={[styles.statBox, { borderColor: "#22c55e33" }]}>
                 <Text style={[styles.statNum, { color: "#22c55e" }]}>{realCount}</Text>
-                <Text style={styles.statLabel}>אמיתי</Text>
+                <Text style={styles.statLabel}>✅ אמיתי</Text>
               </View>
             </View>
           )}
