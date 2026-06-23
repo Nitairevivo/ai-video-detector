@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "VerifAI",
+    "slug": "verifai",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "scheme": "verifai",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#07070f",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07070f"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.verifai.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Access to photos for video analysis",
+        "NSCameraUsageDescription": "Access to camera for video capture"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#07070f"
+      },
+      "package": "com.verifai.app",
+      "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.READ_CLIPBOARD"
+      ]
+    },
+    "plugins": [
+      "./plugins/withAndroidOverlay"
+    ],
+    "extra": {
+      "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
+      "eas": {
+        "projectId": "1ccf6c26-6560-4dfa-96d0-a026d693bbab"
+      }
+    },
+    "owner": "052676"
+  }
+}
