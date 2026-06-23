@@ -106,19 +106,10 @@ async def detect(file: UploadFile = File(...)):
 
     try:
         result = extract_features(tmp_path)
-        classifier = get_classifier()
-        ml_prob, ml_is_ai = classifier.predict(result.feature_vector)
-
-        # Blend rule-based + ML if available
-        if ml_prob is not None:
-            final_confidence = result.confidence * 0.4 + ml_prob * 0.6
-            method = f"ML+Rules ({result.method})"
-        else:
-            final_confidence = result.confidence
-            method = result.method
-
+        # ML classifier disabled — has zero AI training samples, causes false positives
+        final_confidence = result.confidence
         verdict = result.verdict
-        vision_method = None
+        method = result.method
 
         # Vision fallback: Gemini analyzes frames when metadata gives no signal
         if final_confidence < 0.5:
@@ -126,19 +117,17 @@ async def detect(file: UploadFile = File(...)):
             gemini = analyze_with_gemini(tmp_path)
             if gemini and gemini.frames_analyzed >= 3:
                 if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.75:
-                    # Only override to AI if Gemini is confident (>=75%)
                     final_confidence = gemini.confidence
                     verdict = gemini.verdict
                     method = f"Gemini Vision: {gemini.reason}"
                 else:
-                    # Gemini says real or not confident → keep as real
                     verdict = "real"
-                    final_confidence = min(0.15, final_confidence)
+                    final_confidence = min(0.10, final_confidence)
                     method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
 
         return {
             "filename": file.filename,
-            "is_ai_generated": final_confidence >= 0.5,
+            "is_ai_generated": verdict == "ai_generated",
             "verdict": verdict,
             "confidence": round(final_confidence, 4),
             "confidence_pct": f"{final_confidence * 100:.1f}%",
@@ -146,8 +135,6 @@ async def detect(file: UploadFile = File(...)):
             "edit_tool_detected": result.edit_tool,
             "detection_method": method,
             "signals": result.signals,
-            "rule_based_confidence": round(result.confidence, 4),
-            "ml_confidence": round(ml_prob, 4) if ml_prob is not None else None,
         }
     finally:
         os.unlink(tmp_path)
@@ -270,17 +257,10 @@ async def detect_url(url: str = Body(..., embed=True)):
             raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
 
         result = extract_features(tmp_path)
-        classifier = get_classifier()
-        ml_prob, _ = classifier.predict(result.feature_vector)
-
-        if ml_prob is not None:
-            final_confidence = result.confidence * 0.4 + ml_prob * 0.6
-            method = f"ML+Rules ({result.method})"
-        else:
-            final_confidence = result.confidence
-            method = result.method
-
+        # ML disabled — no AI training data, causes false positives
+        final_confidence = result.confidence
         verdict = result.verdict
+        method = result.method
 
         # Vision fallback: Gemini analyzes frames when metadata gives no signal
         if final_confidence < 0.5:
@@ -288,19 +268,17 @@ async def detect_url(url: str = Body(..., embed=True)):
             gemini = analyze_with_gemini(tmp_path)
             if gemini and gemini.frames_analyzed >= 3:
                 if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.75:
-                    # Only override to AI if Gemini is confident (>=75%)
                     final_confidence = gemini.confidence
                     verdict = gemini.verdict
                     method = f"Gemini Vision: {gemini.reason}"
                 else:
-                    # Gemini says real or not confident → keep as real
                     verdict = "real"
-                    final_confidence = min(0.15, final_confidence)
+                    final_confidence = min(0.10, final_confidence)
                     method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
 
         return {
             "url": url,
-            "is_ai_generated": final_confidence >= 0.5,
+            "is_ai_generated": verdict == "ai_generated",
             "verdict": verdict,
             "confidence": round(final_confidence, 4),
             "confidence_pct": f"{final_confidence * 100:.1f}%",
