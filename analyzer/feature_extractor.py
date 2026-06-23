@@ -132,54 +132,117 @@ def _rule_based_decision(
     """
     Deterministic rule cascade — ordered from most confident to least.
     Returns (confidence, method_description, ai_tool_name).
+
+    POLICY: Only flag as AI-GENERATED when the video itself was created by an AI tool.
+    Videos edited with AI effects (CapCut filters, AI audio, etc.) on real footage
+    must NOT be flagged — we require hard evidence of AI generation, not just
+    statistical patterns that re-encoding also produces.
     """
     ai_tool = meta.ai_tool_detected or container.ai_tool_from_box
 
-    # Tier 1: Definitive markers
+    # ── Tier 1: Definitive proof — always AI-generated ────────────────────────
+
     if meta.c2pa_is_ai:
-        return 0.99, "C2PA cryptographic proof", ai_tool
+        return 0.99, "C2PA cryptographic proof of AI generation", ai_tool
 
     if meta.ai_tool_detected:
-        return 0.97, f"Metadata tag: '{meta.ai_tool_detected}'", ai_tool
+        return 0.97, f"AI generation tool in metadata: '{meta.ai_tool_detected}'", ai_tool
 
     if meta.has_ai_exclusive_encoder:
-        return 0.95, "AI-exclusive encoder detected", ai_tool
+        return 0.95, "AI-exclusive encoder signature detected", ai_tool
 
-    if container.ai_tool_from_box and 'C2PA' not in container.ai_tool_from_box:
-        return 0.93, f"Proprietary container box: {container.ai_tool_from_box}", ai_tool
+    if container.ai_tool_from_box and "C2PA" not in container.ai_tool_from_box:
+        return 0.93, f"AI tool signature in container: {container.ai_tool_from_box}", ai_tool
 
-    # Tier 2: Strong structural signals
-    if container.container_ai_score > 0.70:
-        return 0.82, "Container structure matches AI tool pattern", ai_tool
+    # ── Camera/real-origin check — strong evidence this is real footage ────────
+    # If camera EXIF markers are present, the base footage is real.
+    # AI editing on top doesn't make it AI-generated.
+    has_camera_origin = _has_camera_origin(meta)
+    if has_camera_origin:
+        return 0.06, "Camera origin markers detected — real footage", None
 
+    # ── Tier 2: Strong container patterns (require HIGH score) ────────────────
+    # Only fire if the container pattern is very distinctive of AI tools.
+    # Threshold raised from 0.70 → 0.88 to avoid re-encoded real videos.
+    if container.container_ai_score > 0.88:
+        return 0.85, "Container structure strongly matches AI generation pattern", ai_tool
+
+    # C2PA present but not explicitly AI — unverified origin, lower signal only
     if meta.has_c2pa:
-        # C2PA present but not flagged as AI — still suspicious
-        return 0.60, "C2PA provenance present (origin unverified)", None
+        return 0.45, "C2PA provenance present — origin unverified", None
 
-    # Tier 3: Frame timing — AI video = perfectly uniform PTS (pts_uniformity near 1.0)
-    if codec.pts_uniformity >= 0.97:
-        return 0.88, "Perfect frame timing uniformity (AI signature)", ai_tool
+    # ── Tier 3: Frame timing — require BOTH uniformity AND additional signal ──
+    # pts_uniformity alone is NOT enough: re-encoded videos also have perfect timing.
+    # We require uniformity + at least one more independent signal.
+    timing_very_uniform = codec.pts_uniformity >= 0.98
+    entropy_very_low = codec.entropy_mean > 0 and codec.entropy_mean < 1.5
+    audio_ai_strong = audio.audio_ai_score > 0.75
+    codec_ai_strong = codec.codec_ai_score > 0.75
 
-    # Tier 4: Very low entropy = AI-generated frames look uniform / synthetic
-    if codec.entropy_mean > 0 and codec.entropy_mean < 2.0:
-        return 0.85, "Extremely low frame entropy (AI synthetic pattern)", ai_tool
+    independent_signals = sum([
+        timing_very_uniform,
+        entropy_very_low,
+        audio_ai_strong,
+        codec_ai_strong,
+        container.container_ai_score > 0.65,
+    ])
 
-    # Tier 5: Audio signals (lower weight — many real videos have no audio)
-    if not audio.has_audio and codec.pts_uniformity >= 0.90:
-        return 0.72, "No audio + uniform frame timing (AI pattern)", ai_tool
-    if audio.is_fully_silent and codec.pts_uniformity >= 0.90:
-        return 0.70, "Silent audio + uniform frame timing (AI pattern)", ai_tool
+    if independent_signals >= 3:
+        return 0.80, "Multiple independent AI generation signals (timing + entropy + codec)", ai_tool
 
-    # Tier 6: Statistical codec + audio signals
+    if independent_signals == 2:
+        if timing_very_uniform and entropy_very_low:
+            return 0.75, "Perfect frame timing + very low entropy (AI generation pattern)", ai_tool
+        if timing_very_uniform and codec_ai_strong:
+            return 0.72, "Perfect timing + codec fingerprint (AI generation pattern)", ai_tool
+
+    # ── Tier 4: Combined statistical score — raise threshold significantly ────
+    # Old threshold was 0.50-0.70 — way too low, caused many false positives.
     combined = (
         codec.codec_ai_score * 0.45
         + container.container_ai_score * 0.25
         + audio.audio_ai_score * 0.30
     )
-    if combined > 0.70:
-        return combined, "Statistical fingerprint: codec + audio patterns", ai_tool
-    if combined > 0.50:
-        return combined, "Weak statistical signal — inconclusive", None
+    if combined > 0.82:
+        return combined, "Strong combined statistical fingerprint (codec + audio + container)", ai_tool
 
-    # Tier 7: Insufficient evidence
-    return max(0.05, combined), "No AI markers detected", None
+    # ── No strong evidence — not AI-generated ────────────────────────────────
+    return max(0.04, combined * 0.4), "No AI generation markers detected", None
+
+
+def _has_camera_origin(meta: MetadataResult) -> bool:
+    """
+    Returns True if the video has markers indicating it was captured by a real camera
+    (phone, DSLR, action cam, screen recorder from a real-footage app, etc.).
+    These markers mean the BASE footage is real, even if AI effects were applied later.
+    """
+    CAMERA_SOFTWARE = {
+        "iphone", "samsung", "pixel", "android", "gopro",
+        "dji", "sony", "canon", "nikon", "fujifilm",
+        "snapchat", "instagram", "tiktok camera",  # native camera capture
+        "com.apple.photo", "avfoundation",
+        "xiaomi", "huawei", "oppo", "vivo",
+    }
+    CAMERA_ENCODERS = {
+        "apple videotoolbox", "mediacodec", "qualcomm",  # hardware encoders (cameras/phones)
+        "com.apple.avfoundation",
+    }
+
+    sw = (meta.software_tag or "").lower()
+    enc = (meta.encoder_tag or "").lower()
+    tool = (meta.creation_tool or "").lower()
+    all_text = " ".join([sw, enc, tool, " ".join(meta.all_tags.values())]).lower()
+
+    for marker in CAMERA_SOFTWARE:
+        if marker in all_text:
+            return True
+    for marker in CAMERA_ENCODERS:
+        if marker in enc:
+            return True
+
+    # GPS or camera EXIF fields strongly indicate real-world capture
+    camera_exif_keys = {"gps_latitude", "gps_longitude", "location", "com.apple.quicktime.location.iso6709"}
+    if camera_exif_keys & set(meta.all_tags.keys()):
+        return True
+
+    return False
