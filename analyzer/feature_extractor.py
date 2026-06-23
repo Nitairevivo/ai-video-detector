@@ -22,6 +22,8 @@ class DetectionResult:
     method: str                 # how it was determined
     signals: dict               # individual signal values
     feature_vector: list        # numeric vector for ML model
+    verdict: str = "real"       # "ai_generated" | "ai_edited" | "real"
+    edit_tool: Optional[str] = None  # editing tool if AI-edited
 
 
 def extract_features(file_path: str) -> DetectionResult:
@@ -34,6 +36,15 @@ def extract_features(file_path: str) -> DetectionResult:
     feature_vector = _build_vector(signals)
     confidence, method, ai_tool = _rule_based_decision(meta, codec, container, audio, signals)
 
+    # Determine verdict and edit tool
+    edit_tool = _detect_ai_edit_tool(meta)
+    if confidence >= 0.5:
+        verdict = "ai_generated"
+    elif edit_tool:
+        verdict = "ai_edited"
+    else:
+        verdict = "real"
+
     return DetectionResult(
         file_path=file_path,
         is_ai=confidence >= 0.5,
@@ -42,6 +53,8 @@ def extract_features(file_path: str) -> DetectionResult:
         method=method,
         signals=signals,
         feature_vector=feature_vector,
+        verdict=verdict,
+        edit_tool=edit_tool,
     )
 
 
@@ -246,3 +259,59 @@ def _has_camera_origin(meta: MetadataResult) -> bool:
         return True
 
     return False
+
+
+def _detect_ai_edit_tool(meta: MetadataResult) -> Optional[str]:
+    """
+    Detects AI editing tools applied to real footage.
+    Returns tool name if AI editing found, None otherwise.
+    These are tools that EDIT real videos with AI — not tools that GENERATE video.
+    """
+    AI_EDIT_TOOLS = {
+        "capcut": "CapCut AI",
+        "cap cut": "CapCut AI",
+        "jianying": "CapCut AI",        # CapCut's Chinese name
+        "adobe premiere": "Adobe Premiere AI",
+        "adobe firefly": "Adobe Firefly",
+        "adobe sensei": "Adobe Sensei AI",
+        "davinci": "DaVinci Resolve AI",
+        "resolve": "DaVinci Resolve AI",
+        "wondershare": "Wondershare Filmora AI",
+        "filmora": "Filmora AI",
+        "kinemaster": "KineMaster AI",
+        "powerdirector": "PowerDirector AI",
+        "inshot": "InShot AI",
+        "vllo": "VLLO AI",
+        "splice": "Splice AI",
+        "videoleap": "Videoleap AI",
+        "topaz": "Topaz Video AI",
+        "enhancefox": "AI Enhancer",
+        "remini": "Remini AI",
+        "meitu": "Meitu AI",
+        "facetune": "Facetune AI",
+        "snow": "SNOW AI",
+        "b612": "B612 AI",
+        "youcam": "YouCam AI",
+        "lensa": "Lensa AI",
+        "photoroom": "PhotoRoom AI",
+        "cutout.pro": "Cutout.pro AI",
+        "deepl": "AI Translation",
+        "mubert": "Mubert AI Music",
+        "suno": "Suno AI Music",
+        "elevenlabs": "ElevenLabs AI Voice",
+        "speechify": "Speechify AI",
+    }
+
+    all_text = " ".join([
+        (meta.software_tag or ""),
+        (meta.encoder_tag or ""),
+        (meta.creation_tool or ""),
+        (meta.comment_field or ""),
+        " ".join(str(v) for v in meta.all_tags.values()),
+    ]).lower()
+
+    for keyword, tool_name in AI_EDIT_TOOLS.items():
+        if keyword in all_text:
+            return tool_name
+
+    return None

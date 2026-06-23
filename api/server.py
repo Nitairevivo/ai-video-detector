@@ -117,12 +117,19 @@ async def detect(file: UploadFile = File(...)):
             final_confidence = result.confidence
             method = result.method + " (rules only — train model for higher accuracy)"
 
+        # Determine final verdict (ai_generated / ai_edited / real)
+        verdict = result.verdict
+        if final_confidence >= 0.5:
+            verdict = "ai_generated"
+
         return {
             "filename": file.filename,
             "is_ai_generated": final_confidence >= 0.5,
+            "verdict": verdict,
             "confidence": round(final_confidence, 4),
             "confidence_pct": f"{final_confidence * 100:.1f}%",
             "ai_tool_detected": result.ai_tool,
+            "edit_tool_detected": result.edit_tool,
             "detection_method": method,
             "signals": result.signals,
             "rule_based_confidence": round(result.confidence, 4),
@@ -259,12 +266,18 @@ async def detect_url(url: str = Body(..., embed=True)):
             final_confidence = result.confidence
             method = result.method
 
+        verdict = result.verdict
+        if final_confidence >= 0.5:
+            verdict = "ai_generated"
+
         return {
             "url": url,
             "is_ai_generated": final_confidence >= 0.5,
+            "verdict": verdict,
             "confidence": round(final_confidence, 4),
             "confidence_pct": f"{final_confidence * 100:.1f}%",
             "ai_tool_detected": result.ai_tool,
+            "edit_tool_detected": result.edit_tool,
             "detection_method": method,
         }
     finally:
