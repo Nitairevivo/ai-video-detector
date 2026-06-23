@@ -1,0 +1,412 @@
+[
+  {
+    "label": "OpenAI Sora metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "OpenAI Sora",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'OpenAI Sora'",
+    "correct": true
+  },
+  {
+    "label": "Kling metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Kuaishou Kling",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Kuaishou Kling'",
+    "correct": true
+  },
+  {
+    "label": "Runway metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Runway",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Runway'",
+    "correct": true
+  },
+  {
+    "label": "Pika metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Pika Labs",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Pika Labs'",
+    "correct": true
+  },
+  {
+    "label": "Luma metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Luma AI",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Luma AI'",
+    "correct": true
+  },
+  {
+    "label": "Hailuo metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "MiniMax Hailuo",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'MiniMax Hailuo'",
+    "correct": true
+  },
+  {
+    "label": "HeyGen metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "HeyGen",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'HeyGen'",
+    "correct": true
+  },
+  {
+    "label": "D-ID metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "D-ID",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'D-ID'",
+    "correct": true
+  },
+  {
+    "label": "AIGC tag",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "AIGC",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'AIGC'",
+    "correct": true
+  },
+  {
+    "label": "Wan 2.0 metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Wan 2.0",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Wan 2.0'",
+    "correct": true
+  },
+  {
+    "label": "CogVideoX metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "CogVideo",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'CogVideo'",
+    "correct": true
+  },
+  {
+    "label": "Runway Gen-2 metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Runway",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Runway'",
+    "correct": true
+  },
+  {
+    "label": "AnimateDiff metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "AnimateDiff",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'AnimateDiff'",
+    "correct": true
+  },
+  {
+    "label": "SVD metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "Stability AI SVD",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'Stability AI SVD'",
+    "correct": true
+  },
+  {
+    "label": "Open-Sora metadata",
+    "expected": "ai_generated",
+    "predicted": "ai_generated",
+    "confidence": 0.97,
+    "ai_tool": "OpenAI Sora",
+    "edit_tool": null,
+    "method": "AI generation tool in metadata: 'OpenAI Sora'",
+    "correct": true
+  },
+  {
+    "label": "iPhone 15 camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "iPhone 14 camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Samsung camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Pixel camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "GoPro camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "DJI drone",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Canon DSLR",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Nikon DSLR",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Sony camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Xiaomi camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "Huawei camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "iOS AVFoundation",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Snapchat camera",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.06,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "Camera origin markers detected — real footage",
+    "correct": true
+  },
+  {
+    "label": "CapCut AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "CapCut AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "CapCut (JianyingPro)",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "CapCut AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Filmora AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Filmora AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "InShot AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "InShot AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Adobe Premiere AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Adobe Premiere AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Topaz Video AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Topaz Video AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Remini AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Remini AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "KineMaster AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "KineMaster AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Videoleap AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Videoleap AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Wondershare AI",
+    "expected": "ai_edited",
+    "predicted": "ai_edited",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": "Wondershare Filmora AI",
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "No metadata at all",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "Re-encoded (Handbrake)",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "No AI generation markers detected",
+    "correct": true
+  },
+  {
+    "label": "VLC re-encode",
+    "expected": "real",
+    "predicted": "real",
+    "confidence": 0.17,
+    "ai_tool": null,
+    "edit_tool": null,
+    "method": "No AI generation markers detected",
+    "correct": true
+  }
+]

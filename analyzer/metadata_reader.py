@@ -60,6 +60,7 @@ KNOWN_AI_TOOLS = {
     "svd": "Stability AI SVD",
     # Wan / Alibaba
     "wan2": "Wan 2.0",
+    "wan 2": "Wan 2.0",
     "wan-video": "Wan Video",
     "tongyi": "Tongyi Wanxiang",
     # Haiper
