@@ -39,8 +39,14 @@ Respond ONLY with this JSON (no other text):
   "reason": "one sentence explanation under 80 chars"
 }
 
-Be conservative — only say ai_generated if you see CLEAR visual evidence.
-Real videos with compression artifacts should be classified as real."""
+IMPORTANT RULES:
+- confidence means: how sure you are in your verdict (not probability of being AI)
+- If verdict is "real", confidence=0.9 means 90% sure it's real
+- Default to "real" when uncertain. Only say ai_generated when you see MULTIPLE clear AI artifacts
+- Social media compression causes normal videos to look slightly unusual — this is NOT evidence of AI
+- A beautiful, well-lit, stable shot is NOT AI evidence
+- Only flag if you see: morphing skin, impossible geometry, objects merging, unnatural motion
+- When in doubt: verdict="real", confidence=0.8"""
 
 
 @dataclass

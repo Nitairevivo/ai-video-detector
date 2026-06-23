@@ -88,11 +88,11 @@ KNOWN_AI_TOOLS = {
     "deepbrain": "DeepBrain AI",
     "creatify": "Creatify",
     "invideo": "InVideo AI",
-    # Generic markers
+    # Generic text2video tools (specific enough)
     "text2video": "Text2Video",
-    "ai-generated": "AI Generated",
-    "aigc": "AIGC",
-    "ai_generated": "AI Generated",
+    # NOTE: "aigc", "ai-generated", "ai_generated" REMOVED —
+    # TikTok adds "AIGC" to ALL videos (including real footage) as a platform label.
+    # These generic strings cause massive false positives on real TikTok videos.
 }
 
 # Encoders that are exclusively used by AI video tools
@@ -227,20 +227,17 @@ def _check_c2pa(file_path: str, result: MetadataResult):
     CHUNK = 65536  # 64KB per read
     MAX_SCAN = 5 * 1024 * 1024  # scan up to 5MB
 
-    # Binary signatures embedded by AI tools in bitstream (not just metadata)
+    # Binary signatures — ONLY specific AI tool watermarks, NOT generic labels.
+    # "AIGC" removed: TikTok embeds this in ALL videos including real footage.
     BINARY_SIGS: list[tuple[bytes, str]] = [
-        (b'c2pa.ai', None),
-        (b'ai.generated', None),
-        (b'openai-sora', "OpenAI Sora"),
-        (b'sora_watermark', "OpenAI Sora"),
+        (b'openai-sora',      "OpenAI Sora"),
+        (b'sora_watermark',   "OpenAI Sora"),
         (b'runway_watermark', "Runway"),
-        (b'pika_watermark', "Pika Labs"),
-        (b'kling_watermark', "Kuaishou Kling"),
-        (b'luma_watermark', "Luma AI"),
-        (b'heygen.com', "HeyGen"),
-        (b'synthesia', "Synthesia"),
-        (b'com.apple.quicktime.software', None),
-        (b'AIGC', None),
+        (b'pika_watermark',   "Pika Labs"),
+        (b'kling_watermark',  "Kuaishou Kling"),
+        (b'luma_watermark',   "Luma AI"),
+        (b'heygen.com',       "HeyGen"),
+        (b'synthesia',        "Synthesia"),
     ]
 
     try:
@@ -253,16 +250,13 @@ def _check_c2pa(file_path: str, result: MetadataResult):
 
                 if C2PA_UUID in chunk:
                     result.has_c2pa = True
-                if b'c2pa.ai' in chunk or b'ai.generated' in chunk:
+                if b'c2pa.ai' in chunk:
                     result.c2pa_is_ai = True
                     result.has_c2pa = True
 
                 for sig, tool_name in BINARY_SIGS:
-                    if sig in chunk:
-                        if tool_name and not result.ai_tool_detected:
-                            result.ai_tool_detected = tool_name
-                        if b'AIGC' in chunk and not result.ai_tool_detected:
-                            result.ai_tool_detected = "AI Generated"
+                    if sig in chunk and not result.ai_tool_detected:
+                        result.ai_tool_detected = tool_name
 
                 scanned += len(chunk)
     except Exception:
