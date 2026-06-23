@@ -115,11 +115,23 @@ async def detect(file: UploadFile = File(...)):
             method = f"ML+Rules ({result.method})"
         else:
             final_confidence = result.confidence
-            method = result.method + " (rules only — train model for higher accuracy)"
+            method = result.method
 
-        # Determine final verdict (ai_generated / ai_edited / real)
         verdict = result.verdict
-        if final_confidence >= 0.5:
+        vision_method = None
+
+        # If metadata gives no strong signal, use vision (Claude claude-haiku-4-5) as tiebreaker
+        if final_confidence < 0.5:
+            from analyzer.vision_analyzer import analyze_with_vision
+            vision = analyze_with_vision(tmp_path)
+            if vision is not None and vision.frames_analyzed >= 3:
+                # Vision takes priority when metadata is inconclusive
+                final_confidence = vision.confidence
+                verdict = vision.verdict
+                vision_method = f"Vision AI: {vision.reasoning}"
+                method = vision_method
+
+        if final_confidence >= 0.5 and verdict == "real":
             verdict = "ai_generated"
 
         return {
@@ -267,7 +279,17 @@ async def detect_url(url: str = Body(..., embed=True)):
             method = result.method
 
         verdict = result.verdict
-        if final_confidence >= 0.5:
+
+        # Vision fallback when metadata is inconclusive
+        if final_confidence < 0.5:
+            from analyzer.vision_analyzer import analyze_with_vision
+            vision = analyze_with_vision(tmp_path)
+            if vision is not None and vision.frames_analyzed >= 3:
+                final_confidence = vision.confidence
+                verdict = vision.verdict
+                method = f"Vision AI: {vision.reasoning}"
+
+        if final_confidence >= 0.5 and verdict == "real":
             verdict = "ai_generated"
 
         return {
