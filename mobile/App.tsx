@@ -4,9 +4,11 @@ import {
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
   Platform, Switch, Modal, Dimensions, Linking,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { useOverlay } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
+import { OnboardingScreen } from "./components/OnboardingScreen";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
@@ -484,6 +486,28 @@ function AppInner() {
 }
 
 export default function App() {
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem("onboarded").then((v) => setOnboarded(v === "1"));
+  }, []);
+
+  const finishOnboarding = async () => {
+    await AsyncStorage.setItem("onboarded", "1");
+    setOnboarded(true);
+  };
+
+  if (onboarded === null) return null; // loading
+
+  if (!onboarded) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#06060f" }}>
+        <StatusBar barStyle="light-content" backgroundColor="#06060f" />
+        <OnboardingScreen onDone={finishOnboarding} />
+      </SafeAreaView>
+    );
+  }
+
   return <AppInner />;
 }
 
