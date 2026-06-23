@@ -117,15 +117,29 @@ def analyze_with_gemini(video_path: str) -> Optional[GeminiResult]:
         "generationConfig": {"maxOutputTokens": 200, "temperature": 0.1}
     }).encode()
 
+    import time
+    for attempt in range(3):
+        try:
+            url = f"{API_URL}?key={api_key}"
+            req = urllib.request.Request(
+                url, data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+            break  # success
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 2:
+                time.sleep(3 * (attempt + 1))  # 3s, 6s
+                continue
+            return None
+        except Exception:
+            return None
+    else:
+        return None
+
     try:
-        url = f"{API_URL}?key={api_key}"
-        req = urllib.request.Request(
-            url, data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
 
         text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
         match = re.search(r'\{.*?\}', text, re.DOTALL)
