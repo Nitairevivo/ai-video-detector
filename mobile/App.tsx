@@ -124,8 +124,8 @@ function getVerdictStyle(result: DetectionResult) {
   };
   if (v === "ai_edited") return {
     color: "#a855f7", bg: "#0e0516",
-    label: "✏️  AI EDITED",
-    title: result.edit_tool_detected ? `Edited with ${result.edit_tool_detected}` : "Real Video, AI-Edited",
+    label: "✏️  נערך עם AI",
+    title: result.edit_tool_detected ? `סרטון אמיתי — נערך עם ${result.edit_tool_detected}` : "סרטון אמיתי שנערך בעזרת AI",
   };
   return {
     color: "#22c55e", bg: "#041606",
