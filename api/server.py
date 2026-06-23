@@ -120,14 +120,14 @@ async def detect(file: UploadFile = File(...)):
         verdict = result.verdict
         vision_method = None
 
-        # If metadata gives no strong signal, try Claude Vision (if API key set)
-        if final_confidence < 0.5 and os.environ.get("ANTHROPIC_API_KEY"):
-            from analyzer.vision_analyzer import analyze_with_vision
-            vision = analyze_with_vision(tmp_path)
-            if vision and vision.frames_analyzed >= 3:
-                final_confidence = vision.confidence
-                verdict = vision.verdict
-                method = f"Vision AI: {vision.reasoning}"
+        # Vision fallback: Gemini analyzes frames when metadata is inconclusive
+        if final_confidence < 0.5:
+            from analyzer.gemini_analyzer import analyze_with_gemini
+            gemini = analyze_with_gemini(tmp_path)
+            if gemini and gemini.frames_analyzed >= 3:
+                final_confidence = gemini.confidence
+                verdict = gemini.verdict
+                method = f"Gemini Vision: {gemini.reason}"
 
         if final_confidence >= 0.5 and verdict == "real":
             verdict = "ai_generated"
@@ -278,14 +278,14 @@ async def detect_url(url: str = Body(..., embed=True)):
 
         verdict = result.verdict
 
-        # If metadata gives no strong signal, try Claude Vision (if API key set)
-        if final_confidence < 0.5 and os.environ.get("ANTHROPIC_API_KEY"):
-            from analyzer.vision_analyzer import analyze_with_vision
-            vision = analyze_with_vision(tmp_path)
-            if vision and vision.frames_analyzed >= 3:
-                final_confidence = vision.confidence
-                verdict = vision.verdict
-                method = f"Vision AI: {vision.reasoning}"
+        # Vision fallback: Gemini analyzes frames when metadata is inconclusive
+        if final_confidence < 0.5:
+            from analyzer.gemini_analyzer import analyze_with_gemini
+            gemini = analyze_with_gemini(tmp_path)
+            if gemini and gemini.frames_analyzed >= 3:
+                final_confidence = gemini.confidence
+                verdict = gemini.verdict
+                method = f"Gemini Vision: {gemini.reason}"
 
         if final_confidence >= 0.5 and verdict == "real":
             verdict = "ai_generated"
