@@ -135,6 +135,40 @@ class MetadataResult:
     modification_date: Optional[str] = None
     encoded_date: Optional[str] = None
 
+    # Stripped / platform signals
+    metadata_is_stripped: bool = False      # all tags suspiciously absent — possible re-mux
+    platform_reencoded: bool = False        # detected platform re-encode (TikTok/IG/etc.)
+    platform_name: Optional[str] = None    # which platform re-encoded it
+    too_short_for_analysis: bool = False    # duration < 2s — unreliable stats
+
+
+# Platform re-encoders: these services strip original metadata and re-encode
+PLATFORM_SIGNATURES = {
+    # TikTok
+    "bytedance": "TikTok",
+    "tiktok": "TikTok",
+    "musically": "TikTok",
+    "com.zhiliaoapp": "TikTok",
+    # Instagram / Facebook
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "com.instagram": "Instagram",
+    "com.facebook": "Facebook",
+    # YouTube
+    "youtube": "YouTube",
+    "googlevideo": "YouTube",
+    # WhatsApp
+    "whatsapp": "WhatsApp",
+    # Twitter/X
+    "twitter": "Twitter/X",
+    "twimg": "Twitter/X",
+    # Snapchat
+    "snapchat": "Snapchat",
+    # WeChat
+    "wechat": "WeChat",
+    "weixin": "WeChat",
+}
+
 
 def read_metadata(file_path: str) -> MetadataResult:
     path = Path(file_path)
@@ -146,6 +180,9 @@ def read_metadata(file_path: str) -> MetadataResult:
     _read_ffprobe(file_path, result)
     _scan_for_ai_tags(result)
     _check_c2pa(file_path, result)
+    _detect_platform_reencode(result)
+    _detect_stripped_metadata(result)
+    _check_duration(result)
 
     return result
 
@@ -217,6 +254,46 @@ def _scan_for_ai_tags(result: MetadataResult):
         result.has_ai_exclusive_encoder = True
 
 
+def _detect_platform_reencode(result: MetadataResult):
+    all_text = " ".join([
+        (result.software_tag or ""),
+        (result.encoder_tag or ""),
+        (result.creation_tool or ""),
+        (result.comment_field or ""),
+        " ".join(str(v) for v in result.all_tags.values()),
+    ]).lower()
+
+    for keyword, platform in PLATFORM_SIGNATURES.items():
+        if keyword in all_text:
+            result.platform_reencoded = True
+            result.platform_name = platform
+            return
+
+
+def _detect_stripped_metadata(result: MetadataResult):
+    """
+    A video with absolutely no metadata tags is suspicious.
+    Real cameras always write at least software/encoder/creation_time.
+    A completely clean file suggests deliberate re-mux to hide AI origin.
+    We only flag this if it's also NOT a known platform re-encode
+    (platforms strip metadata too, but for different reasons).
+    """
+    has_any_tag = bool(
+        result.software_tag or
+        result.encoder_tag or
+        result.creation_tool or
+        result.creation_date or
+        result.all_tags
+    )
+    if not has_any_tag and not result.platform_reencoded:
+        result.metadata_is_stripped = True
+
+
+def _check_duration(result: MetadataResult):
+    if result.duration_seconds is not None and result.duration_seconds < 2.0:
+        result.too_short_for_analysis = True
+
+
 def _check_c2pa(file_path: str, result: MetadataResult):
     """
     C2PA (Content Credentials) embedded as UUID/JUMBF box in MP4.
@@ -228,7 +305,6 @@ def _check_c2pa(file_path: str, result: MetadataResult):
     MAX_SCAN = 5 * 1024 * 1024  # scan up to 5MB
 
     # Binary signatures — ONLY specific AI tool watermarks, NOT generic labels.
-    # "AIGC" removed: TikTok embeds this in ALL videos including real footage.
     BINARY_SIGS: list[tuple[bytes, str]] = [
         (b'openai-sora',      "OpenAI Sora"),
         (b'sora_watermark',   "OpenAI Sora"),
@@ -237,7 +313,12 @@ def _check_c2pa(file_path: str, result: MetadataResult):
         (b'kling_watermark',  "Kuaishou Kling"),
         (b'luma_watermark',   "Luma AI"),
         (b'heygen.com',       "HeyGen"),
+        (b'HeyGen',           "HeyGen"),
+        (b'heygen',           "HeyGen"),
         (b'synthesia',        "Synthesia"),
+        (b'Synthesia',        "Synthesia"),
+        (b'd-id.com',         "D-ID"),
+        (b'creatify',         "Creatify"),
     ]
 
     try:
