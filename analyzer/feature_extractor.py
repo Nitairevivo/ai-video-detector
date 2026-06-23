@@ -176,70 +176,27 @@ def _rule_based_decision(
     if container.ai_tool_from_box and "C2PA" not in container.ai_tool_from_box:
         return 0.93, f"AI tool signature in container: {container.ai_tool_from_box}", ai_tool
 
-    # ── Camera/real-origin check — strong evidence this is real footage ────────
-    # If camera EXIF markers are present, the base footage is real.
-    # AI editing on top doesn't make it AI-generated.
-    has_camera_origin = _has_camera_origin(meta)
-    if has_camera_origin:
-        return 0.06, "Camera origin markers detected — real footage", None
+    # ── Camera/real-origin check ──────────────────────────────────────────────
+    if _has_camera_origin(meta):
+        return 0.04, "Camera origin markers — real footage", None
 
-    # ── Tier 2: Strong container patterns (require HIGH score) ────────────────
-    # Only fire if the container pattern is very distinctive of AI tools.
-    # Threshold raised from 0.70 → 0.88 to avoid re-encoded real videos.
+    # ── Tier 2: Strong container pattern (AI-specific box) ────────────────────
     if container.container_ai_score > 0.88:
-        return 0.85, "Container structure strongly matches AI generation pattern", ai_tool
+        return 0.85, "Container structure matches AI tool pattern", ai_tool
 
-    # C2PA present but not explicitly AI — unverified origin, lower signal only
+    # C2PA present but not confirmed AI — ambiguous
     if meta.has_c2pa:
-        return 0.45, "C2PA provenance present — origin unverified", None
+        return 0.40, "C2PA provenance present — origin unverified", None
 
-    # ── Tier 3: Frame timing — require BOTH uniformity AND additional signal ──
-    # pts_uniformity alone is NOT enough: re-encoded videos also have perfect timing.
-    # We require uniformity + at least one more independent signal.
-    # entropy_mean < 2.5 can occur in classic/music/animation even for real videos —
-    # raise threshold to avoid flagging these.
-    timing_very_uniform = codec.pts_uniformity >= 0.98
-    entropy_very_low = codec.entropy_mean > 0 and codec.entropy_mean < 1.2  # was 1.5
-    audio_ai_strong = audio.audio_ai_score > 0.75
-    codec_ai_strong = codec.codec_ai_score > 0.75
+    # ── IMPORTANT: No statistical signals ────────────────────────────────────
+    # Statistical codec/timing signals (pts_uniformity, entropy, frame size)
+    # are NOT used. All social media platforms (TikTok, Instagram, YouTube,
+    # WhatsApp) re-encode videos with uniform timing and H.264, making real
+    # videos statistically indistinguishable from AI-generated ones.
+    # We only flag videos when we have DEFINITIVE metadata evidence.
 
-    # Statistical signals are unreliable for videos without any identifying metadata.
-    # Re-encoded real videos (via FFmpeg, editing software, platform processing)
-    # also produce perfect timing and high codec_ai_score.
-    # We ONLY use statistical signals if the video has SOME metadata that doesn't
-    # indicate a real camera origin — i.e., it's suspicious but not confirmed.
-    has_any_metadata = bool(
-        meta.software_tag or meta.encoder_tag or
-        meta.creation_tool or meta.comment_field
-    )
-
-    if has_any_metadata and not has_camera_origin:
-        # Some metadata present but not from a known camera — apply statistical signals
-        independent_signals = sum([
-            timing_very_uniform,
-            entropy_very_low,
-            audio_ai_strong,
-            codec_ai_strong,
-            container.container_ai_score > 0.65,
-        ])
-
-        if independent_signals >= 3:
-            return 0.80, "Multiple independent AI generation signals (timing + entropy + codec)", ai_tool
-        if independent_signals == 2:
-            if timing_very_uniform and entropy_very_low:
-                return 0.75, "Perfect frame timing + very low entropy (AI generation pattern)", ai_tool
-
-    # ── Tier 4: Combined statistical — only fire at very high threshold ───────
-    combined = (
-        codec.codec_ai_score * 0.45
-        + container.container_ai_score * 0.25
-        + audio.audio_ai_score * 0.30
-    )
-    if not has_camera_origin and combined > 0.88:
-        return combined, "Strong combined statistical fingerprint", ai_tool
-
-    # ── No strong evidence — not AI-generated ────────────────────────────────
-    return max(0.04, combined * 0.3), "No AI generation markers detected", None
+    # ── No definitive evidence → real ────────────────────────────────────────
+    return 0.04, "No AI generation markers detected", None
 
 
 def _has_camera_origin(meta: MetadataResult) -> bool:
