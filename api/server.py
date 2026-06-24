@@ -139,8 +139,25 @@ async def detect(
                 method = f"ML classifier ({ml_prob:.0%}) — {result.method}"
             # Below 0.88 → ignore ML, trust metadata-only result
 
-        # Gemini Vision: only when metadata gives NO signal AND video is not camera-origin.
-        # Require 0.88+ confidence to flag as AI (strict threshold to avoid false positives).
+        # Visual frame analysis (ML model + rules, survives TikTok re-encoding)
+        if final_confidence < 0.5 and not has_camera_origin:
+            try:
+                from analyzer.visual_detector import detect_visual
+                vis = detect_visual(tmp_path)
+                # Add visual signals to result signals
+                result.signals.update({f"vis_{k}": v for k, v in vis.signals.items()})
+                if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
+                    final_confidence = max(final_confidence, vis.confidence * 0.80)
+                    method = vis.method
+                    if final_confidence >= 0.5:
+                        verdict = "ai_generated"
+                elif vis.verdict == "real" and vis.confidence >= 0.90:
+                    final_confidence = min(final_confidence, 0.06)
+                    method = vis.method
+            except Exception:
+                pass
+
+        # Gemini Vision: only when everything else is inconclusive
         if final_confidence < 0.15 and not has_camera_origin:
             try:
                 from analyzer.gemini_analyzer import analyze_with_gemini
@@ -150,7 +167,6 @@ async def detect(
                         final_confidence = gemini.confidence
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
-                    # Below threshold → keep as real
             except Exception:
                 pass
 
