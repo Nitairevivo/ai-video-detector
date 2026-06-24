@@ -49,6 +49,33 @@ AI_BOX_PATTERNS = [
 
 READ_BYTES = 131072  # 128KB - enough to read all top-level boxes
 
+# Box types always present in legitimate camera-captured MP4s
+STANDARD_CAMERA_BOXES = {
+    'ftyp', 'mdat', 'moov', 'free', 'skip', 'wide', 'pnot',
+    'udta', 'meta', 'ilst', 'mdia', 'minf', 'dinf', 'stbl',
+    'trak', 'tkhd', 'mdhd', 'hdlr', 'vmhd', 'smhd', 'dref',
+    'stsd', 'stts', 'stss', 'stsc', 'stsz', 'stco', 'co64',
+    'ctts', 'mvhd', 'iods', 'elst', 'edts', 'url ', 'urn ',
+    # Fragmented (legit streaming)
+    'moof', 'mfhd', 'traf', 'tfhd', 'trun', 'mfra', 'tfra', 'mfro',
+    'mvex', 'mehd', 'trex',
+    # Common extension boxes
+    'uuid', 'JUMB', 'xml ', 'bxml',
+    # Apple QuickTime
+    'moov', 'cmov', 'rmra', 'rmda', 'rdrf', 'rmdr', 'rmvc', 'rmcd',
+}
+
+# 4-char box types that look like real ASCII words/names but are actually unknown
+# We flag boxes whose type is printable ASCII but not in STANDARD_CAMERA_BOXES
+def _is_suspicious_box(box_type_str: str) -> bool:
+    if box_type_str in STANDARD_CAMERA_BOXES:
+        return False
+    # Must be 4 printable ASCII chars (letters/digits) to be suspicious
+    # Non-printable = binary garbage, not a real box
+    if len(box_type_str) == 4 and all(c.isprintable() and not c.isspace() for c in box_type_str):
+        return True
+    return False
+
 
 @dataclass
 class ContainerFeatures:
@@ -63,6 +90,10 @@ class ContainerFeatures:
     total_boxes_found: int = 0
     ai_tool_from_box: Optional[str] = None
     container_ai_score: float = 0.0
+    # Anomaly detection — unknown box patterns that don't match any camera
+    has_unknown_proprietary_boxes: bool = False
+    unknown_box_names: list = field(default_factory=list)
+    container_anomaly_score: float = 0.0  # suspicious even without known AI signature
 
 
 def parse_container(file_path: str) -> ContainerFeatures:
@@ -130,12 +161,20 @@ def _parse_mp4_boxes(file_path: str, features: ContainerFeatures):
                 features.has_fragmented_mp4 = True
 
             # Check for proprietary AI boxes
+            known_ai = False
             for ai_box, tool_name in AI_PROPRIETARY_BOXES.items():
                 if box_type == ai_box:
                     features.proprietary_boxes.append((type_str, tool_name))
                     if features.ai_tool_from_box is None and tool_name != 'C2PA Provenance':
                         features.ai_tool_from_box = tool_name
+                    known_ai = True
                     break
+
+            # Flag unknown proprietary boxes — possible new AI tool
+            if not known_ai and _is_suspicious_box(type_str):
+                features.has_unknown_proprietary_boxes = True
+                if type_str not in features.unknown_box_names:
+                    features.unknown_box_names.append(type_str)
 
             # Search inside the box data for AI signatures (first 256 bytes)
             box_content_end = min(offset + box_size, len(data))
@@ -214,3 +253,14 @@ def _compute_container_score(features: ContainerFeatures):
         score = max(score, 0.45)
 
     features.container_ai_score = min(score, 1.0)
+
+    # Anomaly score — suspicious even without a known AI tool name
+    anomaly = 0.0
+    if features.has_unknown_proprietary_boxes:
+        # Unknown non-standard boxes + moov-before-mdat = strong anomaly
+        anomaly = 0.45
+        if features.moov_before_mdat:
+            anomaly = 0.60
+        if len(features.unknown_box_names) >= 2:
+            anomaly = min(anomaly + 0.10, 0.70)
+    features.container_anomaly_score = anomaly

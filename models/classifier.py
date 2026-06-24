@@ -16,7 +16,14 @@ from sklearn.model_selection import cross_val_score
 
 
 MODEL_PATH = Path(__file__).parent / "trained_model.joblib"
+MODEL_META_PATH = Path(__file__).parent / "trained_model_meta.json"
 TRAINING_DATA_PATH = Path(__file__).parent.parent / "data" / "training_samples.json"
+
+# Minimum quality requirements to use the ML model.
+# Below these thresholds the model causes more false positives than it solves.
+MIN_SAMPLES = 40          # minimum total labeled samples
+MIN_CV_AUC = 0.70         # minimum cross-validation AUC
+MIN_CLASS_SAMPLES = 15    # minimum samples per class (AI and real)
 
 
 class VideoAIClassifier:
@@ -29,10 +36,25 @@ class VideoAIClassifier:
         if MODEL_PATH.exists():
             try:
                 self.pipeline = joblib.load(MODEL_PATH)
-                self.is_trained = True
+                # Only mark as trained if it meets quality thresholds
+                self.is_trained = self._passes_quality_gate()
             except Exception:
                 self.pipeline = None
                 self.is_trained = False
+
+    def _passes_quality_gate(self) -> bool:
+        if not MODEL_META_PATH.exists():
+            return False
+        try:
+            meta = json.loads(MODEL_META_PATH.read_text())
+            return (
+                meta.get("samples", 0) >= MIN_SAMPLES and
+                meta.get("cv_auc_mean", 0) >= MIN_CV_AUC and
+                meta.get("ai_samples", 0) >= MIN_CLASS_SAMPLES and
+                meta.get("real_samples", 0) >= MIN_CLASS_SAMPLES
+            )
+        except Exception:
+            return False
 
     def _build_pipeline(self) -> Pipeline:
         return Pipeline([
@@ -110,15 +132,27 @@ class VideoAIClassifier:
 
         self.pipeline.fit(X, y)
         joblib.dump(self.pipeline, MODEL_PATH)
-        self.is_trained = True
 
-        return {
-            "samples_used": len(samples),
+        meta = {
+            "samples": len(samples),
             "ai_samples": n_ai,
             "real_samples": n_real,
             "cv_auc_mean": float(cv_scores.mean()),
             "cv_auc_std": float(cv_scores.std()),
+        }
+        MODEL_META_PATH.write_text(json.dumps(meta))
+        self.is_trained = self._passes_quality_gate()
+
+        quality_ok = self.is_trained
+        return {
+            "samples_used": len(samples),
+            "ai_samples": n_ai,
+            "real_samples": n_real,
+            "cv_auc_mean": meta["cv_auc_mean"],
+            "cv_auc_std": meta["cv_auc_std"],
             "model_saved": str(MODEL_PATH),
+            "model_active": quality_ok,
+            "quality_gate": f"need {MIN_SAMPLES} samples / AUC {MIN_CV_AUC} — {'PASSED' if quality_ok else 'FAILED'}",
         }
 
     def feature_importance(self) -> Optional[dict]:
@@ -126,23 +160,39 @@ class VideoAIClassifier:
             return None
         clf = self.pipeline.named_steps['clf']
         feature_names = [
+            # Metadata
             "has_ai_metadata_tag", "has_ai_exclusive_encoder", "has_c2pa",
             "c2pa_is_ai", "software_tag_present",
+            # Codec
             "pts_uniformity", "pts_jitter_std",
             "keyframe_interval_std", "keyframe_interval_mean",
             "frame_size_cv", "frame_size_skewness",
             "codec_ai_score",
             "has_b_frames", "ref_frames",
+            # Container
             "moov_before_mdat", "has_fragmented_mp4", "has_proprietary_box",
-            "container_ai_score",
+            "container_ai_score", "container_anomaly_score",
+            "has_unknown_proprietary_boxes", "unknown_box_count",
+            # Audio
             "has_audio", "is_fully_silent", "silence_ratio", "audio_rms_cv", "audio_ai_score",
+            # Scene & entropy
             "scene_change_rate", "scene_change_uniformity",
             "entropy_mean", "entropy_std", "entropy_cv",
+            # Stripped / platform
+            "metadata_is_stripped", "platform_reencoded", "too_short_for_analysis",
+            # Frequency domain
+            "freq_hf_ratio", "freq_spectral_flatness", "freq_inter_frame_var",
+            "freq_ai_score", "freq_analyzed",
+            # Visual
+            "visual_noise_floor", "visual_sharpness_cv", "visual_brightness_cv",
+            "visual_ai_score", "visual_analyzed",
+            # File
             "fps",
         ]
         importances = clf.feature_importances_
+        n = min(len(feature_names), len(importances))
         return dict(sorted(
-            zip(feature_names, importances),
+            zip(feature_names[:n], importances[:n]),
             key=lambda x: x[1], reverse=True
         ))
 

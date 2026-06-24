@@ -11,6 +11,8 @@ from .metadata_reader import MetadataResult, read_metadata
 from .codec_analyzer import CodecFeatures, analyze_codec
 from .container_parser import ContainerFeatures, parse_container
 from .audio_analyzer import AudioFeatures, analyze_audio
+from .frequency_analyzer import FreqResult, analyze_frequency
+from .visual_analyzer import VisualResult, analyze_visual
 
 
 @dataclass
@@ -26,15 +28,40 @@ class DetectionResult:
     edit_tool: Optional[str] = None  # editing tool if AI-edited
 
 
-def extract_features(file_path: str) -> DetectionResult:
+def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
+    """
+    Extract all features from a video file.
+    deep=True runs visual + frequency analysis (slower, ~5-15s extra).
+    When metadata is stripped or platform re-encoded, deep analysis runs automatically.
+    """
     meta = read_metadata(file_path)
     codec = analyze_codec(file_path)
     container = parse_container(file_path)
     audio = analyze_audio(file_path)
 
-    signals = _collect_signals(meta, codec, container, audio)
+    # Run deep analysis when we need it: stripped metadata, platform re-encode,
+    # or explicitly requested. Skip for very short clips (not enough frames).
+    run_deep = (
+        deep or
+        meta.metadata_is_stripped or
+        meta.platform_reencoded
+    ) and not meta.too_short_for_analysis
+
+    freq: Optional[FreqResult] = None
+    visual: Optional[VisualResult] = None
+    if run_deep:
+        try:
+            freq = analyze_frequency(file_path)
+        except Exception:
+            freq = None
+        try:
+            visual = analyze_visual(file_path)
+        except Exception:
+            visual = None
+
+    signals = _collect_signals(meta, codec, container, audio, freq, visual)
     feature_vector = _build_vector(signals)
-    confidence, method, ai_tool = _rule_based_decision(meta, codec, container, audio, signals)
+    confidence, method, ai_tool = _rule_based_decision(meta, codec, container, audio, signals, freq, visual)
 
     # Determine verdict — priority: hard metadata > edit tool > statistical
     edit_tool = _detect_ai_edit_tool(meta)
@@ -72,6 +99,8 @@ def _collect_signals(
     codec: CodecFeatures,
     container: ContainerFeatures,
     audio: AudioFeatures,
+    freq: Optional[FreqResult] = None,
+    visual: Optional[VisualResult] = None,
 ) -> dict:
     return {
         # Metadata signals
@@ -80,6 +109,10 @@ def _collect_signals(
         "has_c2pa": int(meta.has_c2pa),
         "c2pa_is_ai": int(meta.c2pa_is_ai),
         "software_tag_present": int(meta.software_tag is not None),
+
+        # Resolution + duration fingerprints (survive re-encoding)
+        "resolution_ai_confidence": meta.resolution_ai_confidence,
+        "duration_is_ai_typical": int(meta.duration_is_ai_typical),
 
         # Codec signals
         "pts_uniformity": codec.pts_uniformity,
@@ -97,6 +130,9 @@ def _collect_signals(
         "has_fragmented_mp4": int(container.has_fragmented_mp4),
         "has_proprietary_box": int(len(container.proprietary_boxes) > 0),
         "container_ai_score": container.container_ai_score,
+        "container_anomaly_score": container.container_anomaly_score,
+        "has_unknown_proprietary_boxes": int(container.has_unknown_proprietary_boxes),
+        "unknown_box_count": len(container.unknown_box_names),
 
         # Audio signals
         "has_audio": int(audio.has_audio),
@@ -111,6 +147,25 @@ def _collect_signals(
         "entropy_mean": codec.entropy_mean,
         "entropy_std": codec.entropy_std,
         "entropy_cv": codec.entropy_cv,
+
+        # Stripped / platform signals
+        "metadata_is_stripped": int(meta.metadata_is_stripped),
+        "platform_reencoded": int(meta.platform_reencoded),
+        "too_short_for_analysis": int(meta.too_short_for_analysis),
+
+        # Frequency-domain signals (only when deep analysis ran)
+        "freq_hf_ratio": freq.signals.get("avg_high_freq_ratio", 0.0) if freq else 0.0,
+        "freq_spectral_flatness": freq.signals.get("avg_spectral_flatness", 0.0) if freq else 0.0,
+        "freq_inter_frame_var": freq.signals.get("inter_frame_spectral_var", 0.0) if freq else 0.0,
+        "freq_ai_score": freq.confidence if freq else 0.0,
+        "freq_analyzed": int(freq is not None),
+
+        # Visual signals (only when deep analysis ran)
+        "visual_noise_floor": visual.signals.get("avg_noise_floor", 0.0) if visual else 0.0,
+        "visual_sharpness_cv": visual.signals.get("sharpness_cv", 0.0) if visual else 0.0,
+        "visual_brightness_cv": visual.signals.get("brightness_cv", 0.0) if visual else 0.0,
+        "visual_ai_score": visual.confidence if visual else 0.0,
+        "visual_analyzed": int(visual is not None),
 
         # File-level
         "file_size_mb": meta.file_size_bytes / (1024 * 1024),
@@ -127,16 +182,26 @@ def _build_vector(signals: dict) -> list:
     keys = [
         "has_ai_metadata_tag", "has_ai_exclusive_encoder", "has_c2pa",
         "c2pa_is_ai", "software_tag_present",
+        "resolution_ai_confidence", "duration_is_ai_typical",
         "pts_uniformity", "pts_jitter_std",
         "keyframe_interval_std", "keyframe_interval_mean",
         "frame_size_cv", "frame_size_skewness",
         "codec_ai_score",
         "has_b_frames", "ref_frames",
         "moov_before_mdat", "has_fragmented_mp4", "has_proprietary_box",
-        "container_ai_score",
+        "container_ai_score", "container_anomaly_score",
+        "has_unknown_proprietary_boxes", "unknown_box_count",
         "has_audio", "is_fully_silent", "silence_ratio", "audio_rms_cv", "audio_ai_score",
         "scene_change_rate", "scene_change_uniformity",
         "entropy_mean", "entropy_std", "entropy_cv",
+        # Stripped / platform
+        "metadata_is_stripped", "platform_reencoded", "too_short_for_analysis",
+        # Frequency domain
+        "freq_hf_ratio", "freq_spectral_flatness", "freq_inter_frame_var",
+        "freq_ai_score", "freq_analyzed",
+        # Visual
+        "visual_noise_floor", "visual_sharpness_cv", "visual_brightness_cv",
+        "visual_ai_score", "visual_analyzed",
         # NOTE: file_size_mb, duration_seconds, bitrate_kbps, width, height intentionally
         # excluded from ML — they correlate with dataset source, not AI generation.
         "fps",
@@ -150,6 +215,8 @@ def _rule_based_decision(
     container: ContainerFeatures,
     audio: AudioFeatures,
     signals: dict,
+    freq: Optional[FreqResult] = None,
+    visual: Optional[VisualResult] = None,
 ) -> tuple[float, str, Optional[str]]:
     """
     Deterministic rule cascade — ordered from most confident to least.
@@ -176,17 +243,81 @@ def _rule_based_decision(
     if container.ai_tool_from_box and "C2PA" not in container.ai_tool_from_box:
         return 0.93, f"AI tool signature in container: {container.ai_tool_from_box}", ai_tool
 
-    # ── Camera/real-origin check ──────────────────────────────────────────────
+    # ── Too short — warn but don't score ─────────────────────────────────────
+    if meta.too_short_for_analysis:
+        return 0.10, "Video too short (<2s) — analysis unreliable", None
+
+    # ── Tier 1.5: Resolution fingerprint (survives re-encoding) ───────────────
+    if meta.resolution_ai_confidence >= 0.88:
+        tool = meta.resolution_ai_tool or "AI tool"
+        return meta.resolution_ai_confidence, f"AI-native resolution ({meta.width}×{meta.height}) — {tool}", tool
+    if meta.resolution_ai_confidence >= 0.65:
+        # Partial signal — combine with duration if also suspicious
+        if meta.duration_is_ai_typical:
+            return 0.82, f"AI-native resolution + AI-typical duration — {meta.resolution_ai_tool}", meta.resolution_ai_tool
+        # Weak resolution match alone — boost but don't call it AI yet
+        # Fall through; score used in tier 5 combination
+
+    # ── Camera/real-origin check (AFTER resolution fingerprint) ──────────────
     if _has_camera_origin(meta):
+        # Camera markers override weak resolution signal
+        if meta.resolution_ai_confidence < 0.65:
+            return 0.04, "Camera origin markers — real footage", None
+        # High-confidence AI resolution beats camera metadata (e.g. phone used to record AI screen)
         return 0.04, "Camera origin markers — real footage", None
 
     # ── Tier 2: Strong container pattern (AI-specific box) ────────────────────
     if container.container_ai_score > 0.88:
         return 0.85, "Container structure matches AI tool pattern", ai_tool
 
+    # ── Tier 3: Unknown proprietary boxes — anomaly (possible new AI tool) ────
+    if container.container_anomaly_score >= 0.60:
+        return 0.62, "Unknown proprietary container boxes — possible new AI tool", None
+    if container.container_anomaly_score >= 0.45:
+        return 0.50, "Unusual container structure — anomalous box pattern", None
+
+    # ── Tier 4: Stripped metadata (possible re-mux to hide AI origin) ─────────
+    if meta.metadata_is_stripped and container.moov_before_mdat:
+        return 0.55, "Metadata fully stripped + AI-typical container layout", None
+    if meta.metadata_is_stripped:
+        return 0.35, "All metadata stripped — origin unknown (possible re-mux)", None
+
+    # ── Tier 5: Deep visual/frequency analysis (fallback for stripped/platform) ─
+    if freq is not None or visual is not None:
+        freq_score = freq.confidence if freq else 0.0
+        visual_score = visual.confidence if visual else 0.0
+        n = int(freq is not None) + int(visual is not None)
+        combined = (freq_score + visual_score) / n if n > 0 else 0.0
+
+        if combined >= 0.68:
+            method_parts = []
+            if freq and freq.confidence >= 0.60:
+                method_parts.append(f"frequency={freq.confidence:.0%}")
+            if visual and visual.confidence >= 0.60:
+                method_parts.append(f"visual={visual.confidence:.0%}")
+            return combined * 0.85, f"Deep analysis: AI signature ({', '.join(method_parts)})", None
+        elif combined <= 0.35:
+            return 0.06, "Deep analysis: natural camera signature detected", None
+        else:
+            return 0.30, f"Deep analysis: inconclusive (score={combined:.0%})", None
+
+    # ── Platform re-encode — lower our confidence ceiling ────────────────────
+    if meta.platform_reencoded:
+        # Platform re-encodes destroy metadata, so absence of AI signals
+        # is less informative. We can still check for hard evidence above.
+        return 0.08, f"Re-encoded by {meta.platform_name} — original metadata lost", None
+
     # C2PA present but not confirmed AI — ambiguous
     if meta.has_c2pa:
         return 0.40, "C2PA provenance present — origin unverified", None
+
+    # ── Duration-only signal (weak, but better than nothing) ─────────────────
+    if meta.duration_is_ai_typical:
+        return 0.35, f"AI-typical duration ({meta.duration_seconds:.1f}s) — no other markers", None
+
+    # ── Weak resolution signal alone ──────────────────────────────────────────
+    if meta.resolution_ai_confidence >= 0.65:
+        return 0.45, f"AI-native resolution ({meta.width}×{meta.height}) — {meta.resolution_ai_tool}", meta.resolution_ai_tool
 
     # ── IMPORTANT: No statistical signals ────────────────────────────────────
     # Statistical codec/timing signals (pts_uniformity, entropy, frame size)

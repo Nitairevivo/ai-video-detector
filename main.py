@@ -24,6 +24,7 @@ SUPPORTED = {'.mp4', '.mov', '.mkv', '.webm', '.m4v'}
 def detect(
     path: str = typer.Argument(..., help="Video file or folder to analyze"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all signals"),
+    deep: bool = typer.Option(False, "--deep", "-d", help="Run visual+frequency analysis (slower, ~10s per video)"),
 ):
     """Detect whether a video (or folder of videos) is AI-generated."""
     from analyzer import extract_features
@@ -45,8 +46,9 @@ def detect(
 
     for f in files:
         console.print(f"\n[bold]Analyzing:[/bold] {f.name}")
-        with console.status("Reading file signatures..."):
-            result = extract_features(str(f))
+        status_msg = "Running deep analysis (visual + frequency)..." if deep else "Reading file signatures..."
+        with console.status(status_msg):
+            result = extract_features(str(f), deep=deep)
 
         ml_prob, _ = classifier.predict(result.feature_vector)
         if ml_prob is not None:
@@ -70,6 +72,19 @@ def detect(
         )
         if result.ai_tool:
             panel_content += f"Tool: [bold]{result.ai_tool}[/bold]\n"
+
+        # Surface important warnings
+        from analyzer.metadata_reader import read_metadata as _rm
+        _m = _rm(str(f))
+        if deep and not _m.too_short_for_analysis:
+            panel_content += "\n[dim]Deep analysis: visual + frequency signals included[/dim]"
+        if _m.too_short_for_analysis:
+            panel_content += "\n[yellow]Warning: video too short (<2s) — results unreliable[/yellow]"
+        if _m.platform_reencoded:
+            panel_content += f"\n[yellow]Note: re-encoded by {_m.platform_name} — some signals lost[/yellow]"
+        if _m.metadata_is_stripped:
+            panel_content += "\n[yellow]Note: all metadata stripped — possible re-mux to hide origin[/yellow]"
+
         if ml_prob is None:
             panel_content += "\n[dim]Train the model with /label samples for ML-enhanced accuracy[/dim]"
 

@@ -103,6 +103,44 @@ AI_EXCLUSIVE_ENCODERS = {
     "pika_codec",
 }
 
+# AI tool native resolutions: these exact pixel dimensions are produced by specific
+# AI generation tools and are rarely used by real cameras.
+# (width, height) → (tool_name, confidence)
+AI_NATIVE_RESOLUTIONS: dict[tuple[int, int], tuple[str, float]] = {
+    # Luma Dream Machine — extremely distinctive non-standard dimensions
+    (1360, 752): ("Luma Dream Machine", 0.92),
+    (752, 1360): ("Luma Dream Machine", 0.92),
+    (848, 480):  ("Luma/AI tool",       0.72),
+    (480, 848):  ("Luma/AI tool",       0.72),
+    # Pika Labs — uses unusual 1088 width (mod-64, not mod-16 like cameras)
+    (1088, 832): ("Pika Labs", 0.90),
+    (832, 1088): ("Pika Labs", 0.90),
+    (1344, 768): ("Pika Labs", 0.78),
+    (768, 1344): ("Pika Labs", 0.78),
+    # Runway Gen-3 — very unusual ultra-widescreen preset
+    (1584, 672): ("Runway", 0.92),
+    (672, 1584): ("Runway", 0.92),
+    (1280, 768): ("Runway/AI tool", 0.62),
+    (768, 1280): ("Runway/AI tool", 0.62),
+    # Kling / Hailuo — 704-wide portrait (never a standard camera resolution)
+    (704, 1280): ("Kling/Hailuo", 0.75),
+    (1280, 704): ("Kling/Hailuo", 0.75),
+    (960, 544):  ("AI tool", 0.65),
+    (544, 960):  ("AI tool", 0.65),
+    # Wan 2.0 / open-source models
+    (832, 480):  ("Wan/open-source AI", 0.70),
+    (480, 832):  ("Wan/open-source AI", 0.70),
+    # Square outputs — only AI tools and screen recordings produce these
+    (512, 512):  ("AI tool (square)", 0.82),
+    (768, 768):  ("AI tool (square)", 0.82),
+    (1024, 1024):("AI tool (square)", 0.85),
+}
+
+# Exact video durations produced by AI generation tools (±DURATION_TOL seconds).
+# Real camera footage almost never ends at precisely these times.
+AI_TYPICAL_DURATIONS = {2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 9.0, 10.0, 15.0, 16.0, 20.0}
+DURATION_TOL = 0.12  # ±120 ms
+
 
 @dataclass
 class MetadataResult:
@@ -129,6 +167,13 @@ class MetadataResult:
     c2pa_is_ai: bool = False
     ai_tool_detected: Optional[str] = None
     has_ai_exclusive_encoder: bool = False
+
+    # Resolution fingerprint (survives re-encoding)
+    resolution_ai_tool: Optional[str] = None
+    resolution_ai_confidence: float = 0.0
+
+    # Duration fingerprint (survives re-encoding)
+    duration_is_ai_typical: bool = False
 
     # Anomalies
     creation_date: Optional[str] = None
@@ -183,6 +228,8 @@ def read_metadata(file_path: str) -> MetadataResult:
     _detect_platform_reencode(result)
     _detect_stripped_metadata(result)
     _check_duration(result)
+    _fingerprint_resolution(result)
+    _fingerprint_duration(result)
 
     return result
 
@@ -342,3 +389,30 @@ def _check_c2pa(file_path: str, result: MetadataResult):
                 scanned += len(chunk)
     except Exception:
         pass
+
+
+def _fingerprint_resolution(result: MetadataResult):
+    """
+    Match video dimensions against known AI tool native resolutions.
+    These survive platform re-encoding because resolution is preserved.
+    """
+    if not result.width or not result.height:
+        return
+    key = (result.width, result.height)
+    match = AI_NATIVE_RESOLUTIONS.get(key)
+    if match:
+        result.resolution_ai_tool, result.resolution_ai_confidence = match
+
+
+def _fingerprint_duration(result: MetadataResult):
+    """
+    Check if duration matches AI generation presets (e.g. exactly 5.0s, 10.0s).
+    Real camera recordings almost never end at these exact millisecond values.
+    """
+    if not result.duration_seconds:
+        return
+    d = result.duration_seconds
+    for preset in AI_TYPICAL_DURATIONS:
+        if abs(d - preset) <= DURATION_TOL:
+            result.duration_is_ai_typical = True
+            return

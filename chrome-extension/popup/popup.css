@@ -263,3 +263,11 @@ input:checked + .slider:before {
   transition: color 0.15s;
 }
 .footer-link:hover { color: #818cf8; }
+
+.deep-tip {
+  font-size: 10px;
+  color: #a78bfa;
+  margin-top: 4px;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }

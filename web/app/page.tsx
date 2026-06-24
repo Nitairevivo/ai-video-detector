@@ -202,16 +202,17 @@ export default function Home() {
   const [items, setItems] = useState<VideoItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [deepMode, setDeepMode] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const analyzeItem = useCallback(async (item: VideoItem) => {
+  const analyzeItem = useCallback(async (item: VideoItem, deep = false) => {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "analyzing" } : i));
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), deep ? 180_000 : 120_000);
     try {
       let res: Response;
       if (item.url) {
-        res = await fetch(`${API}/detect-url`, {
+        res = await fetch(`${API}/detect-url?deep=${deep}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: item.url }),
@@ -220,7 +221,7 @@ export default function Home() {
       } else {
         const form = new FormData();
         form.append("file", item.file!);
-        res = await fetch(`${API}/detect`, { method: "POST", body: form, signal: controller.signal });
+        res = await fetch(`${API}/detect?deep=${deep}`, { method: "POST", body: form, signal: controller.signal });
       }
       clearTimeout(timeout);
       if (!res.ok) {
@@ -245,7 +246,7 @@ export default function Home() {
     if (!url.startsWith("http")) return;
     const item: VideoItem = { id: Math.random().toString(36).slice(2), url, label: getPlatformLabel(url), status: "pending" };
     setItems(prev => [item, ...prev]);
-    analyzeItem(item);
+    analyzeItem(item, deepMode);
     setUrlInput("");
   }, [analyzeItem]);
 
@@ -253,7 +254,7 @@ export default function Home() {
     const valid = Array.from(files).filter(f => /\.(mp4|mov|mkv|webm|m4v)$/i.test(f.name));
     const newItems: VideoItem[] = valid.map(f => ({ id: Math.random().toString(36).slice(2), file: f, label: f.name, status: "pending" as const }));
     setItems(prev => [...newItems, ...prev]);
-    newItems.forEach(item => analyzeItem(item));
+    newItems.forEach(item => analyzeItem(item, deepMode));
   }, [analyzeItem]);
 
   const aiCount = items.filter(i => i.result?.verdict === "ai_generated").length;
@@ -359,6 +360,19 @@ export default function Home() {
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-white mb-2">Detect a video</h2>
             <p className="text-gray-500 text-sm">Paste a TikTok/Instagram/YouTube link or upload a file</p>
+          </div>
+
+          {/* Deep mode toggle */}
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-white/3 border border-white/8">
+            <div>
+              <p className="text-sm font-semibold text-white">Deep Analysis</p>
+              <p className="text-xs text-gray-600 mt-0.5">Visual + frequency scan — detects re-encoded AI videos (~10s extra)</p>
+            </div>
+            <button
+              onClick={() => setDeepMode(d => !d)}
+              className={`relative w-11 h-6 rounded-full transition-all duration-200 flex-shrink-0 ${deepMode ? "bg-violet-600" : "bg-white/10"}`}>
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${deepMode ? "left-5" : "left-0.5"}`} />
+            </button>
           </div>
 
           {/* URL input */}
