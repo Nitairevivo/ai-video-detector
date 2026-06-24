@@ -36,7 +36,10 @@ chrome.storage.sync.get(["autoAnalyze", "deepAnalyze"], ({ autoAnalyze, deepAnal
 autoToggle.addEventListener("change", () => {
   chrome.storage.sync.set({ autoAnalyze: autoToggle.checked });
   chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: "SET_AUTO_ANALYZE" }).catch(() => {});
+    if (tab?.id) chrome.tabs.sendMessage(tab.id, {
+      type: "SET_AUTO_ANALYZE",
+      enabled: autoToggle.checked,
+    }).catch(() => {});
   });
 });
 

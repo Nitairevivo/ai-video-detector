@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "AI Video Detector",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Automatically flags AI-generated videos on TikTok, Instagram, YouTube, Twitter, Reddit and Facebook.",
 
   "permissions": [
     "activeTab",
     "clipboardRead",
-    "storage"
+    "storage",
+    "contextMenus",
+    "notifications"
   ],
 
   "host_permissions": [

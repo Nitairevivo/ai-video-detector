@@ -1,6 +1,9 @@
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 
-const resultCache = new Map();
+// Persistent cache — survives page refreshes
+const CACHE_KEY = "aivd_cache";
+let resultCache = {};
+chrome.storage.local.get([CACHE_KEY], (s) => { resultCache = s[CACHE_KEY] || {}; });
 
 const PLATFORM = (() => {
   const h = location.hostname;
@@ -14,29 +17,26 @@ const PLATFORM = (() => {
   return "unknown";
 })();
 
-// ─── Selectors ────────────────────────────────────────────────────────────────
+// ─── Selectors ─────────────────────────────────────────────────────────────────
 
 const SELECTORS = {
   tiktok:    'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
   instagram: 'article, div[role="dialog"], div[class*="x1cy8zhl"]',
-  youtube:   "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer",
+  youtube:   "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer, ytd-rich-item-renderer",
   twitter:   'article[data-testid="tweet"]',
   reddit:    'shreddit-post, div[data-testid="post-container"]',
   facebook:  'div[data-pagelet*="FeedUnit"], div[role="article"]',
   telegram:  'div.message',
 };
 
-// ─── URL extraction ───────────────────────────────────────────────────────────
+// ─── URL extraction ────────────────────────────────────────────────────────────
 
 function getVideoUrl(container) {
   switch (PLATFORM) {
     case "tiktok": {
-      // Prefer a direct /video/ link inside the container
       const link = container.querySelector('a[href*="/video/"]');
       if (link) return link.href;
-      // Current page is a single video
       if (/\/@[^/]+\/video\/\d+/.test(location.pathname)) return location.href;
-      // Feed — try to extract from data attributes
       const videoId = container.getAttribute("data-video-id") ||
                       container.querySelector("[data-video-id]")?.getAttribute("data-video-id");
       if (videoId) {
@@ -44,36 +44,25 @@ function getVideoUrl(container) {
         const user = userLink ? new URL(userLink.href).pathname : "/@unknown";
         return `https://www.tiktok.com${user}/video/${videoId}`;
       }
-      return null; // don't fall back to generic feed URL
+      return null;
     }
     case "instagram": {
       const link = container.querySelector('a[href*="/reel/"], a[href*="/p/"], a[href*="/tv/"]');
-      if (link) {
-        const u = new URL(link.href);
-        return "https://www.instagram.com" + u.pathname;
-      }
+      if (link) return "https://www.instagram.com" + new URL(link.href).pathname;
       if (/\/(reel|p|tv)\//.test(location.pathname)) return location.href;
       return null;
     }
     case "youtube": {
-      // Shorts — current page
       if (location.pathname.startsWith("/shorts/")) return location.href;
-      // Regular watch page
       if (location.pathname === "/watch") return location.href;
-      // In-feed short or video card
       const link = container.querySelector('a[href^="/shorts/"], a[href*="watch?v="]');
-      if (link) {
-        const u = new URL(link.href, "https://www.youtube.com");
-        return u.href;
-      }
+      if (link) return new URL(link.href, "https://www.youtube.com").href;
       return null;
     }
     case "twitter": {
-      // Look in the article for a status link with a video indicator
       const article = container.closest?.("article") || container;
       const link = article.querySelector('a[href*="/status/"]');
-      if (link) return link.href;
-      return null;
+      return link ? link.href : null;
     }
     case "reddit": {
       const link = container.querySelector('a[href*="/comments/"]');
@@ -88,21 +77,17 @@ function getVideoUrl(container) {
       return null;
     }
   }
-  // Non-blob video src as final fallback
   const video = container.querySelector("video");
   if (video?.src && !video.src.startsWith("blob:") && !video.src.startsWith("data:")) return video.src;
   return null;
 }
 
-// ─── Loading state injection ──────────────────────────────────────────────────
+// ─── Loading state ─────────────────────────────────────────────────────────────
 
 function injectLoader(container) {
-  if (container._aivdInjected) return;
+  if (container._aivdInjected) return null;
   container._aivdInjected = true;
-
-  if (getComputedStyle(container).position === "static")
-    container.style.position = "relative";
-
+  if (getComputedStyle(container).position === "static") container.style.position = "relative";
   const loader = document.createElement("div");
   loader.className = "aivd-loader";
   loader.innerHTML = `<span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span>`;
@@ -110,19 +95,15 @@ function injectLoader(container) {
   return loader;
 }
 
-// ─── Analysis ─────────────────────────────────────────────────────────────────
+// ─── Analysis ──────────────────────────────────────────────────────────────────
 
-async function analyze(container) {
+async function analyze(container, deep = false) {
   const url = getVideoUrl(container);
-  if (!url) {
-    container._aivdInjected = false; // allow retry
-    return;
-  }
+  if (!url) { container._aivdInjected = false; return; }
 
-  // Return cached result instantly
-  if (resultCache.has(url)) {
-    const cached = resultCache.get(url);
-    if (cached.is_ai_generated) showAIBadge(container, cached);
+  // Serve from persistent cache
+  if (resultCache[url]) {
+    if (resultCache[url].is_ai_generated) showBadge(container, resultCache[url]);
     return;
   }
 
@@ -130,7 +111,7 @@ async function analyze(container) {
 
   let response;
   try {
-    response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url });
+    response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url, deep });
   } catch {
     loader?.remove();
     container._aivdInjected = false;
@@ -138,24 +119,23 @@ async function analyze(container) {
   }
 
   loader?.remove();
+  if (!response?.ok) return;
 
-  if (!response?.ok) return; // silent fail — don't mark as anything
+  // Persist result
+  resultCache[url] = response.result;
+  chrome.storage.local.set({ [CACHE_KEY]: resultCache });
 
-  resultCache.set(url, response.result);
-
-  // Only show badge if AI — real videos stay clean
   if (response.result.is_ai_generated) {
     aiDetectedCount++;
-    showAIBadge(container, response.result);
+    updateBadgeCount();
+    showBadge(container, response.result);
   }
 }
 
-// ─── AI Badge ─────────────────────────────────────────────────────────────────
+// ─── Badge ─────────────────────────────────────────────────────────────────────
 
-function showAIBadge(container, result) {
-  // Don't double-inject
+function showBadge(container, result) {
   if (container.querySelector(".aivd-badge")) return;
-
   const pct  = Math.round(result.confidence * 100);
   const tool = result.ai_tool_detected;
 
@@ -170,7 +150,6 @@ function showAIBadge(container, result) {
     <span class="aivd-pct">${pct}%</span>
   `;
 
-  // Tooltip on hover
   badge.addEventListener("mouseenter", () => {
     const tip = document.createElement("div");
     tip.className = "aivd-tip";
@@ -182,57 +161,86 @@ function showAIBadge(container, result) {
     `;
     badge.appendChild(tip);
   });
-  badge.addEventListener("mouseleave", () => {
-    badge.querySelector(".aivd-tip")?.remove();
-  });
-
-  // Click to dismiss
+  badge.addEventListener("mouseleave", () => badge.querySelector(".aivd-tip")?.remove());
   badge.addEventListener("click", (e) => { e.stopPropagation(); badge.remove(); });
 
   container.appendChild(badge);
 }
 
-// Stats tracking
+// ─── Extension badge count ─────────────────────────────────────────────────────
+
 let aiDetectedCount = 0;
 
-// Handle messages from popup
+function updateBadgeCount() {
+  chrome.runtime.sendMessage({
+    type: "UPDATE_BADGE",
+    count: aiDetectedCount,
+  }).catch(() => {});
+}
+
+// ─── Messages ──────────────────────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "GET_STATS") {
-    sendResponse({ total: resultCache.size, ai: aiDetectedCount });
+    sendResponse({ total: Object.keys(resultCache).length, ai: aiDetectedCount });
   }
   if (msg.type === "SET_AUTO_ANALYZE") {
-    location.reload();
+    // Don't reload — just toggle observer
+    if (msg.enabled) startObserver();
+    else stopObserver();
+  }
+  // Result injected from context-menu check in background.js
+  if (msg.type === "SHOW_RESULT_FROM_CONTEXT") {
+    const container = document.querySelector(SELECTORS[PLATFORM]);
+    if (container && msg.result?.is_ai_generated) showBadge(container, msg.result);
   }
 });
 
-// ─── Observer ─────────────────────────────────────────────────────────────────
+// ─── Observer ──────────────────────────────────────────────────────────────────
 
-function init() {
+let io = null;
+let mo = null;
+
+function startObserver() {
+  if (io) return; // already running
   const sel = SELECTORS[PLATFORM];
   if (!sel) return;
 
-  // IntersectionObserver: analyze when video enters viewport
-  const io = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting && !entry.target._aivdInjected) {
-        analyze(entry.target);
+  chrome.storage.sync.get(["deepAnalyze"], ({ deepAnalyze }) => {
+    const deep = deepAnalyze === true;
+
+    io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !entry.target._aivdInjected) {
+          analyze(entry.target, deep);
+        }
       }
-    }
-  }, { threshold: 0.5 });
+    }, { threshold: 0.5 });
 
-  const observe = (el) => { if (!el._aivdInjected) io.observe(el); };
+    const observe = (el) => { if (!el._aivdInjected) io.observe(el); };
+    document.querySelectorAll(sel).forEach(observe);
 
-  document.querySelectorAll(sel).forEach(observe);
-
-  new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      for (const node of m.addedNodes) {
-        if (!(node instanceof Element)) continue;
-        if (node.matches?.(sel)) observe(node);
-        node.querySelectorAll?.(sel).forEach(observe);
+    mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches?.(sel)) observe(node);
+          node.querySelectorAll?.(sel).forEach(observe);
+        }
       }
-    }
-  }).observe(document.body, { childList: true, subtree: true });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  });
 }
 
-init();
+function stopObserver() {
+  io?.disconnect(); io = null;
+  mo?.disconnect(); mo = null;
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+
+chrome.storage.sync.get(["autoAnalyze"], ({ autoAnalyze }) => {
+  // Default on; only skip if explicitly disabled
+  if (autoAnalyze !== false) startObserver();
+});
