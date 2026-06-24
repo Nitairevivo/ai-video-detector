@@ -209,6 +209,83 @@ public class OverlayService extends Service {
         });
     }
 
+    // ─── Detection helpers ───────────────────────────────────────────────────
+
+    private JSONObject detectViaServerUrl(String videoUrl) throws Exception {
+        JSONObject json = new JSONObject();
+        json.put("url", videoUrl);
+        URL apiUrl = new URL(API + "/detect-url");
+        HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(30000);
+        try (OutputStream os = conn.getOutputStream()) { os.write(json.toString().getBytes("UTF-8")); }
+        if (conn.getResponseCode() != 200) throw new Exception("Server error " + conn.getResponseCode());
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+            String line; while ((line = br.readLine()) != null) sb.append(line);
+        }
+        return new JSONObject(sb.toString());
+    }
+
+    private JSONObject detectViaPhoneDownload(String videoUrl) throws Exception {
+        // Download video on phone (residential IP = TikTok allows it)
+        java.io.File tmpFile = new java.io.File(getCacheDir(), "verifai_tmp.mp4");
+        try {
+            URL dlUrl = new URL(videoUrl);
+            HttpURLConnection dlConn = (HttpURLConnection) dlUrl.openConnection();
+            dlConn.setRequestProperty("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
+            dlConn.setRequestProperty("Referer", dlUrl.getProtocol() + "://" + dlUrl.getHost());
+            dlConn.setConnectTimeout(15000);
+            dlConn.setReadTimeout(30000);
+            dlConn.setInstanceFollowRedirects(true);
+
+            if (dlConn.getResponseCode() != 200) throw new Exception("Download failed: " + dlConn.getResponseCode());
+
+            try (java.io.InputStream in = dlConn.getInputStream();
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(tmpFile)) {
+                byte[] buf = new byte[65536];
+                int n; long total = 0;
+                while ((n = in.read(buf)) != -1) {
+                    fos.write(buf, 0, n);
+                    total += n;
+                    if (total > 30 * 1024 * 1024) break; // max 30MB
+                }
+            }
+
+            // Upload file to /detect
+            String boundary = "VerifAIBoundary" + System.currentTimeMillis();
+            URL uploadUrl = new URL(API + "/detect");
+            HttpURLConnection upConn = (HttpURLConnection) uploadUrl.openConnection();
+            upConn.setRequestMethod("POST");
+            upConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            upConn.setDoOutput(true);
+            upConn.setConnectTimeout(10000);
+            upConn.setReadTimeout(30000);
+
+            try (OutputStream out = upConn.getOutputStream()) {
+                String header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"video.mp4\"\r\nContent-Type: video/mp4\r\n\r\n";
+                out.write(header.getBytes("UTF-8"));
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(tmpFile)) {
+                    byte[] buf = new byte[65536]; int n;
+                    while ((n = fis.read(buf)) != -1) out.write(buf, 0, n);
+                }
+                out.write(("\r\n--" + boundary + "--\r\n").getBytes("UTF-8"));
+            }
+
+            if (upConn.getResponseCode() != 200) throw new Exception("Upload error " + upConn.getResponseCode());
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(upConn.getInputStream()))) {
+                String line; while ((line = br.readLine()) != null) sb.append(line);
+            }
+            return new JSONObject(sb.toString());
+        } finally {
+            tmpFile.delete();
+        }
+    }
+
     // ─── Button Tap ─────────────────────────────────────────────────────────
 
     private void onButtonTapped() {
@@ -240,33 +317,18 @@ public class OverlayService extends Service {
         final String url = text;
         executor.submit(() -> {
             try {
-                JSONObject json = new JSONObject();
-                json.put("url", url);
+                JSONObject result;
 
-                URL apiUrl = new URL(API + "/detect-url");
-                HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(20000);
-
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(json.toString().getBytes("UTF-8"));
+                // For TikTok/Instagram: download on PHONE (residential IP, not blocked)
+                // then upload file to API. For others: use server-side /detect-url.
+                boolean isTikTok = url.contains("tiktok.com") || url.contains("instagram.com") || url.contains("vm.tiktok");
+                if (isTikTok) {
+                    result = detectViaPhoneDownload(url);
+                } else {
+                    result = detectViaServerUrl(url);
                 }
 
-                int code = conn.getResponseCode();
-                if (code != 200) {
-                    throw new Exception("Server error " + code);
-                }
-
-                StringBuilder sb = new StringBuilder();
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line);
-                }
-
-                JSONObject result = new JSONObject(sb.toString());
+                if (result == null) throw new Exception("Detection failed");
                 String verdict = result.optString("verdict", result.optBoolean("is_ai_generated", false) ? "ai_generated" : "real");
                 double confidence = result.getDouble("confidence");
                 String tool = result.optString("ai_tool_detected", "");

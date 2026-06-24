@@ -1,3 +1,5 @@
+import * as FileSystem from "expo-file-system";
+
 const API_BASE = "https://ai-video-detector-production-a305.up.railway.app";
 
 export type DetectionResult = {
@@ -9,7 +11,68 @@ export type DetectionResult = {
   detection_method: string;
 };
 
+// Download video ON THE PHONE (residential IP → TikTok allows it)
+// then upload to our API. This bypasses TikTok's datacenter IP block.
+async function downloadAndDetect(url: string): Promise<DetectionResult> {
+  const tmpPath = FileSystem.cacheDirectory + "verifai_tmp.mp4";
+
+  // Remove old temp file
+  try { await FileSystem.deleteAsync(tmpPath, { idempotent: true }); } catch {}
+
+  // Download video from TikTok/Instagram/etc. using PHONE IP (not server IP)
+  const downloadResult = await FileSystem.downloadAsync(url, tmpPath, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+      "Referer": new URL(url).origin,
+    },
+  });
+
+  if (downloadResult.status !== 200) {
+    throw new Error("Could not download video");
+  }
+
+  // Upload the file to API
+  const uploadResult = await FileSystem.uploadAsync(`${API_BASE}/detect`, tmpPath, {
+    httpMethod: "POST",
+    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    fieldName: "file",
+    mimeType: "video/mp4",
+    parameters: {},
+  });
+
+  // Cleanup
+  try { await FileSystem.deleteAsync(tmpPath, { idempotent: true }); } catch {}
+
+  if (uploadResult.status !== 200) {
+    throw new Error(`Server error ${uploadResult.status}`);
+  }
+
+  return JSON.parse(uploadResult.body) as DetectionResult;
+}
+
+const TIKTOK_CDN_PATTERNS = [
+  /tiktok\.com/,
+  /vm\.tiktok\.com/,
+  /instagram\.com/,
+  /snapchat\.com/,
+];
+
+function needsPhoneDownload(url: string): boolean {
+  return TIKTOK_CDN_PATTERNS.some((p) => p.test(url));
+}
+
 export async function detectVideoUrl(url: string): Promise<DetectionResult> {
+  // For TikTok/Instagram: download on phone first, then upload
+  // For YouTube/others: let server handle it (server can download those)
+  if (needsPhoneDownload(url)) {
+    try {
+      return await downloadAndDetect(url);
+    } catch {
+      // Fallback to server-side if phone download fails
+    }
+  }
+
+  // Server-side detection (works for YouTube, direct MP4 links, etc.)
   const res = await fetch(`${API_BASE}/detect-url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
