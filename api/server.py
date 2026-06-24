@@ -20,6 +20,16 @@ from api.billing import create_checkout_session, handle_webhook
 # Init DB on startup
 init_db()
 
+# Build frame visual model if not present (runs once at startup, ~2 min)
+import threading
+def _build_frame_model_bg():
+    try:
+        from analyzer.build_frame_model import ensure_model
+        ensure_model(verbose=True)
+    except Exception as e:
+        print(f"[startup] frame model build failed: {e}")
+threading.Thread(target=_build_frame_model_bg, daemon=True).start()
+
 app = FastAPI(
     title="AI Video Detector API",
     description="Detect AI-generated videos by reading file signatures — no frame decoding required.",

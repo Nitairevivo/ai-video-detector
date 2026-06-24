@@ -29,7 +29,14 @@ def _load_model():
             with open(MODEL_PATH, "rb") as f:
                 _model = pickle.load(f)
     except Exception:
-        _model = None
+        # Model corrupt or incompatible — try rebuilding
+        try:
+            from analyzer.build_frame_model import build_model
+            if build_model(verbose=False):
+                with open(MODEL_PATH, "rb") as f:
+                    _model = pickle.load(f)
+        except Exception:
+            _model = None
     return _model
 
 
