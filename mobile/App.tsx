@@ -4,7 +4,7 @@ import {
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
   Platform, Switch, Modal, Dimensions, Linking,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import { useOverlay } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
@@ -489,11 +489,11 @@ export default function App() {
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem("onboarded").then((v) => setOnboarded(v === "1"));
+    SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(false));
   }, []);
 
   const finishOnboarding = async () => {
-    await AsyncStorage.setItem("onboarded", "1");
+    await SecureStore.setItemAsync("onboarded", "1").catch(() => {});
     setOnboarded(true);
   };
 
