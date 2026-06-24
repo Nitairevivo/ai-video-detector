@@ -39,79 +39,126 @@ EXTENSIONS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v'}
 
 # AI video queries — rotated each round for variety
 AI_QUERY_POOL = [
-    # Flagship tools — leave strong metadata signatures
+    # Flagship tools 2024-2025
     "sora openai video generation 2025",
+    "sora openai video examples shorts",
     "runway gen4 ai video examples 2025",
+    "runway gen3 ai generated video",
+    "runway gen4 image to video examples",
     "kling 1.6 ai video generation examples",
+    "kling ai video generation 2025 shorts",
+    "kling 2.0 ai video generation",
     "pika 2.1 ai video generation",
+    "pika labs ai video shorts 2025",
     "hailuo minimax ai video 2025",
+    "hailuo ai video generation examples",
     "luma dream machine ai video 2025",
+    "luma ray2 ai video demo",
     "veo 2 google ai video generated",
+    "veo 3 google ai generated video",
     "wan 2.0 ai video generation",
-    "hunyuan video tencent ai",
+    "wan ai video generation examples 2025",
+    "hunyuan video tencent ai generation",
     "cogvideo ai generated short 2025",
     "stepvideo ai generation examples",
-    "seaweed bytedance ai video",
-    # Avatar / deepfake tools
+    "seaweed bytedance ai video generation",
+    "mochi genmo ai video examples",
+    "haiper ai video generation 2025",
+    # Avatar & talking head tools
     "heygen ai avatar video demo 2025",
-    "synthesia ai video avatar",
+    "heygen ai talking video examples",
+    "synthesia ai video avatar presentation",
     "d-id ai talking avatar video",
-    # Compilations
+    "creatify ai ad video generation",
+    "invideo ai generated video 2025",
+    "deepbrain ai avatar video",
+    # Compilations & showcases
     "ai generated video compilation 2025 sora runway kling",
     "text to video ai comparison 2025",
     "best ai video generators 2025 showcase",
-    "ai video generation showcase before after",
+    "ai video generation showcase before after 2025",
     "ai generated short film 2025",
-    # Tool-specific demos
-    "runway motion brush ai demo",
-    "pika lip sync ai video",
-    "kling ai character animation",
-    "luma ray2 ai video demo",
-    "stable video diffusion examples",
-    "animatediff ai video generation",
-    "open sora ai video examples",
-    "mochi ai video genmo examples",
-    "haiper ai video generation",
-    "creatify ai ad video generation",
-    "invideo ai generated video",
+    "ai generated music video 2025",
+    "ai generated commercial video 2025",
+    "ai video generation trend tiktok 2025",
+    # Tool-specific features
+    "runway motion brush ai demo video",
+    "pika lip sync ai video examples",
+    "kling ai character animation examples",
+    "stable video diffusion examples 2025",
+    "animatediff ai video generation examples",
+    "open sora ai video examples shorts",
+    # More specific searches
+    "ai generated video sora vs kling comparison",
+    "text to video generation 2025 examples",
+    "ai video generation timelapse 2025",
+    "ai generated nature video 2025",
+    "ai generated landscape video sora runway",
+    "ai video generation 4k examples 2025",
+    "generate video from image ai 2025",
+    "image to video ai generation examples",
+    "ai video generation person walking",
+    "ai generated dance video 2025",
 ]
 
 # Real video queries — strong camera metadata signals
 REAL_QUERY_POOL = [
     # Camera-specific → strong EXIF/encoder metadata
     "sony fx3 footage broll 4k no copyright",
+    "sony fx3 cinematic footage 2025",
     "gopro hero12 4k adventure footage",
+    "gopro hero12 black footage broll",
     "iphone 15 pro max cinematic footage broll",
+    "iphone 15 pro camera test footage",
     "dji mini 4 pro 4k drone footage",
+    "dji air 3 drone footage 4k",
     "canon r5 cinematic broll footage",
+    "canon r6 mark ii footage broll",
     "nikon z9 real footage outdoor broll",
+    "nikon zf footage broll 4k",
     "red camera real footage cinema broll",
-    "blackmagic pocket 6k footage broll",
+    "blackmagic pocket 6k footage broll 2025",
+    "sigma fp real footage broll cinematic",
+    "lumix s5 ii real footage broll",
     # Nature / documentary — guaranteed real
     "4k nature broll no copyright free use",
     "wildlife real camera footage 4k",
     "ocean waves 4k footage no copyright",
     "forest nature 4k footage broll",
     "documentary real street footage 4k",
-    # Travel / everyday
+    "mountains real footage 4k no copyright",
+    "waterfall real camera footage 4k",
+    "desert sunset real footage 4k",
+    "snow winter real camera footage 4k",
+    # Travel / everyday real life
     "travel vlog real camera 4k footage",
     "city street footage 4k no copyright",
     "cooking real footage 4k broll",
     "sports real footage 4k slow motion camera",
-    # Film
+    "market street documentary footage 4k",
+    "rain weather real camera footage broll",
+    "sunrise sunset real camera footage 4k",
+    "coffee shop real footage broll 4k",
+    "beach real footage broll 4k no copyright",
+    # Film & analog
     "film grain 16mm real analog footage",
     "vintage real film footage no copyright",
     "interview real person camera footage",
     "wedding ceremony real footage 4k",
     "concert live real footage 4k camera",
-    "market street documentary footage 4k",
-    "rain weather real camera footage broll",
-    "sunrise sunset real camera footage 4k",
-    # Stock footage channels
+    # Stock footage channels (reliable real footage)
     "videvo free stock footage 4k",
     "coverr free stock footage 4k",
     "mixkit free stock footage 4k",
     "pexels video free 4k footage",
+    "pixabay free video footage 4k",
+    "dareful free stock footage 4k",
+    # Specific real content
+    "GoPro hero 4k test footage real 2025",
+    "vlogging real camera footage 2025",
+    "real people street interview footage",
+    "slow motion real camera footage 240fps",
+    "aerial drone real footage 4k 2025",
 ]
 
 # Pexels API for real stock footage (free, no copyright, reliable labels)
@@ -150,6 +197,7 @@ def dataset_stats() -> tuple[int, int]:
 def download_yt(query: str, out_dir: Path, n: int, seen: set) -> list[Path]:
     """Download up to n videos from a yt-dlp search query. Returns new files."""
     ids_before = {f.stem for f in out_dir.glob("*.mp4")}
+    # Only use archive if it exists (cleared periodically to allow new queries)
     archive_file = out_dir / ".yt_archive"
 
     cmd = [
@@ -313,6 +361,14 @@ def run(batch: int, max_samples: int, once: bool):
         if not real_queries:
             real_queries = REAL_QUERY_POOL.copy()
             random.shuffle(real_queries)
+
+        # Clear yt-dlp archives every 30 rounds so queries stay fresh
+        if round_num % 30 == 0:
+            for d in [AI_DIR, REAL_DIR]:
+                arch = d / ".yt_archive"
+                if arch.exists():
+                    arch.unlink()
+            print("  [archive cleared — queries refreshed]")
 
         # ── Download AI ───────────────────────────────────────────────────────
         print(f"\n  [AI] {ai_q}")

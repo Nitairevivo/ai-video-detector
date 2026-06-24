@@ -83,6 +83,7 @@ def root():
     return {
         "status": "ok",
         "model_trained": classifier.is_trained,
+        "gemini_enabled": bool(os.environ.get("GEMINI_API_KEY")),
         "supported_formats": list(SUPPORTED_FORMATS),
     }
 
