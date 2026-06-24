@@ -28,6 +28,9 @@
       },
       "package": "com.verifai.app",
       "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
         "android.permission.READ_CLIPBOARD"
       ],
       "intentFilters": [
@@ -62,7 +65,9 @@
         }
       ]
     },
-    "plugins": [],
+    "plugins": [
+      "./plugins/withAndroidOverlay"
+    ],
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
       "eas": {
