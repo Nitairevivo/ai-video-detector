@@ -600,28 +600,7 @@ function AppInner() {
 }
 
 export default function App() {
-  const [onboarded, setOnboarded] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(false));
-  }, []);
-
-  const finishOnboarding = async () => {
-    await SecureStore.setItemAsync("onboarded", "1").catch(() => {});
-    setOnboarded(true);
-  };
-
-  if (onboarded === null) return null; // loading
-
-  if (!onboarded) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#06060f" }}>
-        <StatusBar barStyle="light-content" backgroundColor="#06060f" />
-        <OnboardingScreen onDone={finishOnboarding} />
-      </SafeAreaView>
-    );
-  }
-
+  // Skip onboarding — overlay not available in this build
   return <AppInner />;
 }
 
