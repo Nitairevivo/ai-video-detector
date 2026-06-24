@@ -117,29 +117,30 @@ async def detect(
         verdict = result.verdict
         method = result.method
 
-        # Blend ML score when model is trained
-        if ml_prob is not None:
-            final_confidence = result.confidence * 0.4 + ml_prob * 0.6
-            verdict = "ai_generated" if final_confidence >= 0.5 else "real"
+        # ML model: only use if it gives VERY HIGH confidence (≥ 0.85) AND metadata gave no signal.
+        # The current model is trained on synthetic data and causes false positives on real phone videos.
+        # Only trust ML when it's extremely confident AND there's no camera-origin metadata.
+        has_camera_origin = bool(result.signals.get("camera_origin_detected"))
+        if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
+            if ml_prob >= 0.88:
+                # ML is very confident → use it but cap at 75% (not as trustworthy as metadata)
+                final_confidence = min(0.75, ml_prob)
+                verdict = "ai_generated"
+                method = f"ML classifier ({ml_prob:.0%}) — {result.method}"
+            # Below 0.88 → ignore ML, trust metadata-only result
 
-        # Local deep analysis already ran inside extract_features if needed.
-        # Only fall back to Gemini if deep analysis wasn't enough and confidence is ambiguous.
-        if final_confidence < 0.5 and not deep and not result.signals.get("freq_analyzed"):
+        # Gemini Vision: only when metadata gives NO signal AND video is not camera-origin.
+        # Require 0.88+ confidence to flag as AI (strict threshold to avoid false positives).
+        if final_confidence < 0.15 and not has_camera_origin:
             try:
                 from analyzer.gemini_analyzer import analyze_with_gemini
                 gemini = analyze_with_gemini(tmp_path)
                 if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.75:
+                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.88:
                         final_confidence = gemini.confidence
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
-                    elif gemini.verdict in ("ai_generated", "ai_edited"):
-                        # Gemini suspects AI but not confident enough to override — keep existing score
-                        method = f"Gemini Vision (low confidence): {gemini.reason}"
-                    else:
-                        # Gemini says real — use its confidence but don't go below existing score
-                        final_confidence = max(final_confidence, 0.04)
-                        method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
+                    # Below threshold → keep as real
             except Exception:
                 pass
 
@@ -286,25 +287,25 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         final_confidence = result.confidence
         verdict = result.verdict
         method = result.method
+        has_camera_origin = bool(result.signals.get("camera_origin_detected"))
 
-        if ml_prob is not None:
-            final_confidence = result.confidence * 0.4 + ml_prob * 0.6
-            verdict = "ai_generated" if final_confidence >= 0.5 else "real"
+        # ML: only if very high confidence AND no camera origin detected
+        if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
+            if ml_prob >= 0.88:
+                final_confidence = min(0.75, ml_prob)
+                verdict = "ai_generated"
+                method = f"ML classifier ({ml_prob:.0%}) — {result.method}"
 
-        if final_confidence < 0.5 and not force_deep and not result.signals.get("freq_analyzed"):
+        # Gemini: only when no metadata signal AND no camera origin, require 0.88+ confidence
+        if final_confidence < 0.15 and not has_camera_origin:
             try:
                 from analyzer.gemini_analyzer import analyze_with_gemini
                 gemini = analyze_with_gemini(tmp_path)
                 if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.75:
+                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.88:
                         final_confidence = gemini.confidence
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
-                    elif gemini.verdict in ("ai_generated", "ai_edited"):
-                        method = f"Gemini Vision (low confidence): {gemini.reason}"
-                    else:
-                        final_confidence = max(final_confidence, 0.04)
-                        method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
             except Exception:
                 pass
 

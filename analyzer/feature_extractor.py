@@ -109,6 +109,7 @@ def _collect_signals(
         "has_c2pa": int(meta.has_c2pa),
         "c2pa_is_ai": int(meta.c2pa_is_ai),
         "software_tag_present": int(meta.software_tag is not None),
+        "camera_origin_detected": int(_has_camera_origin(meta)),
 
         # Resolution + duration fingerprints (survive re-encoding)
         "resolution_ai_confidence": meta.resolution_ai_confidence,
@@ -314,13 +315,10 @@ def _rule_based_decision(
     if meta.has_c2pa:
         return 0.40, "C2PA provenance present — origin unverified", None
 
-    # ── Duration-only signal (weak, but better than nothing) ─────────────────
-    if meta.duration_is_ai_typical:
-        return 0.35, f"AI-typical duration ({meta.duration_seconds:.1f}s) — no other markers", None
-
-    # ── Weak resolution signal alone ──────────────────────────────────────────
-    if meta.resolution_ai_confidence >= 0.65:
-        return 0.45, f"AI-native resolution ({meta.width}×{meta.height}) — {meta.resolution_ai_tool}", meta.resolution_ai_tool
+    # NOTE: Duration-only and resolution-only signals removed —
+    # they produce too many false positives on real TikTok/phone videos.
+    # A 5-second video is NOT proof of AI generation.
+    # A 720p resolution is NOT proof of AI generation.
 
     # ── IMPORTANT: No statistical signals ────────────────────────────────────
     # Statistical codec/timing signals (pts_uniformity, entropy, frame size)

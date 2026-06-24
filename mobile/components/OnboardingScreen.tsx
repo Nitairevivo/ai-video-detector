@@ -63,6 +63,17 @@ export function OnboardingScreen({ onDone }: Props) {
   const current = STEPS[step];
 
   // When app comes back to foreground, re-check permission
+  // Auto-request permission when step appears
+  useEffect(() => {
+    if (step < STEPS.length - 1) {
+      const timer = setTimeout(() => {
+        STEPS[step].open();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
+
+  // Check permission when app returns from settings
   useEffect(() => {
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
@@ -74,6 +85,10 @@ export function OnboardingScreen({ onDone }: Props) {
           return next;
         });
         Animated.spring(checkAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 6 }).start();
+        // Auto-advance after short delay
+        if (step < STEPS.length - 1) {
+          setTimeout(() => goNext(), 1200);
+        }
       }
     });
     return () => sub.remove();
