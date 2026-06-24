@@ -251,40 +251,23 @@ def _rule_based_decision(
     if meta.too_short_for_analysis:
         return 0.10, "Video too short (<2s) — analysis unreliable", None
 
-    # ── Tier 1.5: Resolution fingerprint (survives re-encoding) ───────────────
-    if meta.resolution_ai_confidence >= 0.88:
-        tool = meta.resolution_ai_tool or "AI tool"
-        return meta.resolution_ai_confidence, f"AI-native resolution ({meta.width}×{meta.height}) — {tool}", tool
-    if meta.resolution_ai_confidence >= 0.65:
-        # Partial signal — combine with duration if also suspicious
-        if meta.duration_is_ai_typical:
-            return 0.82, f"AI-native resolution + AI-typical duration — {meta.resolution_ai_tool}", meta.resolution_ai_tool
-        # Weak resolution match alone — boost but don't call it AI yet
-        # Fall through; score used in tier 5 combination
+    # NOTE: Resolution fingerprint removed — 1920x1080 and similar resolutions
+    # are used by BOTH AI tools AND real cameras. Cannot reliably distinguish.
 
-    # ── Camera/real-origin check (AFTER resolution fingerprint) ──────────────
+    # ── Camera/real-origin check ──────────────────────────────────────────────
     if _has_camera_origin(meta):
-        # Camera markers override weak resolution signal
-        if meta.resolution_ai_confidence < 0.65:
-            return 0.04, "Camera origin markers — real footage", None
-        # High-confidence AI resolution beats camera metadata (e.g. phone used to record AI screen)
         return 0.04, "Camera origin markers — real footage", None
 
     # ── Tier 2: Strong container pattern (AI-specific box) ────────────────────
     if container.container_ai_score > 0.88:
         return 0.85, "Container structure matches AI tool pattern", ai_tool
 
-    # ── Tier 3: Unknown proprietary boxes — anomaly (possible new AI tool) ────
-    if container.container_anomaly_score >= 0.60:
-        return 0.62, "Unknown proprietary container boxes — possible new AI tool", None
-    if container.container_anomaly_score >= 0.45:
-        return 0.50, "Unusual container structure — anomalous box pattern", None
+    # NOTE: container_anomaly_score rules removed — YouTube and other platforms
+    # use non-standard MP4 container layouts that score as "anomalous" but are
+    # completely normal. These rules caused false positives on real YouTube videos.
 
-    # ── Tier 4: Stripped metadata (possible re-mux to hide AI origin) ─────────
-    if meta.metadata_is_stripped and container.moov_before_mdat:
-        return 0.55, "Metadata fully stripped + AI-typical container layout", None
-    if meta.metadata_is_stripped:
-        return 0.35, "All metadata stripped — origin unknown (possible re-mux)", None
+    # NOTE: metadata_is_stripped rules removed — TikTok and Instagram strip ALL
+    # metadata from every video, including real ones. Stripping alone is not evidence.
 
     # ── Tier 5: Deep visual/frequency analysis (fallback for stripped/platform) ─
     if freq is not None or visual is not None:
