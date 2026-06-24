@@ -264,21 +264,50 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
 
     tmp_path = tempfile.mktemp(suffix=suffix)
 
+    is_tiktok = any(x in url for x in ["tiktok.com", "vm.tiktok", "douyin.com"])
+    aigc_from_page = False
+    aigc_info = ""
+
     try:
         ok = False
-        if _is_platform_url(url):
+
+        # Strategy 1: TikTok-specific resolver (gets CDN URL + AIGC labels)
+        if is_tiktok:
+            try:
+                from analyzer.tiktok_resolver import download_tiktok_video
+                ok, aigc_from_page, aigc_info = download_tiktok_video(url, tmp_path)
+            except Exception:
+                pass
+
+        # Strategy 2: yt-dlp
+        if not ok and _is_platform_url(url):
             ok = _download_with_ytdlp(url, tmp_path)
+
+        # Strategy 3: Direct HTTP
         if not ok:
             ok = _download_direct(url, tmp_path)
+
+        # Strategy 4: yt-dlp as last resort
         if not ok:
-            # Last resort: try yt-dlp even if not a known platform
             ok = _download_with_ytdlp(url, tmp_path)
+
         if not ok:
             raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
 
-        # For URL submissions, always run deep analysis — platform CDN files
-        # don't embed platform metadata tags, so platform_reencoded is never
-        # set and the rule-based system falls through to 4% without deep analysis.
+        # If TikTok itself labeled this as AIGC — that's definitive
+        if aigc_from_page:
+            return {
+                "url": url,
+                "is_ai_generated": True,
+                "verdict": "ai_generated",
+                "confidence": 0.97,
+                "confidence_pct": "97.0%",
+                "ai_tool_detected": "TikTok AIGC",
+                "edit_tool_detected": None,
+                "detection_method": f"TikTok AIGC label detected: {aigc_info}",
+                "deep_analysis_ran": False,
+            }
+
         force_deep = deep or _is_platform_url(url)
         result = extract_features(tmp_path, deep=force_deep)
         classifier = get_classifier()
@@ -289,22 +318,41 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         method = result.method
         has_camera_origin = bool(result.signals.get("camera_origin_detected"))
 
-        # ML: only if very high confidence AND no camera origin detected
+        # Audio AI analysis (works after platform re-encoding)
+        if final_confidence < 0.5 and not has_camera_origin:
+            try:
+                from analyzer.audio_analyzer_ai import analyze_audio_ai
+                audio_ai = analyze_audio_ai(tmp_path)
+                if audio_ai.verdict == "ai_audio" and audio_ai.confidence >= 0.65:
+                    final_confidence = max(final_confidence, audio_ai.confidence * 0.6)
+                    method = f"Audio AI fingerprint: {audio_ai.reason}"
+                    if final_confidence >= 0.5:
+                        verdict = "ai_generated"
+            except Exception:
+                pass
+
+        # ML: only if very high confidence AND no camera origin
         if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
             if ml_prob >= 0.88:
                 final_confidence = min(0.75, ml_prob)
                 verdict = "ai_generated"
-                method = f"ML classifier ({ml_prob:.0%}) — {result.method}"
+                method = f"ML classifier ({ml_prob:.0%})"
 
-        # Gemini: only when no metadata signal AND no camera origin, require 0.88+ confidence
-        if final_confidence < 0.15 and not has_camera_origin:
+        # Gemini Vision: threshold 0.75 for TikTok (we've tried everything else),
+        # 0.88 for other platforms (stricter to avoid false positives)
+        gemini_threshold = 0.72 if is_tiktok else 0.85
+        if final_confidence < 0.35 and not has_camera_origin:
             try:
                 from analyzer.gemini_analyzer import analyze_with_gemini
                 gemini = analyze_with_gemini(tmp_path)
                 if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.88:
+                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= gemini_threshold:
                         final_confidence = gemini.confidence
                         verdict = gemini.verdict
+                        method = f"Gemini Vision: {gemini.reason}"
+                    elif gemini.verdict == "real" and gemini.confidence >= 0.80:
+                        # Gemini confidently says real → lower our score
+                        final_confidence = min(final_confidence, 0.08)
                         method = f"Gemini Vision: {gemini.reason}"
             except Exception:
                 pass
@@ -319,6 +367,7 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             "edit_tool_detected": result.edit_tool,
             "detection_method": method,
             "deep_analysis_ran": bool(result.signals.get("freq_analyzed") or result.signals.get("visual_analyzed")),
+            "aigc_page_label": aigc_from_page,
         }
     finally:
         if os.path.exists(tmp_path):

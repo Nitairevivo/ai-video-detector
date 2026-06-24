@@ -10,43 +10,53 @@ import urllib.request
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
 
-PROMPT = """You are a forensic expert detecting AI-generated videos.
+PROMPT = """You are the world's top forensic expert in detecting AI-generated video.
 
-Analyze these video frames and determine if the video was created by an AI tool
-(Sora, Kling, Runway, Pika, Luma, HeyGen, etc.) or captured by a real camera.
+Analyze these frames from a social media video. Your job: determine if the VIDEO ITSELF was AI-generated (Sora, Kling, Runway, Pika, etc.) or is real camera footage.
 
-Look for AI generation signs:
-- Plastic/waxy skin that looks too smooth
-- Backgrounds that morph or blur unnaturally
-- Hands with wrong fingers or impossible geometry
-- Text that is garbled or morphing
-- Eyes that are glassy or unnaturally symmetric
-- Lighting inconsistencies (shadows going wrong direction)
-- Hair that blends into background or behaves like liquid
-- Objects appearing/disappearing between frames
-- Motion that is too smooth with no natural camera shake
-- Over-perfect composition with no real-world imperfections
+STRONG AI INDICATORS (if you see ANY of these → high confidence AI):
+- Skin that looks waxy, plastic, too smooth — no pores, no imperfections
+- Eyes that look glassy, unnaturally bright, or have an "uncanny valley" feel
+- Hair merging into background or behaving like liquid
+- Hands with wrong number of fingers or impossible anatomy
+- Background elements that shift or morph between frames
+- Text in scene that is garbled, blurry, or morphing
+- Lighting that doesn't follow physics (impossible shadows)
+- Motion that is too perfectly smooth — no natural camera shake
+- Faces that look like high-quality 3D renders
+- Objects/people changing slightly between frames in unnatural ways
 
-Also check for AI editing on real footage:
-- Face swaps (HeyGen, D-ID)
-- AI-replaced backgrounds
-- Extreme AI beauty filters
+WEAKER AI INDICATORS (need multiple to be confident):
+- Perfect lighting and composition with no real-world messiness
+- Faces that look "too perfect" — like professional retouching but more extreme
+- Motion that has no micro-vibrations (real cameras always shake slightly)
+- Backgrounds that are too clean, too symmetric
 
-Respond ONLY with this JSON (no other text):
+NOT AI INDICATORS (these are normal for real videos):
+- Pixelation or blocking from social media compression
+- Motion blur from fast movement
+- Grainy or noisy image (this is actually a REAL camera sign)
+- Slightly imperfect lighting
+- Normal beauty filters or makeup
+
+Also detect AI EDITING on real footage:
+- Face replacement with slightly wrong skin tone or sharp edges around face
+- AI background replacement with unnatural compositing seams
+
+Respond ONLY with this JSON (no markdown, no other text):
 {
   "verdict": "ai_generated" OR "ai_edited" OR "real",
   "confidence": 0.0 to 1.0,
-  "reason": "one sentence explanation under 80 chars"
+  "reason": "specific visual evidence, under 90 chars",
+  "strongest_artifact": "the single most AI-like observation or null"
 }
 
-IMPORTANT RULES:
-- confidence means: how sure you are in your verdict (not probability of being AI)
-- If verdict is "real", confidence=0.9 means 90% sure it's real
-- Default to "real" when uncertain. Only say ai_generated when you see MULTIPLE clear AI artifacts
-- Social media compression causes normal videos to look slightly unusual — this is NOT evidence of AI
-- A beautiful, well-lit, stable shot is NOT AI evidence
-- Only flag if you see: morphing skin, impossible geometry, objects merging, unnatural motion
-- When in doubt: verdict="real", confidence=0.8"""
+CONFIDENCE CALIBRATION:
+- ai_generated with 0.9+: multiple clear artifacts, very sure
+- ai_generated with 0.75: one or two clear artifacts
+- real with 0.9+: clearly real camera footage
+- real with 0.75: looks real but some doubt
+- When genuinely uncertain: verdict=real, confidence=0.65"""
 
 
 @dataclass
