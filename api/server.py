@@ -318,32 +318,31 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         method = result.method
         has_camera_origin = bool(result.signals.get("camera_origin_detected"))
 
-        # Frame-level visual analysis (works after TikTok/Instagram re-encoding)
-        # Uses local variance + temporal consistency + FFT spectrum
+        # Visual AI detection (ML model + rule-based, works after TikTok re-encoding)
         if final_confidence < 0.5 and not has_camera_origin:
             try:
-                from analyzer.frame_analyzer import analyze_frames
-                frame_result = analyze_frames(tmp_path)
-                if frame_result.verdict == "ai_generated" and frame_result.confidence >= 0.65:
-                    final_confidence = max(final_confidence, frame_result.confidence * 0.75)
-                    method = frame_result.method
+                from analyzer.visual_detector import detect_visual
+                vis = detect_visual(tmp_path)
+                if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
+                    final_confidence = max(final_confidence, vis.confidence * 0.80)
+                    method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-                elif frame_result.verdict == "real" and frame_result.confidence <= 0.1:
-                    # Strong evidence of real camera → cap our confidence low
-                    final_confidence = min(final_confidence, 0.08)
-                    method = frame_result.method
+                elif vis.verdict == "real" and vis.confidence >= 0.90:
+                    # Strong visual evidence of real camera
+                    final_confidence = min(final_confidence, 0.06)
+                    method = vis.method
             except Exception:
                 pass
 
-        # Audio AI analysis (works after platform re-encoding)
+        # Audio AI analysis
         if final_confidence < 0.5 and not has_camera_origin:
             try:
                 from analyzer.audio_analyzer_ai import analyze_audio_ai
                 audio_ai = analyze_audio_ai(tmp_path)
                 if audio_ai.verdict == "ai_audio" and audio_ai.confidence >= 0.65:
-                    final_confidence = max(final_confidence, audio_ai.confidence * 0.6)
-                    method = f"Audio AI fingerprint: {audio_ai.reason}"
+                    final_confidence = max(final_confidence, audio_ai.confidence * 0.55)
+                    method = f"Audio: {audio_ai.reason}"
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
             except Exception:
