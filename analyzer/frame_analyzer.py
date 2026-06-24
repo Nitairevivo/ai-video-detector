@@ -229,31 +229,42 @@ def analyze_frames(video_path: str) -> FrameAnalysisResult:
         fft_reason = "slightly unusual spectrum"
 
     # ── Combine signals ────────────────────────────────────────────────────────
-    # Require at least 2 independent signals to flag as AI
-    # Avoid false positives at all costs
+    # Key insight from calibration on real Wikimedia footage:
+    #   Real camera: var=600-800, temp_cv=0.40-0.60, fft=0.20-0.26
+    #
+    # Only flag as AI when we have STRONG evidence. Being conservative is key.
+    # A real video with "uncertain" is better than a false positive.
+
     scores = sorted([var_score, temp_score, fft_score], reverse=True)
 
-    if scores[0] >= 0.80 and scores[1] >= 0.55:
-        # Two strong signals
-        combined = (scores[0] * 0.5 + scores[1] * 0.35 + scores[2] * 0.15)
-        reasons = [r for s, r in [(var_score, var_reason), (temp_score, temp_reason), (fft_score, fft_reason)]
-                   if s >= 0.50]
-        verdict = "ai_generated" if combined >= 0.60 else "uncertain"
-        method = f"Frame analysis: {', '.join(reasons[:2])} (score={combined:.0%})"
-    elif scores[0] >= 0.70 and scores[1] >= 0.55 and scores[2] >= 0.40:
-        # Three moderate signals
-        combined = (scores[0] * 0.45 + scores[1] * 0.35 + scores[2] * 0.20)
-        verdict = "ai_generated" if combined >= 0.58 else "uncertain"
-        method = f"Frame analysis: multiple AI signals (score={combined:.0%})"
-    elif all(s <= 0.20 for s in [var_score, temp_score]):
-        # Both main signals say real
-        combined = 0.05
+    # Strong REAL signal: high local variance means real camera with natural noise
+    if local_var >= 600:
+        combined = 0.04
         verdict = "real"
-        method = f"Frame analysis: natural texture and motion (var={local_var:.0f})"
+        method = f"Frame analysis: high natural texture (var={local_var:.0f}) — camera footage"
+    elif local_var >= 500 and temp_cv >= 0.30:
+        combined = 0.06
+        verdict = "real"
+        method = f"Frame analysis: natural texture + motion — camera footage"
+    elif scores[0] >= 0.80 and scores[1] >= 0.65:
+        # Two strong independent AI signals
+        combined = scores[0] * 0.55 + scores[1] * 0.30 + scores[2] * 0.15
+        reasons = [r for s, r in [(var_score, var_reason), (temp_score, temp_reason), (fft_score, fft_reason)] if s >= 0.60]
+        verdict = "ai_generated" if combined >= 0.65 else "uncertain"
+        method = f"Frame analysis: {', '.join(reasons[:2])} (score={combined:.0%})"
+    elif scores[0] >= 0.85 and local_var < 300:
+        # Single very strong signal + low variance confirms AI smooth
+        combined = scores[0] * 0.75
+        verdict = "ai_generated" if combined >= 0.62 else "uncertain"
+        method = f"Frame analysis: {[var_reason,temp_reason,fft_reason][scores.index(scores[0]) if False else 0]} (score={combined:.0%})"
+    elif all(s <= 0.30 for s in [var_score, temp_score, fft_score]):
+        combined = 0.08
+        verdict = "real"
+        method = f"Frame analysis: natural video characteristics (var={local_var:.0f}, cv={temp_cv:.3f})"
     else:
-        combined = scores[0] * 0.6 + scores[1] * 0.4
+        combined = scores[0] * 0.60 + scores[1] * 0.40
         verdict = "uncertain"
-        method = f"Frame analysis: inconclusive (score={combined:.0%})"
+        method = f"Frame analysis: inconclusive (score={combined:.0%}, var={local_var:.0f})"
 
     signals = {
         "local_block_variance": round(local_var, 2),

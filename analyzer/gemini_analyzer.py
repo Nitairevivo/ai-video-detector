@@ -10,6 +10,18 @@ import urllib.request
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
 
+# In-memory cache: hash(video_path content) → GeminiResult
+_CACHE: dict = {}
+
+def _file_hash(path: str) -> str:
+    """Fast hash of first 64KB of file for cache key."""
+    try:
+        import hashlib
+        with open(path, "rb") as f:
+            return hashlib.md5(f.read(65536)).hexdigest()
+    except Exception:
+        return ""
+
 PROMPT = """You are the world's top forensic expert in detecting AI-generated video.
 
 Analyze these frames from a social media video. Your job: determine if the VIDEO ITSELF was AI-generated (Sora, Kling, Runway, Pika, etc.) or is real camera footage.
@@ -106,6 +118,11 @@ def analyze_with_gemini(video_path: str) -> Optional[GeminiResult]:
     if not api_key:
         return None
 
+    # Check cache first
+    key = _file_hash(video_path)
+    if key and key in _CACHE:
+        return _CACHE[key]
+
     frames = _extract_frames(video_path, n=6)
     if len(frames) < 3:
         return None
@@ -157,11 +174,15 @@ def analyze_with_gemini(video_path: str) -> Optional[GeminiResult]:
             return None
 
         result = json.loads(match.group())
-        return GeminiResult(
+        gr = GeminiResult(
             verdict=result.get("verdict", "real"),
             confidence=float(result.get("confidence", 0.5)),
             reason=result.get("reason", ""),
             frames_analyzed=len(frames),
         )
+        # Cache result
+        if key:
+            _CACHE[key] = gr
+        return gr
     except Exception as e:
         return None

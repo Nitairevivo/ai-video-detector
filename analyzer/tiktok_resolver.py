@@ -107,6 +107,22 @@ def _find_in_nested(obj, keys: list) -> Optional[object]:
     return None
 
 
+def _try_oembed_aigc(url: str) -> Tuple[bool, str]:
+    """Try TikTok's oEmbed API for AIGC detection (no auth required)."""
+    try:
+        oembed_url = f"https://www.tiktok.com/oembed?url={urllib.parse.quote(url)}"
+        req = urllib.request.Request(oembed_url, headers={"User-Agent": MOBILE_UA})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        # Check for AI-related fields in oEmbed response
+        text = json.dumps(data).lower()
+        if any(x in text for x in ["aigc", "ai_generated", "ai generated", "ai-generated"]):
+            return True, f"TikTok oEmbed AIGC: {list(data.keys())}"
+        return False, ""
+    except Exception:
+        return False, ""
+
+
 def resolve_tiktok(share_url: str) -> Tuple[Optional[str], bool, str]:
     """
     Resolve a TikTok share/video URL.
@@ -127,6 +143,11 @@ def resolve_tiktok(share_url: str) -> Tuple[Optional[str], bool, str]:
         html = _fetch_page(final_url, mobile=True)
     if not html:
         return None, False, "Page fetch failed"
+
+    # ── Try oEmbed first (fast, no IP blocking) ───────────────────────────────
+    oe_aigc, oe_info = _try_oembed_aigc(final_url)
+    if oe_aigc:
+        return None, True, oe_info
 
     # ── Check AIGC labels ──────────────────────────────────────────────────────
     is_aigc = False
