@@ -2,8 +2,110 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity,
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
-  Platform, Switch, Modal, Dimensions, Linking,
+  Platform, Switch, Modal, Dimensions, Linking, I18nManager,
 } from "react-native";
+
+// ─── i18n — Hebrew / English ──────────────────────────────────────────────────
+type Lang = "he" | "en";
+
+const T = {
+  he: {
+    poweredBy: "מופעל על ידי AI",
+    noVideos: "לא נסרקו סרטונים עדיין",
+    noVideosHint: {
+      android: "השתמש בכפתור 🔍 הצף בזמן גלילה ב-TikTok",
+      ios: "שתף סרטון מ-TikTok כדי להתחיל",
+    },
+    headerSub: {
+      android: "כפתור 🔍 צף מעל כל אפליקציה — זהה סרטוני AI תוך שניות",
+      ios: "שתף סרטון מ-TikTok או Instagram לזיהוי מיידי",
+    },
+    overlayCard: "כפתור צף אוטומטי",
+    overlaySub: "מזהה סרטונים אוטומטית בזמן גלילה",
+    iosCard: "📱 איך להשתמש ב-iPhone",
+    iosSteps: [
+      "פתח TikTok, Instagram או YouTube",
+      "לחץ Share על סרטון",
+      'בחר "VerifAI" מרשימת השיתוף',
+      "התוצאה מופיעה תוך 2-3 שניות",
+    ],
+    androidSteps: [
+      "פתח TikTok — כפתור 🔍 מופיע על המסך",
+      "גלול לסרטון → הכפתור מזהה ולוחץ Share לבד",
+      "תוצאה מופיעה מעל TikTok תוך 3-5 שניות",
+    ],
+    checkBtn: "🔍  בדוק קישור מה-Clipboard",
+    analyzing: "⏳  מנתח...",
+    history: "היסטוריה",
+    clearAll: "נקה הכל",
+    copyFirst: "העתק קישור קודם",
+    copyHint: "ב-TikTok: לחץ Share ← Copy Link ← חזור לכאן",
+    understood: "הבנתי",
+    analyzeUrl: "לנתח את הקישור?",
+    analyze: "נתח",
+    cancel: "ביטול",
+    error: "שגיאה",
+    connError: "בעיית חיבור",
+    clipboardError: "לא ניתן לקרוא clipboard",
+    scanning: "⏳ סורק...",
+    statAI: "🤖 AI",
+    statEdited: "✏️ נערך",
+    statReal: "✅ אמיתי",
+    confidence: "ביטחון",
+    accessBtn: "⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI",
+    downloadText: "📲 הורד VerifAI לטלפון אחר",
+    premiumBannerTitle: "👑 VerifAI Pro",
+    premiumBannerSub: "סריקה אוטומטית · ללא הגבלה · 7 ימים חינם",
+  },
+  en: {
+    poweredBy: "POWERED BY AI",
+    noVideos: "No videos analyzed yet",
+    noVideosHint: {
+      android: "Use the floating 🔍 button while scrolling TikTok",
+      ios: "Share a video from TikTok to get started",
+    },
+    headerSub: {
+      android: "Floating 🔍 button appears over any app — detect AI videos in seconds",
+      ios: "Share a video from TikTok or Instagram for instant detection",
+    },
+    overlayCard: "Auto-floating button",
+    overlaySub: "Detects videos automatically while scrolling",
+    iosCard: "📱 How to use on iPhone",
+    iosSteps: [
+      "Open TikTok, Instagram or YouTube",
+      "Tap Share on any video",
+      'Select "VerifAI" from the share sheet',
+      "Result appears in 2-3 seconds",
+    ],
+    androidSteps: [
+      "Open TikTok — 🔍 button appears on screen",
+      "Scroll to a video → button auto-detects and shares",
+      "Result appears over TikTok in 3-5 seconds",
+    ],
+    checkBtn: "🔍  Check link from Clipboard",
+    analyzing: "⏳  Analyzing...",
+    history: "History",
+    clearAll: "Clear all",
+    copyFirst: "Copy a link first",
+    copyHint: "In TikTok: tap Share → Copy Link → come back here",
+    understood: "Got it",
+    analyzeUrl: "Analyze this URL?",
+    analyze: "Analyze",
+    cancel: "Cancel",
+    error: "Error",
+    connError: "Connection error",
+    clipboardError: "Could not read clipboard",
+    scanning: "⏳ Scanning...",
+    statAI: "🤖 AI",
+    statEdited: "✏️ Edited",
+    statReal: "✅ Real",
+    confidence: "confidence",
+    accessBtn: "⚙️ Enable auto-detection in Settings → Accessibility → VerifAI",
+    downloadText: "📲 Download VerifAI on another phone",
+    premiumBannerTitle: "👑 VerifAI Pro",
+    premiumBannerSub: "Auto-scan · Unlimited · 7 days free",
+  },
+} as const;
 import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import { useOverlay } from "./hooks/useOverlay";
@@ -134,7 +236,8 @@ function getVerdictStyle(result: DetectionResult) {
   };
 }
 
-function ResultBanner({ result, onDismiss }: { result: DetectionResult; onDismiss: () => void }) {
+function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: DetectionResult; onDismiss: () => void; lang?: Lang }) {
+  const t = T[lang];
   const slideY = useRef(new Animated.Value(-160)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -164,7 +267,7 @@ function ResultBanner({ result, onDismiss }: { result: DetectionResult; onDismis
         </View>
         <View style={[styles.bannerCircle, { borderColor: color }]}>
           <Text style={[styles.bannerPct, { color }]}>{pct}%</Text>
-          <Text style={styles.bannerConf}>ביטחון</Text>
+          <Text style={styles.bannerConf}>{t.confidence}</Text>
         </View>
       </View>
       <TouchableOpacity style={styles.bannerClose} onPress={onDismiss}>
@@ -201,6 +304,8 @@ function AppInner() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showPremium, setShowPremium] = useState(false);
   const [scansToday, setScansToday] = useState(0);
+  const [lang, setLang] = useState<Lang>("he");
+  const t = T[lang];
   const lastChecked = useRef<string>("");
 
   const { overlayActive, startOverlay, stopOverlay } = useOverlay();
@@ -270,35 +375,51 @@ function AppInner() {
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch (e: unknown) {
       setHistory((prev) => prev.filter((h: any) => !h.loading));
-      Alert.alert("שגיאה", e instanceof Error ? e.message : "בעיית חיבור");
+      Alert.alert(t.error, e instanceof Error ? e.message : t.connError);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Handle incoming URLs — deep links, shared links, ACTION_VIEW intents
+  const handleIncomingUrl = useCallback((url: string | null) => {
+    if (!url) return;
+    if (url.startsWith("verifai://")) {
+      const match = url.match(/[?&]url=([^&]+)/);
+      if (match) {
+        const videoUrl = decodeURIComponent(match[1]);
+        if (isVideoUrl(videoUrl)) detect(videoUrl);
+        return;
+      }
+    }
+    if (isVideoUrl(url)) detect(url);
+  }, [detect]);
+
+  useEffect(() => {
+    Linking.getInitialURL().then(handleIncomingUrl).catch(() => {});
+    const sub = Linking.addEventListener("url", ({ url }) => handleIncomingUrl(url));
+    return () => sub.remove();
+  }, [handleIncomingUrl]);
+
   const onManualCheck = useCallback(async () => {
     try {
       const text = await Clipboard.getStringAsync();
       if (!text?.startsWith("http")) {
-        Alert.alert(
-          "העתק קישור קודם",
-          "ב-TikTok: לחץ Share ← Copy Link ← חזור לכאן",
-          [{ text: "הבנתי" }]
-        );
+        Alert.alert(t.copyFirst, t.copyHint, [{ text: t.understood }]);
         return;
       }
       if (!isVideoUrl(text)) {
-        Alert.alert("לנתח את הקישור?", text.slice(0, 100), [
-          { text: "ביטול", style: "cancel" },
-          { text: "נתח", onPress: () => detect(text) },
+        Alert.alert(t.analyzeUrl, text.slice(0, 100), [
+          { text: t.cancel, style: "cancel" },
+          { text: t.analyze, onPress: () => detect(text) },
         ]);
         return;
       }
       detect(text);
     } catch {
-      Alert.alert("שגיאה", "לא ניתן לקרוא clipboard");
+      Alert.alert(t.error, t.clipboardError);
     }
-  }, [detect]);
+  }, [detect, t]);
 
   const aiCount = history.filter((h) => (h as any).verdict === "ai_generated").length;
   const editedCount = history.filter((h) => (h as any).verdict === "ai_edited").length;
@@ -308,7 +429,7 @@ function AppInner() {
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#06060f" />
 
-      {result && <ResultBanner result={result} onDismiss={() => setResult(null)} />}
+      {result && <ResultBanner result={result} onDismiss={() => setResult(null)} lang={lang} />}
       <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -317,17 +438,23 @@ function AppInner() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View>
-              <Text style={styles.headerEyebrow}>POWERED BY AI</Text>
+              <Text style={styles.headerEyebrow}>{t.poweredBy}</Text>
               <Text style={styles.headerTitle}>VerifAI</Text>
             </View>
-            <TouchableOpacity style={styles.proBtn} onPress={() => setShowPremium(true)}>
-              <Text style={styles.proBtnText}>👑 Pro</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <TouchableOpacity
+                style={styles.langBtn}
+                onPress={() => setLang(l => l === "he" ? "en" : "he")}
+              >
+                <Text style={styles.langBtnText}>{lang === "he" ? "EN" : "עב"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.proBtn} onPress={() => setShowPremium(true)}>
+                <Text style={styles.proBtnText}>👑 Pro</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={styles.headerSub}>
-            {Platform.OS === "android"
-              ? "כפתור 🔍 צף מעל כל אפליקציה — זהה סרטוני AI תוך שניות"
-              : "שתף סרטון מ-TikTok או Instagram לזיהוי מיידי"}
+            {Platform.OS === "android" ? t.headerSub.android : t.headerSub.ios}
           </Text>
 
           {/* Stats row */}
@@ -335,15 +462,15 @@ function AppInner() {
             <View style={styles.statsRow}>
               <View style={[styles.statBox, { borderColor: "#ef444433" }]}>
                 <Text style={[styles.statNum, { color: "#ef4444" }]}>{aiCount}</Text>
-                <Text style={styles.statLabel}>🤖 AI</Text>
+                <Text style={styles.statLabel}>{t.statAI}</Text>
               </View>
               <View style={[styles.statBox, { borderColor: "#a855f733" }]}>
                 <Text style={[styles.statNum, { color: "#a855f7" }]}>{editedCount}</Text>
-                <Text style={styles.statLabel}>✏️ נערך</Text>
+                <Text style={styles.statLabel}>{t.statEdited}</Text>
               </View>
               <View style={[styles.statBox, { borderColor: "#22c55e33" }]}>
                 <Text style={[styles.statNum, { color: "#22c55e" }]}>{realCount}</Text>
-                <Text style={styles.statLabel}>✅ אמיתי</Text>
+                <Text style={styles.statLabel}>{t.statReal}</Text>
               </View>
             </View>
           )}
@@ -355,8 +482,8 @@ function AppInner() {
             <View style={styles.cardHeader}>
               <Text style={styles.cardIcon}>🔍</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>כפתור צף אוטומטי</Text>
-                <Text style={styles.cardSub}>מזהה סרטונים אוטומטית בזמן גלילה</Text>
+                <Text style={styles.cardTitle}>{t.overlayCard}</Text>
+                <Text style={styles.cardSub}>{t.overlaySub}</Text>
               </View>
               <Switch
                 value={overlayActive}
@@ -368,25 +495,14 @@ function AppInner() {
 
             {overlayActive && (
               <View style={styles.stepsWrap}>
-                <View style={styles.stepRow}>
-                  <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>1</Text></View>
-                  <Text style={styles.stepText}>פתח TikTok — כפתור 🔍 מופיע על המסך</Text>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>2</Text></View>
-                  <Text style={styles.stepText}>גלול לסרטון → הכפתור מזהה ולוחץ Share לבד</Text>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>3</Text></View>
-                  <Text style={styles.stepText}>תוצאה מופיעה מעל TikTok תוך 3-5 שניות</Text>
-                </View>
-
-                {/* Accessibility toggle hint */}
-                <TouchableOpacity
-                  style={styles.accessBtn}
-                  onPress={() => Linking.openSettings()}
-                >
-                  <Text style={styles.accessBtnText}>⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI</Text>
+                {t.androidSteps.map((s, i) => (
+                  <View key={i} style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+                    <Text style={styles.stepText}>{s}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity style={styles.accessBtn} onPress={() => Linking.openSettings()}>
+                  <Text style={styles.accessBtnText}>{t.accessBtn}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -396,9 +512,9 @@ function AppInner() {
         {/* ── iOS Card ─────────────────────────────────────────────── */}
         {Platform.OS === "ios" && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>📱 איך להשתמש ב-iPhone</Text>
+            <Text style={styles.cardTitle}>{t.iosCard}</Text>
             <View style={styles.stepsWrap}>
-              {["פתח TikTok, Instagram או YouTube", "לחץ Share על סרטון", 'בחר "VerifAI" מרשימת השיתוף', "התוצאה מופיעה תוך 2-3 שניות"].map((s, i) => (
+              {t.iosSteps.map((s, i) => (
                 <View key={i} style={styles.stepRow}>
                   <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
                   <Text style={styles.stepText}>{s}</Text>
@@ -417,21 +533,21 @@ function AppInner() {
         >
           {loading ? (
             <View style={styles.checkBtnInner}>
-              <Text style={styles.checkBtnText}>⏳  מנתח...</Text>
+              <Text style={styles.checkBtnText}>{t.analyzing}</Text>
               <View style={styles.loadingBar}>
                 <Animated.View style={styles.loadingFill} />
               </View>
             </View>
           ) : (
-            <Text style={styles.checkBtnText}>🔍  בדוק קישור מה-Clipboard</Text>
+            <Text style={styles.checkBtnText}>{t.checkBtn}</Text>
           )}
         </TouchableOpacity>
 
         {/* ── Premium Banner ───────────────────────────────────────── */}
         <TouchableOpacity style={styles.premiumBanner} onPress={() => setShowPremium(true)} activeOpacity={0.85}>
           <View>
-            <Text style={styles.premiumBannerTitle}>👑 VerifAI Pro</Text>
-            <Text style={styles.premiumBannerSub}>סריקה אוטומטית · ללא הגבלה · 7 ימים חינם</Text>
+            <Text style={styles.premiumBannerTitle}>{t.premiumBannerTitle}</Text>
+            <Text style={styles.premiumBannerSub}>{t.premiumBannerSub}</Text>
           </View>
           <View style={styles.premiumArrow}>
             <Text style={{ color: "#fff", fontSize: 14 }}>←</Text>
@@ -442,9 +558,9 @@ function AppInner() {
         {history.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>היסטוריה</Text>
+              <Text style={styles.sectionTitle}>{t.history}</Text>
               <TouchableOpacity onPress={() => setHistory([])}>
-                <Text style={styles.clearBtn}>נקה הכל</Text>
+                <Text style={styles.clearBtn}>{t.clearAll}</Text>
               </TouchableOpacity>
             </View>
             {history.map((item, i) =>
@@ -452,7 +568,7 @@ function AppInner() {
                 <View key="loading" style={[styles.historyRow, { padding: 14, gap: 10 }]}>
                   <View style={[styles.historyBar, { backgroundColor: "#6366f1" }]} />
                   <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={[styles.historyTitle, { color: "#6366f1" }]}>⏳ סורק...</Text>
+                    <Text style={[styles.historyTitle, { color: "#6366f1" }]}>{t.scanning}</Text>
                     <Text style={styles.historyUrl} numberOfLines={1}>{item.url}</Text>
                   </View>
                 </View>
@@ -466,18 +582,16 @@ function AppInner() {
         {history.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🎬</Text>
-            <Text style={styles.emptyTitle}>לא נסרקו סרטונים עדיין</Text>
+            <Text style={styles.emptyTitle}>{t.noVideos}</Text>
             <Text style={styles.emptyHint}>
-              {Platform.OS === "android"
-                ? "השתמש בכפתור 🔍 הצף בזמן גלילה ב-TikTok"
-                : "שתף סרטון מ-TikTok כדי להתחיל"}
+              {Platform.OS === "android" ? t.noVideosHint.android : t.noVideosHint.ios}
             </Text>
           </View>
         )}
 
         {/* Download link */}
         <TouchableOpacity onPress={() => Linking.openURL(DOWNLOAD_URL)} style={styles.downloadLink}>
-          <Text style={styles.downloadText}>📲 הורד VerifAI לטלפון אחר</Text>
+          <Text style={styles.downloadText}>{t.downloadText}</Text>
         </TouchableOpacity>
 
       </ScrollView>
@@ -544,6 +658,8 @@ const styles = StyleSheet.create({
   headerEyebrow: { color: "#6366f1", fontSize: 10, fontWeight: "800", letterSpacing: 3 },
   headerTitle: { color: "#fff", fontSize: 42, fontWeight: "900", letterSpacing: -2, lineHeight: 44 },
   headerSub: { color: "#4b5563", fontSize: 13, lineHeight: 19 },
+  langBtn: { backgroundColor: "#0e0e1a", borderRadius: 16, paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1, borderColor: "#ffffff15" },
+  langBtnText: { color: "#6b7280", fontSize: 12, fontWeight: "700" },
   proBtn: { backgroundColor: "#1a1040", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: "#6366f133" },
   proBtnText: { color: "#a78bfa", fontSize: 13, fontWeight: "700" },
 

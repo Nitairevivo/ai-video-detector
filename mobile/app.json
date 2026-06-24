@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -32,6 +32,37 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
         "android.permission.READ_CLIPBOARD"
+      ],
+      "intentFilters": [
+        {
+          "action": "android.intent.action.SEND",
+          "data": [{ "mimeType": "text/plain" }],
+          "category": ["android.intent.category.DEFAULT"]
+        },
+        {
+          "action": "android.intent.action.VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "*.tiktok.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "vm.tiktok.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.instagram.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.youtube.com", "pathPrefix": "/shorts" },
+            { "scheme": "https", "host": "*.youtube.com", "pathPrefix": "/watch" },
+            { "scheme": "https", "host": "youtu.be", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.twitter.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.x.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.reddit.com", "pathPrefix": "/r" },
+            { "scheme": "https", "host": "v.redd.it", "pathPrefix": "/" },
+            { "scheme": "https", "host": "*.facebook.com", "pathPrefix": "/" },
+            { "scheme": "https", "host": "fb.watch", "pathPrefix": "/" }
+          ],
+          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"]
+        },
+        {
+          "action": "android.intent.action.VIEW",
+          "data": [{ "scheme": "verifai" }],
+          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"]
+        }
       ]
     },
     "plugins": [
