@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Video Detector",
-  "version": "1.2.0",
-  "description": "Automatically flags AI-generated videos on TikTok, Instagram, YouTube, Twitter, Reddit and Facebook.",
+  "name": "VerifAI — AI Video Detector",
+  "version": "2.0.0",
+  "description": "Detects AI-generated, AI-edited, and authentic videos on TikTok, Instagram, YouTube and more. One click — instant result.",
 
   "permissions": [
     "activeTab",
@@ -14,13 +14,19 @@
 
   "host_permissions": [
     "https://www.tiktok.com/*",
+    "https://vm.tiktok.com/*",
     "https://www.instagram.com/*",
     "https://www.youtube.com/*",
     "https://twitter.com/*",
     "https://x.com/*",
     "https://www.reddit.com/*",
     "https://www.facebook.com/*",
-    "https://web.telegram.org/*",
+    "https://fb.watch/*",
+    "https://www.snapchat.com/*",
+    "https://vimeo.com/*",
+    "https://www.twitch.tv/*",
+    "https://www.dailymotion.com/*",
+    "https://streamable.com/*",
     "https://ai-video-detector-production-a305.up.railway.app/*"
   ],
 
@@ -32,13 +38,19 @@
     {
       "matches": [
         "https://www.tiktok.com/*",
+        "https://vm.tiktok.com/*",
         "https://www.instagram.com/*",
         "https://www.youtube.com/*",
         "https://twitter.com/*",
         "https://x.com/*",
         "https://www.reddit.com/*",
         "https://www.facebook.com/*",
-        "https://web.telegram.org/*"
+        "https://fb.watch/*",
+        "https://www.snapchat.com/*",
+        "https://vimeo.com/*",
+        "https://www.twitch.tv/*",
+        "https://www.dailymotion.com/*",
+        "https://streamable.com/*"
       ],
       "js": ["content/inject.js"],
       "css": ["content/overlay.css"],

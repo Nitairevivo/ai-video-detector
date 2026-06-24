@@ -1,10 +1,11 @@
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 
-// Persistent cache — survives page refreshes
-const CACHE_KEY = "aivd_cache";
+// ─── Cache ────────────────────────────────────────────────────────────────────
+const CACHE_KEY = "verifai_cache_v2";
 let resultCache = {};
 chrome.storage.local.get([CACHE_KEY], (s) => { resultCache = s[CACHE_KEY] || {}; });
 
+// ─── Platform ─────────────────────────────────────────────────────────────────
 const PLATFORM = (() => {
   const h = location.hostname;
   if (h.includes("tiktok"))    return "tiktok";
@@ -13,23 +14,25 @@ const PLATFORM = (() => {
   if (h.includes("twitter") || h.includes("x.com")) return "twitter";
   if (h.includes("reddit"))    return "reddit";
   if (h.includes("facebook") || h.includes("fb.watch")) return "facebook";
-  if (h.includes("t.me"))      return "telegram";
+  if (h.includes("snapchat"))  return "snapchat";
+  if (h.includes("vimeo"))     return "vimeo";
+  if (h.includes("twitch"))    return "twitch";
+  if (h.includes("dailymotion")) return "dailymotion";
   return "unknown";
 })();
 
-// ─── Selectors ─────────────────────────────────────────────────────────────────
-
 const SELECTORS = {
-  tiktok:    'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
-  instagram: 'article, div[role="dialog"], div[class*="x1cy8zhl"]',
-  youtube:   "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer, ytd-rich-item-renderer",
-  twitter:   'article[data-testid="tweet"]',
-  reddit:    'shreddit-post, div[data-testid="post-container"]',
-  facebook:  'div[data-pagelet*="FeedUnit"], div[role="article"]',
-  telegram:  'div.message',
+  tiktok:      'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
+  instagram:   'article, div[role="dialog"]',
+  youtube:     "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer, ytd-rich-item-renderer",
+  twitter:     'article[data-testid="tweet"]',
+  reddit:      'shreddit-post, div[data-testid="post-container"]',
+  facebook:    'div[data-pagelet*="FeedUnit"], div[role="article"]',
+  snapchat:    'div[class*="VideoPlayer"]',
+  vimeo:       '.player_container',
+  twitch:      '.video-player',
+  dailymotion: '.player-root',
 };
-
-// ─── URL extraction ────────────────────────────────────────────────────────────
 
 function getVideoUrl(container) {
   switch (PLATFORM) {
@@ -53,8 +56,7 @@ function getVideoUrl(container) {
       return null;
     }
     case "youtube": {
-      if (location.pathname.startsWith("/shorts/")) return location.href;
-      if (location.pathname === "/watch") return location.href;
+      if (location.pathname.startsWith("/shorts/") || location.pathname === "/watch") return location.href;
       const link = container.querySelector('a[href^="/shorts/"], a[href*="watch?v="]');
       if (link) return new URL(link.href, "https://www.youtube.com").href;
       return null;
@@ -76,171 +78,161 @@ function getVideoUrl(container) {
       if (/\/(watch|reel|videos)/.test(location.pathname)) return location.href;
       return null;
     }
+    default:
+      return location.href;
   }
-  const video = container.querySelector("video");
-  if (video?.src && !video.src.startsWith("blob:") && !video.src.startsWith("data:")) return video.src;
-  return null;
 }
 
-// ─── Loading state ─────────────────────────────────────────────────────────────
+// ─── Verdict styles ───────────────────────────────────────────────────────────
+function getVerdictStyle(result) {
+  const v = result.verdict || (result.is_ai_generated ? "ai_generated" : "real");
+  if (v === "ai_generated") return {
+    color: "#ef4444", bg: "rgba(10,2,2,0.93)", border: "#ef444466",
+    icon: "🤖", label: "AI GENERATED",
+    title: result.ai_tool_detected ? `Made with ${result.ai_tool_detected}` : "AI-Generated Video",
+  };
+  if (v === "ai_edited") return {
+    color: "#a855f7", bg: "rgba(8,2,14,0.93)", border: "#a855f766",
+    icon: "✏️", label: "AI EDITED",
+    title: result.edit_tool_detected ? `Edited with ${result.edit_tool_detected}` : "Real video, AI-edited",
+  };
+  return {
+    color: "#22c55e", bg: "rgba(2,10,4,0.93)", border: "#22c55e66",
+    icon: "✅", label: "AUTHENTIC",
+    title: "Real Footage",
+  };
+}
+
+// ─── Scan button ──────────────────────────────────────────────────────────────
+function injectScanButton(container) {
+  if (container._aivdBtn) return;
+  container._aivdBtn = true;
+  if (getComputedStyle(container).position === "static") container.style.position = "relative";
+
+  const btn = document.createElement("div");
+  btn.className = "aivd-scan-btn";
+  btn.title = "VerifAI — Check this video";
+  btn.innerHTML = `<span class="aivd-scan-icon">🔍</span><span class="aivd-scan-label">VerifAI</span>`;
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    await analyze(container, false);
+  });
+  container.appendChild(btn);
+}
+
+// ─── Loading / Result ─────────────────────────────────────────────────────────
+function removeResult(container) {
+  container.querySelector(".aivd-loader")?.remove();
+  container.querySelector(".aivd-result")?.remove();
+}
 
 function injectLoader(container) {
-  if (container._aivdInjected) return null;
-  container._aivdInjected = true;
-  if (getComputedStyle(container).position === "static") container.style.position = "relative";
+  removeResult(container);
   const loader = document.createElement("div");
   loader.className = "aivd-loader";
-  loader.innerHTML = `<span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span><span class="aivd-loader-dot"></span>`;
+  loader.innerHTML = `<span></span><span></span><span></span>`;
   container.appendChild(loader);
   return loader;
 }
 
-// ─── Analysis ──────────────────────────────────────────────────────────────────
+function showResult(container, result) {
+  removeResult(container);
+  const style = getVerdictStyle(result);
+  const pct = Math.round(result.confidence * 100);
 
-async function analyze(container, deep = false) {
-  const url = getVideoUrl(container);
-  if (!url) { container._aivdInjected = false; return; }
-
-  // Serve from persistent cache
-  if (resultCache[url]) {
-    if (resultCache[url].is_ai_generated) showBadge(container, resultCache[url]);
-    return;
-  }
-
-  const loader = injectLoader(container);
-
-  let response;
-  try {
-    response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url, deep });
-  } catch {
-    loader?.remove();
-    container._aivdInjected = false;
-    return;
-  }
-
-  loader?.remove();
-  if (!response?.ok) return;
-
-  // Persist result
-  resultCache[url] = response.result;
-  chrome.storage.local.set({ [CACHE_KEY]: resultCache });
-
-  if (response.result.is_ai_generated) {
-    aiDetectedCount++;
-    updateBadgeCount();
-    showBadge(container, response.result);
-  }
-}
-
-// ─── Badge ─────────────────────────────────────────────────────────────────────
-
-function showBadge(container, result) {
-  if (container.querySelector(".aivd-badge")) return;
-  const pct  = Math.round(result.confidence * 100);
-  const tool = result.ai_tool_detected;
-
-  const badge = document.createElement("div");
-  badge.className = "aivd-badge";
-  badge.innerHTML = `
-    <svg class="aivd-icon" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M5 8.5l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <span class="aivd-label">AI${tool ? ` · ${tool}` : ""}</span>
-    <span class="aivd-pct">${pct}%</span>
+  const el = document.createElement("div");
+  el.className = "aivd-result";
+  el.style.cssText = `background:${style.bg};border-color:${style.border};`;
+  el.innerHTML = `
+    <div class="aivd-result-bar" style="background:${style.color}"></div>
+    <div class="aivd-result-body">
+      <div class="aivd-result-badge" style="color:${style.color};background:${style.color}22">${style.icon} ${style.label}</div>
+      <div class="aivd-result-title">${style.title}</div>
+      <div class="aivd-result-method">${(result.detection_method || "").slice(0, 60)}</div>
+    </div>
+    <div class="aivd-result-pct" style="color:${style.color}">${pct}%</div>
+    <button class="aivd-result-close">✕</button>
   `;
-
-  badge.addEventListener("mouseenter", () => {
-    const tip = document.createElement("div");
-    tip.className = "aivd-tip";
-    tip.innerHTML = `
-      <div class="aivd-tip-title">🤖 AI-Generated Video</div>
-      <div class="aivd-tip-row"><span>Confidence</span><strong>${pct}%</strong></div>
-      ${tool ? `<div class="aivd-tip-row"><span>Tool</span><strong>${tool}</strong></div>` : ""}
-      <div class="aivd-tip-method">${result.detection_method}</div>
-    `;
-    badge.appendChild(tip);
-  });
-  badge.addEventListener("mouseleave", () => badge.querySelector(".aivd-tip")?.remove());
-  badge.addEventListener("click", (e) => { e.stopPropagation(); badge.remove(); });
-
-  container.appendChild(badge);
+  el.querySelector(".aivd-result-close").addEventListener("click", (e) => { e.stopPropagation(); el.remove(); });
+  if (result.verdict !== "ai_generated") setTimeout(() => el.remove(), 8000);
+  container.appendChild(el);
+  container.querySelector(".aivd-scan-btn")?.remove();
 }
 
-// ─── Extension badge count ─────────────────────────────────────────────────────
-
+// ─── Analyze ──────────────────────────────────────────────────────────────────
+const analyzing = new Set();
 let aiDetectedCount = 0;
 
-function updateBadgeCount() {
-  chrome.runtime.sendMessage({
-    type: "UPDATE_BADGE",
-    count: aiDetectedCount,
-  }).catch(() => {});
+async function analyze(container, auto = true) {
+  const url = getVideoUrl(container);
+  if (!url || analyzing.has(url)) return;
+  if (resultCache[url]) { showResult(container, resultCache[url]); return; }
+
+  analyzing.add(url);
+  const loader = injectLoader(container);
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "ANALYZE_URL", url });
+    loader?.remove();
+    if (response?.ok && response.result) {
+      resultCache[url] = response.result;
+      chrome.storage.local.set({ [CACHE_KEY]: resultCache });
+      if (!auto || response.result.verdict !== "real") showResult(container, response.result);
+      if (response.result.verdict === "ai_generated") {
+        aiDetectedCount++;
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: aiDetectedCount }).catch(() => {});
+      }
+    } else { loader?.remove(); }
+  } catch { loader?.remove(); }
+  finally { analyzing.delete(url); }
 }
 
-// ─── Messages ──────────────────────────────────────────────────────────────────
-
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "GET_STATS") {
-    sendResponse({ total: Object.keys(resultCache).length, ai: aiDetectedCount });
-  }
-  if (msg.type === "SET_AUTO_ANALYZE") {
-    // Don't reload — just toggle observer
-    if (msg.enabled) startObserver();
-    else stopObserver();
-  }
-  // Result injected from context-menu check in background.js
-  if (msg.type === "SHOW_RESULT_FROM_CONTEXT") {
-    const container = document.querySelector(SELECTORS[PLATFORM]);
-    if (container && msg.result?.is_ai_generated) showBadge(container, msg.result);
-  }
-});
-
-// ─── Observer ──────────────────────────────────────────────────────────────────
-
-let io = null;
-let mo = null;
+// ─── Observer ─────────────────────────────────────────────────────────────────
+let io = null, mo = null;
 
 function startObserver() {
-  if (io) return; // already running
+  if (io) return;
   const sel = SELECTORS[PLATFORM];
   if (!sel) return;
-
-  chrome.storage.sync.get(["deepAnalyze"], ({ deepAnalyze }) => {
-    const deep = deepAnalyze === true;
-
-    io = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting && !entry.target._aivdInjected) {
-          analyze(entry.target, deep);
-        }
+  io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const el = entry.target;
+      injectScanButton(el);
+      if (!el._aivdScanned) { el._aivdScanned = true; analyze(el, true); }
+    }
+  }, { threshold: 0.6 });
+  const observe = (el) => { if (!el._aivdBtn) io.observe(el); };
+  document.querySelectorAll(sel).forEach(observe);
+  mo = new MutationObserver((mutations) => {
+    for (const m of mutations)
+      for (const node of m.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches?.(sel)) observe(node);
+        node.querySelectorAll?.(sel).forEach(observe);
       }
-    }, { threshold: 0.5 });
-
-    const observe = (el) => { if (!el._aivdInjected) io.observe(el); };
-    document.querySelectorAll(sel).forEach(observe);
-
-    mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (!(node instanceof Element)) continue;
-          if (node.matches?.(sel)) observe(node);
-          node.querySelectorAll?.(sel).forEach(observe);
-        }
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
   });
+  mo.observe(document.body, { childList: true, subtree: true });
 }
 
-function stopObserver() {
-  io?.disconnect(); io = null;
-  mo?.disconnect(); mo = null;
-}
+function stopObserver() { io?.disconnect(); io = null; mo?.disconnect(); mo = null; }
 
-// ─── Init ──────────────────────────────────────────────────────────────────────
+// ─── Messages ─────────────────────────────────────────────────────────────────
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "GET_STATS") sendResponse({ total: Object.keys(resultCache).length, ai: aiDetectedCount });
+  if (msg.type === "SCAN_CURRENT") {
+    const sel = SELECTORS[PLATFORM];
+    const containers = sel ? [...document.querySelectorAll(sel)] : [];
+    const visible = containers.find(c => {
+      const r = c.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight + 100;
+    }) || containers[0];
+    if (visible) analyze(visible, false);
+  }
+  if (msg.type === "SET_AUTO_ANALYZE") msg.enabled ? startObserver() : stopObserver();
+});
 
+// ─── Init ─────────────────────────────────────────────────────────────────────
 chrome.storage.sync.get(["autoAnalyze"], ({ autoAnalyze }) => {
-  // Default on; only skip if explicitly disabled
   if (autoAnalyze !== false) startObserver();
 });
