@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback, KeyboardEvent } from "react";
+import { useState, useRef, useCallback, useEffect, KeyboardEvent } from "react";
+
+const HISTORY_KEY = "aivd_history";
+const MAX_HISTORY = 50;
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ai-video-detector-production-a305.up.railway.app";
 
@@ -145,12 +148,22 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
           <p className="text-white font-semibold text-sm">{style.title}</p>
           <p className="text-gray-500 text-xs mt-0.5 truncate">{item.label}</p>
           <p className="text-gray-600 text-xs mt-1 truncate">{r.detection_method}</p>
-          {r.signals && (
-            <button onClick={() => setExpanded(v => !v)}
-              className="text-xs text-gray-600 hover:text-gray-400 mt-2 transition-colors">
-              {expanded ? "Hide details ↑" : "Show details ↓"}
-            </button>
-          )}
+          <div className="flex items-center gap-3 mt-2">
+            {r.signals && (
+              <button onClick={() => setExpanded(v => !v)} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+                {expanded ? "Hide details ↑" : "Show details ↓"}
+              </button>
+            )}
+            {item.url && (
+              <button onClick={() => {
+                const pct = Math.round(r.confidence * 100);
+                const verdict = r.verdict === "ai_generated" ? "🤖 AI Generated" : r.verdict === "ai_edited" ? "✏️ AI Edited" : "✅ Real";
+                navigator.clipboard.writeText(`${verdict} (${pct}%) — ${item.url}\nDetected by VerifAI`);
+              }} className="text-xs text-gray-600 hover:text-violet-400 transition-colors">
+                Copy result
+              </button>
+            )}
+          </div>
         </div>
         <button onClick={onRemove} className="text-gray-700 hover:text-gray-400 text-sm px-1 flex-shrink-0">✕</button>
       </div>
@@ -203,7 +216,17 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [deepMode, setDeepMode] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Array<{url: string; label: string; verdict: string; confidence: number; tool: string | null; date: string}>>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Load history from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(HISTORY_KEY);
+      if (saved) setHistory(JSON.parse(saved));
+    } catch {}
+  }, []);
 
   const analyzeItem = useCallback(async (item: VideoItem, deep = false) => {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "analyzing" } : i));
@@ -230,6 +253,15 @@ export default function Home() {
       }
       const result: DetectionResult = await res.json();
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "done", result } : i));
+      // Save to history
+      if (item.url) {
+        const entry = { url: item.url, label: item.label, verdict: result.verdict, confidence: result.confidence, tool: result.ai_tool_detected, date: new Date().toISOString() };
+        setHistory(prev => {
+          const updated = [entry, ...prev.filter(h => h.url !== item.url)].slice(0, MAX_HISTORY);
+          try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      }
     } catch (e: unknown) {
       clearTimeout(timeout);
       let msg = "Unknown error";
@@ -241,14 +273,17 @@ export default function Home() {
     }
   }, []);
 
-  const addUrl = useCallback((raw: string) => {
-    const url = raw.trim();
-    if (!url.startsWith("http")) return;
-    const item: VideoItem = { id: Math.random().toString(36).slice(2), url, label: getPlatformLabel(url), status: "pending" };
-    setItems(prev => [item, ...prev]);
-    analyzeItem(item, deepMode);
+  const addUrls = useCallback((raw: string) => {
+    const urls = raw.split(/[\n,\s]+/).map(s => s.trim()).filter(s => s.startsWith("http"));
+    if (!urls.length) return;
+    const newItems: VideoItem[] = urls.map(url => ({
+      id: Math.random().toString(36).slice(2), url,
+      label: getPlatformLabel(url), status: "pending" as const,
+    }));
+    setItems(prev => [...newItems, ...prev]);
+    newItems.forEach(item => analyzeItem(item, deepMode));
     setUrlInput("");
-  }, [analyzeItem]);
+  }, [analyzeItem, deepMode]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const valid = Array.from(files).filter(f => /\.(mp4|mov|mkv|webm|m4v)$/i.test(f.name));
@@ -375,22 +410,62 @@ export default function Home() {
             </button>
           </div>
 
-          {/* URL input */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-500">🔗</div>
-              <input type="url" value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && addUrl(urlInput)}
-                placeholder="Paste TikTok, Instagram, YouTube link…"
-                className="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/60 transition-all" />
+          {/* URL input — supports single or multiple URLs */}
+          <div className="space-y-2">
+            <textarea
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addUrls(urlInput); }
+              }}
+              placeholder={"Paste one or multiple links (TikTok, Instagram, YouTube…)\nOne per line for batch analysis"}
+              rows={urlInput.split("\n").length > 1 ? Math.min(urlInput.split("\n").length + 1, 5) : 1}
+              className="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/60 transition-all resize-none leading-relaxed"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => addUrls(urlInput)}
+                disabled={!urlInput.split(/[\n,\s]+/).some(s => s.trim().startsWith("http"))}
+                className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white transition-all disabled:opacity-30 hover:scale-[1.02]"
+                style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+                {urlInput.split(/[\n,\s]+/).filter(s => s.trim().startsWith("http")).length > 1
+                  ? `Detect ${urlInput.split(/[\n,\s]+/).filter(s => s.trim().startsWith("http")).length} videos`
+                  : "Detect"}
+              </button>
+              {history.length > 0 && (
+                <button onClick={() => setShowHistory(v => !v)}
+                  className="px-4 py-3 rounded-2xl text-sm font-medium border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition-all">
+                  {showHistory ? "Hide" : `History (${history.length})`}
+                </button>
+              )}
             </div>
-            <button onClick={() => addUrl(urlInput)} disabled={!urlInput.startsWith("http")}
-              className="px-5 py-3.5 rounded-2xl text-sm font-semibold text-white transition-all disabled:opacity-30 hover:scale-105"
-              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
-              Detect
-            </button>
           </div>
+
+          {/* History panel */}
+          {showHistory && history.length > 0 && (
+            <div className="rounded-2xl bg-white/3 border border-white/8 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/6">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Recent checks</span>
+                <button onClick={() => { setHistory([]); localStorage.removeItem(HISTORY_KEY); }} className="text-xs text-gray-600 hover:text-red-400 transition-colors">Clear</button>
+              </div>
+              <div className="divide-y divide-white/5 max-h-64 overflow-y-auto">
+                {history.map((h, i) => {
+                  const color = h.verdict === "ai_generated" ? "#ef4444" : h.verdict === "ai_edited" ? "#a855f7" : "#22c55e";
+                  const icon = h.verdict === "ai_generated" ? "🤖" : h.verdict === "ai_edited" ? "✏️" : "✅";
+                  return (
+                    <button key={i} onClick={() => { setUrlInput(h.url); setShowHistory(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/4 transition-colors text-left">
+                      <span className="text-base flex-shrink-0">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-white truncate">{h.label}</p>
+                        <p className="text-[10px] text-gray-600 truncate">{h.url}</p>
+                      </div>
+                      <span className="text-xs font-bold flex-shrink-0" style={{ color }}>{Math.round(h.confidence * 100)}%</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-3 text-xs text-gray-700">
             <div className="flex-1 h-px bg-white/8" /><span>or upload a file</span><div className="flex-1 h-px bg-white/8" />

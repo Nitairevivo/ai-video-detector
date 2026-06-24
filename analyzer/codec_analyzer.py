@@ -26,6 +26,13 @@ class CodecFeatures:
     frame_size_cv: float = 0.0          # coefficient of variation
     frame_size_skewness: float = 0.0
 
+    # I-frame / P-frame analysis (AI videos have characteristic ratios)
+    i_frame_count: int = 0
+    p_frame_count: int = 0
+    ip_size_ratio: float = 0.0          # I-frame mean size / P-frame mean size
+    p_size_cv: float = 0.0             # P-frame size CV (AI = low = too uniform)
+    b_frame_count: int = 0
+
     # Timing uniformity (AI = near-perfect, real = slight jitter)
     pts_deltas: list = field(default_factory=list)
     pts_uniformity: float = 0.0         # 1.0 = perfectly uniform
@@ -108,7 +115,7 @@ def _extract_frame_data(file_path: str, features: CodecFeatures):
         FFPROBE, "-v", "quiet",
         "-select_streams", "v:0",
         "-show_frames",
-        "-show_entries", "frame=pkt_size,pts_time,key_frame,pict_type",
+        "-show_entries", "frame=pkt_size,pts_time,key_frame,pict_type,best_effort_timestamp_time",
         "-print_format", "json",
         "-read_intervals", f"%+#{MAX_FRAMES_TO_SAMPLE}",
         file_path
@@ -127,14 +134,23 @@ def _extract_frame_data(file_path: str, features: CodecFeatures):
     sizes = []
     pts_times = []
     keyframe_positions = []
+    i_sizes, p_sizes, b_sizes = [], [], []
 
     for i, frame in enumerate(frames):
         size = frame.get("pkt_size")
-        pts = frame.get("pts_time")
+        pts = frame.get("pts_time") or frame.get("best_effort_timestamp_time")
         is_key = frame.get("key_frame", 0)
+        pict_type = frame.get("pict_type", "")
 
         if size is not None:
-            sizes.append(int(size))
+            sz = int(size)
+            sizes.append(sz)
+            if pict_type == "I":
+                i_sizes.append(sz)
+            elif pict_type == "P":
+                p_sizes.append(sz)
+            elif pict_type == "B":
+                b_sizes.append(sz)
         if pts is not None:
             try:
                 pts_times.append(float(pts))
@@ -142,6 +158,17 @@ def _extract_frame_data(file_path: str, features: CodecFeatures):
                 pass
         if is_key:
             keyframe_positions.append(i)
+
+    # I/P frame statistics
+    features.i_frame_count = len(i_sizes)
+    features.p_frame_count = len(p_sizes)
+    features.b_frame_count = len(b_sizes)
+    if i_sizes and p_sizes:
+        i_mean = float(np.mean(i_sizes))
+        p_mean = float(np.mean(p_sizes))
+        features.ip_size_ratio = i_mean / p_mean if p_mean > 0 else 0.0
+        p_arr = np.array(p_sizes, dtype=np.float64)
+        features.p_size_cv = float(np.std(p_arr) / p_mean) if p_mean > 0 else 0.0
 
     features.frame_sizes = sizes
     features.keyframe_count = len(keyframe_positions)
@@ -274,6 +301,19 @@ def _compute_ai_score(features: CodecFeatures):
         skew_score = max(0, 1 - abs(features.frame_size_skewness) / 3)
         score += skew_score * 0.25
         weight_total += 0.25
+
+    # Low P-frame size CV = AI signal (synthetic content compresses too uniformly)
+    if features.p_size_cv > 0:
+        p_cv_score = max(0, 1 - features.p_size_cv * 1.5)
+        score += p_cv_score * 0.25
+        weight_total += 0.25
+
+    # I/P ratio — AI tools often produce lower I/P ratios (less temporal diversity)
+    if features.ip_size_ratio > 0:
+        # Real camera: ratio ~3-8x, AI: ratio often 1.5-3x (content too uniform)
+        ratio_score = max(0, 1 - (features.ip_size_ratio - 1) / 5)
+        score += ratio_score * 0.15
+        weight_total += 0.15
 
     # Low entropy CV = frames are too visually uniform = AI signal
     if features.entropy_cv > 0:

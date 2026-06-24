@@ -115,6 +115,8 @@ def _collect_signals(
         "duration_is_ai_typical": int(meta.duration_is_ai_typical),
 
         # Codec signals
+        "ip_size_ratio": codec.ip_size_ratio,
+        "p_size_cv": codec.p_size_cv,
         "pts_uniformity": codec.pts_uniformity,
         "pts_jitter_std": codec.pts_jitter_std,
         "keyframe_interval_std": codec.keyframe_interval_std,
@@ -183,6 +185,7 @@ def _build_vector(signals: dict) -> list:
         "has_ai_metadata_tag", "has_ai_exclusive_encoder", "has_c2pa",
         "c2pa_is_ai", "software_tag_present",
         "resolution_ai_confidence", "duration_is_ai_typical",
+        "ip_size_ratio", "p_size_cv",
         "pts_uniformity", "pts_jitter_std",
         "keyframe_interval_std", "keyframe_interval_mean",
         "frame_size_cv", "frame_size_skewness",
