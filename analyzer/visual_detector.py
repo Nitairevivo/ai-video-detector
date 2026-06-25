@@ -48,6 +48,80 @@ class VisualDetectionResult:
     signals: dict
 
 
+def detect_visual_with_motion(video_path: str) -> VisualDetectionResult:
+    """
+    Combined detection: frame analysis + motion analysis + ensemble voting.
+    Significantly higher accuracy than each signal alone.
+    """
+    # Run frame analysis
+    frame_result = detect_visual(video_path)
+
+    # Run motion analysis
+    try:
+        from analyzer.motion_analyzer import analyze_motion
+        motion = analyze_motion(video_path)
+    except Exception:
+        motion = None
+
+    if motion is None:
+        return frame_result
+
+    signals = {**frame_result.signals, **{f"motion_{k}": v for k, v in motion.signals.items()}}
+
+    # ── Ensemble voting ────────────────────────────────────────────────────────
+    frame_ai = frame_result.verdict == "ai_generated"
+    motion_ai = motion.verdict == "ai_generated"
+    frame_real = frame_result.verdict == "real"
+    motion_real = motion.verdict == "real"
+
+    # Both say REAL → very confident it's real (cameras are distinctive)
+    if frame_real and motion_real:
+        return VisualDetectionResult("real", 0.04,
+            f"Ensemble: frame + motion both real ({frame_result.method[:30]})",
+            signals)
+
+    # Both say AI → high confidence
+    if frame_ai and motion_ai:
+        combined = (frame_result.confidence + motion.confidence) / 2
+        combined = min(0.95, combined * 1.1)  # boost ensemble agreement
+        return VisualDetectionResult("ai_generated", combined,
+            f"Ensemble: frame + motion both AI — {motion.method[:40]}",
+            signals)
+
+    # Motion says AI strongly, frame uncertain → trust motion
+    if motion_ai and motion.confidence >= 0.75 and not frame_real:
+        return VisualDetectionResult("ai_generated", motion.confidence * 0.85,
+            f"Ensemble: motion analysis — {motion.method[:50]}",
+            signals)
+
+    # Frame says AI strongly, motion uncertain → trust frame
+    if frame_ai and frame_result.confidence >= 0.70 and not motion_real:
+        return VisualDetectionResult("ai_generated", frame_result.confidence * 0.85,
+            f"Ensemble: frame analysis — {frame_result.method[:50]}",
+            signals)
+
+    # Motion says real strongly → override uncertain frame
+    if motion_real and motion.confidence <= 0.10:
+        return VisualDetectionResult("real", 0.06,
+            f"Ensemble: motion confirms real camera ({motion.method[:40]})",
+            signals)
+
+    # Disagreement or both uncertain
+    if frame_result.verdict == "uncertain" and motion.verdict == "uncertain":
+        best_conf = max(frame_result.confidence, motion.confidence)
+        return VisualDetectionResult("uncertain", best_conf * 0.7,
+            f"Ensemble: inconclusive (frame={frame_result.confidence:.0%}, motion={motion.confidence:.0%})",
+            signals)
+
+    # Default: use whichever is more confident
+    if frame_result.confidence >= motion.confidence:
+        return VisualDetectionResult(frame_result.verdict, frame_result.confidence,
+            frame_result.method, signals)
+    else:
+        return VisualDetectionResult(motion.verdict, motion.confidence,
+            motion.method, signals)
+
+
 def detect_visual(video_path: str) -> VisualDetectionResult:
     """
     Main visual detection function.

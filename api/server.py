@@ -142,7 +142,7 @@ async def detect(
         # Visual frame analysis (ML model + rules, survives TikTok re-encoding)
         if final_confidence < 0.5 and not has_camera_origin:
             try:
-                from analyzer.visual_detector import detect_visual
+                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
                 vis = detect_visual(tmp_path)
                 # Add visual signals to result signals
                 result.signals.update({f"vis_{k}": v for k, v in vis.signals.items()})
@@ -347,7 +347,7 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         # Visual AI detection (ML model + rule-based, works after TikTok re-encoding)
         if final_confidence < 0.5 and not has_camera_origin:
             try:
-                from analyzer.visual_detector import detect_visual
+                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
                 vis = detect_visual(tmp_path)
                 if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                     final_confidence = max(final_confidence, vis.confidence * 0.80)
@@ -487,7 +487,7 @@ async def detect_batch(
                         conf = min(0.75, ml_prob); verdict = "ai_generated"
                     if conf < 0.5 and not has_camera:
                         try:
-                            from analyzer.visual_detector import detect_visual
+                            from analyzer.visual_detector import detect_visual_with_motion as detect_visual
                             vis = detect_visual(tmp_path)
                             if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                                 conf = max(conf, vis.confidence * 0.80)
