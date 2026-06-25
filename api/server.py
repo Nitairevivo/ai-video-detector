@@ -239,18 +239,15 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
         return False
     try:
         result = subprocess.run(
-            [
-                ytdlp,
-                "--no-playlist",
-                "--format", "mp4/best[ext=mp4]/best",
-                "--max-filesize", "10m",
-                "--output", tmp_path,
-                "--no-warnings",
-                "--quiet",
-                url,
-            ],
-            timeout=30,
-            capture_output=True,
+            [ytdlp, "--no-playlist",
+             "--format", "mp4/best[ext=mp4][filesize<10M]/best[filesize<10M]/best",
+             "--max-filesize", "10m",
+             "--output", tmp_path,
+             "--no-warnings", "--quiet",
+             "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+             "--add-header", "Referer:https://www.google.com/",
+             url],
+            timeout=25, capture_output=True,
         )
         return result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1000
     except Exception:
@@ -258,12 +255,16 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
 
 
 def _download_direct(url: str, tmp_path: str) -> bool:
-    """Direct HTTP download for plain video URLs (cdn links, .mp4, etc.)."""
-    DOWNLOAD_LIMIT = 10 * 1024 * 1024
+    """Direct HTTP download with Range request — only first 10MB needed."""
+    LIMIT = 10 * 1024 * 1024
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+            "Range": f"bytes=0-{LIMIT-1}",
+            "Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
+        })
         with urllib.request.urlopen(req, timeout=15) as resp:
-            data = resp.read(DOWNLOAD_LIMIT)
+            data = resp.read(LIMIT)
         if len(data) < 1000:
             return False
         with open(tmp_path, "wb") as f:
