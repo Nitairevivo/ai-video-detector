@@ -157,16 +157,25 @@ async def detect(
             except Exception:
                 pass
 
-        # Gemini Vision: only when everything else is inconclusive
-        if final_confidence < 0.15 and not has_camera_origin:
+        # Gemini Vision: visual analysis for all inconclusive cases
+        if final_confidence < 0.50 and not has_camera_origin:
             try:
+                import time as _time
                 from analyzer.gemini_analyzer import analyze_with_gemini
-                gemini = analyze_with_gemini(tmp_path)
+                gemini = None
+                for _attempt in range(3):
+                    gemini = analyze_with_gemini(tmp_path)
+                    if gemini is not None:
+                        break
+                    _time.sleep(3 * (_attempt + 1))
                 if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.88:
-                        final_confidence = gemini.confidence
+                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.70:
+                        final_confidence = max(final_confidence, gemini.confidence * 0.90)
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
+                    elif gemini.verdict == "real" and gemini.confidence >= 0.80:
+                        final_confidence = min(final_confidence, 0.08)
+                        method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
             except Exception:
                 pass
 
@@ -232,26 +241,42 @@ def _is_platform_url(url: str) -> bool:
 
 
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
-    """Use yt-dlp to download first ~10MB of video from social platforms."""
+    """Use yt-dlp to download video. Tries multiple format strategies."""
     import subprocess, shutil
     ytdlp = shutil.which("yt-dlp")
     if not ytdlp:
         return False
-    try:
-        result = subprocess.run(
-            [ytdlp, "--no-playlist",
-             "--format", "mp4/best[ext=mp4][filesize<10M]/best[filesize<10M]/best",
-             "--max-filesize", "10m",
-             "--output", tmp_path,
-             "--no-warnings", "--quiet",
-             "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-             "--add-header", "Referer:https://www.google.com/",
-             url],
-            timeout=25, capture_output=True,
-        )
-        return result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1000
-    except Exception:
-        return False
+
+    base_args = [ytdlp, "--no-playlist", "--output", tmp_path,
+                 "--no-warnings", "--quiet",
+                 "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                 "--add-header", "Referer:https://www.google.com/"]
+
+    # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
+    formats = [
+        "91",           # YouTube HLS 144p (always available, not blocked)
+        "93",           # YouTube HLS 360p
+        "best[ext=mp4][filesize<10M]",
+        "best[filesize<10M]",
+        "worst",        # absolute fallback
+    ]
+
+    for fmt in formats:
+        try:
+            result = subprocess.run(
+                base_args + ["--format", fmt, url],
+                timeout=30, capture_output=True,
+            )
+            if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000:
+                return True
+            # Remove partial file before next attempt
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                try: os.unlink(tmp_path)
+                except: pass
+    return False
 
 
 def _download_direct(url: str, tmp_path: str) -> bool:
@@ -382,16 +407,19 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                 verdict = "ai_generated"
                 method = f"ML classifier ({ml_prob:.0%})"
 
-        # Gemini Vision: threshold 0.75 for TikTok (we've tried everything else),
-        # 0.88 for other platforms (stricter to avoid false positives)
-        gemini_threshold = 0.72 if is_tiktok else 0.85
-        if final_confidence < 0.35 and not has_camera_origin:
+        # Gemini Vision: 0.70 threshold for all platforms
+        if final_confidence < 0.50 and not has_camera_origin:
             try:
+                import time as _time2
                 from analyzer.gemini_analyzer import analyze_with_gemini
-                gemini = analyze_with_gemini(tmp_path)
+                gemini = None
+                for _att in range(3):
+                    gemini = analyze_with_gemini(tmp_path)
+                    if gemini is not None: break
+                    _time2.sleep(3 * (_att + 1))
                 if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= gemini_threshold:
-                        final_confidence = gemini.confidence
+                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.70:
+                        final_confidence = max(final_confidence, gemini.confidence * 0.90)
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
                     elif gemini.verdict == "real" and gemini.confidence >= 0.80:
