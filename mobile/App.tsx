@@ -381,6 +381,45 @@ function AppInner() {
     }
   }, []);
 
+  // Handle incoming video FILES shared from TikTok/Instagram
+  // When user taps Share→VerifAI in TikTok, Android sends the video file directly
+  useEffect(() => {
+    const { NativeModules, NativeEventEmitter } = require("react-native");
+    const IntentModule = NativeModules.IntentModule || NativeModules.RNIntentModule;
+
+    // Check for file shared on startup
+    if (IntentModule?.getInitialIntent) {
+      IntentModule.getInitialIntent().then((intent: any) => {
+        if (intent?.uri && intent?.type?.startsWith("video/")) {
+          detectVideoFile(intent.uri, intent.type);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  const detectVideoFile = useCallback(async (uri: string, mimeType = "video/mp4") => {
+    setLoading(true);
+    setResult(null);
+    Vibration.vibrate(30);
+    const loadingItem: any = { is_ai_generated: false, verdict: "real", confidence: 0,
+      ai_tool_detected: null, edit_tool_detected: null, detection_method: "",
+      timestamp: new Date().toLocaleTimeString("he-IL"), url: uri, loading: true };
+    setHistory((prev) => [loadingItem, ...prev.slice(0, 49)]);
+    try {
+      const { detectVideoFileUpload } = await import("./services/detector");
+      const data = await detectVideoFileUpload(uri, mimeType);
+      const item: HistoryItem = { ...data, timestamp: new Date().toLocaleTimeString("he-IL"), url: uri };
+      setResult(data);
+      setHistory((prev) => [item, ...prev.filter((h: any) => !h.loading).slice(0, 49)]);
+      setScansToday((n) => n + 1);
+      Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
+    } catch {
+      setHistory((prev) => prev.filter((h: any) => !h.loading));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Handle incoming URLs — deep links, shared links, ACTION_VIEW intents
   const handleIncomingUrl = useCallback((url: string | null) => {
     if (!url) return;

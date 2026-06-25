@@ -61,6 +61,19 @@ function needsPhoneDownload(url: string): boolean {
   return TIKTOK_CDN_PATTERNS.some((p) => p.test(url));
 }
 
+// Upload a local video file directly to /detect (bypasses URL IP blocking)
+export async function detectVideoFileUpload(uri: string, mimeType = "video/mp4"): Promise<DetectionResult> {
+  const form = new FormData();
+  const filename = uri.split("/").pop() || "video.mp4";
+  form.append("file", { uri, name: filename, type: mimeType } as unknown as Blob);
+  const res = await fetch(`${API_BASE}/detect`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).detail || `Server error ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function detectVideoUrl(url: string): Promise<DetectionResult> {
   // For TikTok/Instagram: download on phone first, then upload
   // For YouTube/others: let server handle it (server can download those)
