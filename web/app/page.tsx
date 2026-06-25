@@ -228,6 +228,37 @@ export default function Home() {
     } catch {}
   }, []);
 
+  // Download video in the BROWSER (user's residential IP → not blocked by YouTube/TikTok)
+  // then upload as a file to /detect
+  const downloadAndDetect = useCallback(async (url: string, signal: AbortSignal): Promise<Response> => {
+    // Try browser-side download first (bypasses server IP blocks)
+    try {
+      const videoRes = await fetch(url, {
+        signal,
+        headers: { "User-Agent": "Mozilla/5.0" },
+        mode: "cors",
+      });
+      if (videoRes.ok) {
+        const blob = await videoRes.blob();
+        if (blob.size > 50000) { // at least 50KB = real video
+          const form = new FormData();
+          const ext = url.includes(".mp4") ? "video.mp4" : url.includes(".webm") ? "video.webm" : "video.mp4";
+          form.append("file", blob, ext);
+          return fetch(`${API}/detect`, { method: "POST", body: form, signal });
+        }
+      }
+    } catch {
+      // CORS block or network error — fall through to server-side
+    }
+    // Fallback: server-side URL download
+    return fetch(`${API}/detect-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+      signal,
+    });
+  }, []);
+
   const analyzeItem = useCallback(async (item: VideoItem, deep = false) => {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: "analyzing" } : i));
     const controller = new AbortController();
@@ -235,12 +266,7 @@ export default function Home() {
     try {
       let res: Response;
       if (item.url) {
-        res = await fetch(`${API}/detect-url?deep=${deep}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: item.url }),
-          signal: controller.signal,
-        });
+        res = await downloadAndDetect(item.url, controller.signal);
       } else {
         const form = new FormData();
         form.append("file", item.file!);
