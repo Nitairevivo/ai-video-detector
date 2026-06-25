@@ -231,26 +231,23 @@ export default function Home() {
   // Download video in the BROWSER (user's residential IP → not blocked by YouTube/TikTok)
   // then upload as a file to /detect
   const downloadAndDetect = useCallback(async (url: string, signal: AbortSignal): Promise<Response> => {
-    // Try browser-side download first (bypasses server IP blocks)
-    try {
-      const videoRes = await fetch(url, {
-        signal,
-        headers: { "User-Agent": "Mozilla/5.0" },
-        mode: "cors",
-      });
-      if (videoRes.ok) {
-        const blob = await videoRes.blob();
-        if (blob.size > 50000) { // at least 50KB = real video
-          const form = new FormData();
-          const ext = url.includes(".mp4") ? "video.mp4" : url.includes(".webm") ? "video.webm" : "video.mp4";
-          form.append("file", blob, ext);
-          return fetch(`${API}/detect`, { method: "POST", body: form, signal });
+    // TikTok/Instagram/YouTube return HTML pages, not video files — server-side download
+    // is blocked by IP. For direct MP4/WebM CDN links, try browser download.
+    const isDirect = /\.(mp4|webm|mov|mkv|m4v)(\?|$)/i.test(url);
+    if (isDirect) {
+      try {
+        const videoRes = await fetch(url, { signal, mode: "cors" });
+        if (videoRes.ok) {
+          const blob = await videoRes.blob();
+          if (blob.size > 50000 && blob.type.includes("video")) {
+            const form = new FormData();
+            form.append("file", blob, "video.mp4");
+            return fetch(`${API}/detect`, { method: "POST", body: form, signal });
+          }
         }
-      }
-    } catch {
-      // CORS block or network error — fall through to server-side
+      } catch { /* CORS block — fall through */ }
     }
-    // Fallback: server-side URL download
+    // Server-side URL detection (metadata scan + AIGC label check)
     return fetch(`${API}/detect-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
