@@ -417,6 +417,128 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             os.unlink(tmp_path)
 
 
+@app.post("/detect-batch")
+async def detect_batch(
+    request: Request,
+    urls: list[str] = Body(...),
+    key=Depends(get_api_key),
+):
+    """
+    Enterprise batch endpoint — analyze up to 1000 URLs at once.
+    Returns results as they complete (streaming JSON array).
+
+    Requires Business tier or higher.
+    Rate: counts each URL as 1 request against your monthly quota.
+
+    Example:
+        POST /detect-batch
+        X-Api-Key: your_key
+        Content-Type: application/json
+
+        ["https://tiktok.com/...", "https://instagram.com/...", ...]
+    """
+    from fastapi.responses import StreamingResponse
+    import asyncio, json as _json
+
+    # Tier check
+    tier_info = TIERS.get(key.tier if key else "free", TIERS["free"])
+    batch_limit = tier_info.get("batch_limit", 1)
+    if len(urls) > batch_limit:
+        raise HTTPException(
+            400,
+            f"Batch limit for {key.tier if key else 'free'} tier is {batch_limit} URLs. "
+            f"Upgrade at https://web-zeta-ecru-80.vercel.app/dashboard"
+        )
+
+    # Check quota
+    if key and key.remaining < len(urls):
+        raise HTTPException(
+            429,
+            f"Insufficient quota: {key.remaining} requests remaining, "
+            f"batch needs {len(urls)}. Upgrade at https://web-zeta-ecru-80.vercel.app/dashboard"
+        )
+
+    # Record all requests upfront
+    if key:
+        for _ in urls:
+            record_request(key.key_id)
+
+    async def stream_results():
+        yield "[\n"
+        for i, url in enumerate(urls):
+            suffix = ".mp4"
+            tmp_path = tempfile.mktemp(suffix=suffix)
+            result_dict = {"url": url, "index": i}
+            try:
+                ok = _download_with_ytdlp(url, tmp_path)
+                if not ok:
+                    ok = _download_direct(url, tmp_path)
+                if not ok:
+                    result_dict.update({"error": "Download failed", "verdict": "unknown"})
+                else:
+                    result = extract_features(tmp_path)
+                    classifier = get_classifier()
+                    ml_prob, _ = classifier.predict(result.feature_vector)
+                    conf = result.confidence
+                    verdict = result.verdict
+                    method = result.method
+                    has_camera = bool(result.signals.get("camera_origin_detected"))
+                    if ml_prob and not has_camera and conf < 0.1 and ml_prob >= 0.88:
+                        conf = min(0.75, ml_prob); verdict = "ai_generated"
+                    if conf < 0.5 and not has_camera:
+                        try:
+                            from analyzer.visual_detector import detect_visual
+                            vis = detect_visual(tmp_path)
+                            if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
+                                conf = max(conf, vis.confidence * 0.80)
+                                method = vis.method
+                                if conf >= 0.5: verdict = "ai_generated"
+                        except Exception:
+                            pass
+                    result_dict.update({
+                        "verdict": verdict,
+                        "is_ai_generated": verdict == "ai_generated",
+                        "confidence": round(conf, 4),
+                        "confidence_pct": f"{conf*100:.1f}%",
+                        "ai_tool_detected": result.ai_tool,
+                        "edit_tool_detected": result.edit_tool,
+                        "detection_method": method,
+                    })
+            except Exception as e:
+                result_dict.update({"error": str(e), "verdict": "unknown"})
+            finally:
+                if os.path.exists(tmp_path):
+                    try: os.unlink(tmp_path)
+                    except: pass
+
+            sep = "," if i < len(urls) - 1 else ""
+            yield f"  {_json.dumps(result_dict)}{sep}\n"
+            await asyncio.sleep(0)  # yield control
+
+        yield "]\n"
+
+    return StreamingResponse(stream_results(), media_type="application/json")
+
+
+@app.get("/pricing")
+def pricing():
+    """Returns available tiers and pricing."""
+    return {
+        "tiers": {
+            name: {
+                "requests_per_month": info["requests_per_month"],
+                "batch_limit": info.get("batch_limit", 1),
+                "price_usd_per_month": info.get("price_usd", 0),
+                "price_per_request_usd": round(info.get("price_usd", 0) / max(1, info["requests_per_month"]), 6),
+            }
+            for name, info in TIERS.items()
+        },
+        "register_url": "https://web-zeta-ecru-80.vercel.app/dashboard",
+        "docs_url": "https://ai-video-detector-production-a305.up.railway.app/docs",
+        "contact": "enterprise@verifai.app",
+    }
+
+
 @app.get("/model/importance")
 def feature_importance():
     classifier = get_classifier()

@@ -14,9 +14,11 @@ from dataclasses import dataclass
 DB_PATH = os.getenv("DB_PATH", "/data/aivd.db")
 
 TIERS = {
-    "free":  {"requests_per_month": 50,    "price_id": None},
-    "pro":   {"requests_per_month": 1000,  "price_id": os.getenv("STRIPE_PRICE_PRO",  "")},
-    "ultra": {"requests_per_month": 10000, "price_id": os.getenv("STRIPE_PRICE_ULTRA", "")},
+    "free":       {"requests_per_month": 100,     "price_id": None,                               "batch_limit": 1,    "price_usd": 0},
+    "pro":        {"requests_per_month": 2_000,   "price_id": os.getenv("STRIPE_PRICE_PRO",  ""), "batch_limit": 10,   "price_usd": 19},
+    "business":   {"requests_per_month": 50_000,  "price_id": os.getenv("STRIPE_PRICE_BIZ",  ""), "batch_limit": 100,  "price_usd": 149},
+    "enterprise": {"requests_per_month": 1_000_000,"price_id": os.getenv("STRIPE_PRICE_ENT", ""), "batch_limit": 1000, "price_usd": 999},
+    "ultra":      {"requests_per_month": 10_000,  "price_id": os.getenv("STRIPE_PRICE_ULTRA",""), "batch_limit": 50,   "price_usd": 49},
 }
 
 
