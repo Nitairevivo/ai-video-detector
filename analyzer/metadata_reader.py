@@ -90,9 +90,70 @@ KNOWN_AI_TOOLS = {
     "invideo": "InVideo AI",
     # Generic text2video tools (specific enough)
     "text2video": "Text2Video",
+    # Newer tools (2024-2025)
+    "veo": "Google Veo",
+    "veo2": "Google Veo 2",
+    "veo 2": "Google Veo 2",
+    "imagen video": "Google Imagen Video",
+    "lumiere": "Google Lumiere",
+    "seaweed": "ByteDance Seaweed",
+    "step-video": "StepVideo",
+    "stepvideo": "StepVideo",
+    "cogvideo": "CogVideo",
+    "cogvideox": "CogVideoX",
+    "cog-video": "CogVideo",
+    "wan 2": "Wan 2.0",
+    "wan2.0": "Wan 2.0",
+    "wanvideo": "Wan Video",
+    "genmo": "Genmo Mochi",
+    "mochi-1": "Genmo Mochi",
+    "haiper": "Haiper",
+    "haiper.ai": "Haiper",
+    "morph studio": "Morph Studio",
+    "morphstudio": "Morph Studio",
+    "kaiber": "Kaiber AI",
+    "kaiber.ai": "Kaiber AI",
+    "decohere": "Decohere AI",
+    "higgsfield": "Higgsfield AI",
+    "pixverse": "PixVerse",
+    "pixverse.ai": "PixVerse",
+    "ltx-video": "Lightricks LTX",
+    "ltxvideo": "Lightricks LTX",
+    "lightricks": "Lightricks LTX",
+    "sora-turbo": "OpenAI Sora",
+    "sora_turbo": "OpenAI Sora",
+    "runway-gen4": "Runway Gen-4",
+    "gen4": "Runway Gen-4",
+    "pika-2": "Pika Labs 2.0",
+    "pika2": "Pika Labs 2.0",
+    "kling-2": "Kuaishou Kling 2.0",
+    "kling2": "Kuaishou Kling 2.0",
+    "hailuo-02": "MiniMax Hailuo 02",
+    "minimax-02": "MiniMax 02",
+    "vidu": "Shengshu Vidu",
+    "shengshu": "Shengshu Vidu",
+    "skyreels": "SkyReels",
+    "jogg.ai": "Jogg AI",
+    "jogg-ai": "Jogg AI",
+    "fliki": "Fliki AI",
+    "fliki.ai": "Fliki AI",
+    "deepmotion": "DeepMotion",
+    "genspark": "Genspark AI",
+    # Avatar/Presenter tools
+    "d-id": "D-ID",
+    "d_id": "D-ID",
+    "did.com": "D-ID",
+    "deepbrain": "DeepBrain AI",
+    "aistudios": "DeepBrain AI",
+    "rephrase.ai": "Rephrase AI",
+    "elai.io": "Elai AI",
+    "colossyan": "Colossyan",
+    "steve.ai": "Steve AI",
+    "vidnoz": "Vidnoz AI",
+    "pictory": "Pictory AI",
+    "simpleshow": "Simpleshow AI",
     # NOTE: "aigc", "ai-generated", "ai_generated" REMOVED —
     # TikTok adds "AIGC" to ALL videos (including real footage) as a platform label.
-    # These generic strings cause massive false positives on real TikTok videos.
 }
 
 # Encoders that are exclusively used by AI video tools
@@ -351,21 +412,62 @@ def _check_c2pa(file_path: str, result: MetadataResult):
     CHUNK = 65536  # 64KB per read
     MAX_SCAN = 5 * 1024 * 1024  # scan up to 5MB
 
-    # Binary signatures — ONLY specific AI tool watermarks, NOT generic labels.
+    # Binary signatures — AI tool watermarks embedded in the bitstream.
+    # These survive even after metadata stripping because they're in the video data itself.
     BINARY_SIGS: list[tuple[bytes, str]] = [
-        (b'openai-sora',      "OpenAI Sora"),
-        (b'sora_watermark',   "OpenAI Sora"),
-        (b'runway_watermark', "Runway"),
-        (b'pika_watermark',   "Pika Labs"),
-        (b'kling_watermark',  "Kuaishou Kling"),
-        (b'luma_watermark',   "Luma AI"),
-        (b'heygen.com',       "HeyGen"),
-        (b'HeyGen',           "HeyGen"),
-        (b'heygen',           "HeyGen"),
-        (b'synthesia',        "Synthesia"),
-        (b'Synthesia',        "Synthesia"),
-        (b'd-id.com',         "D-ID"),
-        (b'creatify',         "Creatify"),
+        # OpenAI Sora
+        (b'openai-sora',       "OpenAI Sora"),
+        (b'sora_watermark',    "OpenAI Sora"),
+        (b'openai.com/sora',   "OpenAI Sora"),
+        (b'x-openai-sora',     "OpenAI Sora"),
+        # Runway
+        (b'runway_watermark',  "Runway"),
+        (b'runwayml.com',      "Runway"),
+        (b'runway-gen',        "Runway"),
+        (b'gen3alpha',         "Runway Gen-3"),
+        # Pika Labs
+        (b'pika_watermark',    "Pika Labs"),
+        (b'pika.art',          "Pika Labs"),
+        (b'pikalabs',          "Pika Labs"),
+        # Kling / Kuaishou
+        (b'kling_watermark',   "Kuaishou Kling"),
+        (b'kuaishou.com',      "Kuaishou Kling"),
+        (b'klingai.com',       "Kuaishou Kling"),
+        (b'kwai-kolors',       "Kuaishou Kling"),
+        # Luma AI
+        (b'luma_watermark',    "Luma AI"),
+        (b'lumalabs.ai',       "Luma AI"),
+        (b'luma-dream',        "Luma Dream Machine"),
+        # MiniMax / Hailuo
+        (b'hailuo.video',      "MiniMax Hailuo"),
+        (b'minimax.com',       "MiniMax"),
+        (b'minimax-video',     "MiniMax"),
+        # HeyGen
+        (b'heygen.com',        "HeyGen"),
+        (b'HeyGen',            "HeyGen"),
+        (b'heygen',            "HeyGen"),
+        # Synthesia
+        (b'synthesia',         "Synthesia"),
+        (b'Synthesia',         "Synthesia"),
+        (b'synthesia.io',      "Synthesia"),
+        # D-ID
+        (b'd-id.com',          "D-ID"),
+        (b'did-video',         "D-ID"),
+        # Creatify / InVideo
+        (b'creatify',          "Creatify"),
+        (b'invideo.io',        "InVideo AI"),
+        # Google Veo
+        (b'google-veo',        "Google Veo"),
+        (b'deepmind-veo',      "Google Veo"),
+        # Stability AI
+        (b'stability.ai',      "Stability AI SVD"),
+        (b'stable-video',      "Stability AI SVD"),
+        # ByteDance / Seaweed
+        (b'seaweed-video',     "ByteDance Seaweed"),
+        (b'bytedance-gen',     "ByteDance Seaweed"),
+        # Generic C2PA AI markers
+        (b'c2pa.ai',           None),
+        (b'ai.generated',      None),
     ]
 
     try:
