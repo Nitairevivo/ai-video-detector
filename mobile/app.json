@@ -33,42 +33,118 @@
       "intentFilters": [
         {
           "action": "android.intent.action.SEND",
-          "data": [{ "mimeType": "video/*" }],
-          "category": ["android.intent.category.DEFAULT"]
+          "data": [
+            {
+              "mimeType": "video/*"
+            }
+          ],
+          "category": [
+            "android.intent.category.DEFAULT"
+          ]
         },
         {
           "action": "android.intent.action.SEND",
-          "data": [{ "mimeType": "text/plain" }],
-          "category": ["android.intent.category.DEFAULT"]
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ],
+          "category": [
+            "android.intent.category.DEFAULT"
+          ]
         },
         {
           "action": "android.intent.action.SEND_MULTIPLE",
-          "data": [{ "mimeType": "video/*" }],
-          "category": ["android.intent.category.DEFAULT"]
+          "data": [
+            {
+              "mimeType": "video/*"
+            }
+          ],
+          "category": [
+            "android.intent.category.DEFAULT"
+          ]
         },
         {
           "action": "android.intent.action.VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "*.tiktok.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "vm.tiktok.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.instagram.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.youtube.com", "pathPrefix": "/shorts" },
-            { "scheme": "https", "host": "*.youtube.com", "pathPrefix": "/watch" },
-            { "scheme": "https", "host": "youtu.be", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.twitter.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.x.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.reddit.com", "pathPrefix": "/r" },
-            { "scheme": "https", "host": "v.redd.it", "pathPrefix": "/" },
-            { "scheme": "https", "host": "*.facebook.com", "pathPrefix": "/" },
-            { "scheme": "https", "host": "fb.watch", "pathPrefix": "/" }
+            {
+              "scheme": "https",
+              "host": "*.tiktok.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "vm.tiktok.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.instagram.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.youtube.com",
+              "pathPrefix": "/shorts"
+            },
+            {
+              "scheme": "https",
+              "host": "*.youtube.com",
+              "pathPrefix": "/watch"
+            },
+            {
+              "scheme": "https",
+              "host": "youtu.be",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.twitter.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.x.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.reddit.com",
+              "pathPrefix": "/r"
+            },
+            {
+              "scheme": "https",
+              "host": "v.redd.it",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.facebook.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "fb.watch",
+              "pathPrefix": "/"
+            }
           ],
-          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"]
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ]
         },
         {
           "action": "android.intent.action.VIEW",
-          "data": [{ "scheme": "verifai" }],
-          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"]
+          "data": [
+            {
+              "scheme": "verifai"
+            }
+          ],
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ]
         }
       ]
     },
@@ -76,9 +152,9 @@
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
       "eas": {
-        "projectId": "1ccf6c26-6560-4dfa-96d0-a026d693bbab"
+        "projectId": "f28a080f-e9bc-419d-a743-303345577fe4"
       }
     },
-    "owner": "052676"
+    "owner": "mmmnnn123"
   }
 }

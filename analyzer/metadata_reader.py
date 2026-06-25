@@ -37,9 +37,12 @@ KNOWN_AI_TOOLS = {
     "sora": "OpenAI Sora",
     # Runway
     "runway": "Runway",
+    "runwayml": "Runway",
     "gen-2": "Runway Gen-2",
     "gen-3": "Runway Gen-3",
     "gen-4": "Runway Gen-4",
+    "gen4": "Runway Gen-4",
+    "runway gen": "Runway",
     # Pika
     "pika": "Pika Labs",
     # Kling / Kuaishou
