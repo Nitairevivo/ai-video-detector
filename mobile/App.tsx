@@ -437,15 +437,18 @@ function AppInner() {
         {/* ── Header ─────────────────────────────────────────────── */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.headerEyebrow}>{t.poweredBy}</Text>
-              <Text style={styles.headerTitle}>VerifAI</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              {/* VerifAI logo mark */}
+              <View style={styles.logoMark}>
+                <Text style={styles.logoMarkText}>V</Text>
+              </View>
+              <View>
+                <Text style={styles.headerTitle}>VerifAI</Text>
+                <Text style={styles.headerEyebrow}>{t.poweredBy}</Text>
+              </View>
             </View>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-              <TouchableOpacity
-                style={styles.langBtn}
-                onPress={() => setLang(l => l === "he" ? "en" : "he")}
-              >
+              <TouchableOpacity style={styles.langBtn} onPress={() => setLang(l => l === "he" ? "en" : "he")}>
                 <Text style={styles.langBtnText}>{lang === "he" ? "EN" : "עב"}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.proBtn} onPress={() => setShowPremium(true)}>
@@ -632,15 +635,21 @@ const styles = StyleSheet.create({
   bannerCloseText: { color: "#555", fontSize: 14 },
 
   // Header
-  header: { paddingTop: 4, gap: 10 },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  headerEyebrow: { color: "#6366f1", fontSize: 10, fontWeight: "800", letterSpacing: 3 },
-  headerTitle: { color: "#fff", fontSize: 42, fontWeight: "900", letterSpacing: -2, lineHeight: 44 },
-  headerSub: { color: "#4b5563", fontSize: 13, lineHeight: 19 },
-  langBtn: { backgroundColor: "#0e0e1a", borderRadius: 16, paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1, borderColor: "#ffffff15" },
-  langBtnText: { color: "#6b7280", fontSize: 12, fontWeight: "700" },
-  proBtn: { backgroundColor: "#1a1040", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: "#6366f133" },
-  proBtnText: { color: "#a78bfa", fontSize: 13, fontWeight: "700" },
+  header: { paddingTop: 4, gap: 12 },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  logoMark: {
+    width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#4f46e5",
+    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
+  },
+  logoMarkText: { color: "#fff", fontSize: 22, fontWeight: "900", letterSpacing: -1 },
+  headerEyebrow: { color: "#6366f1", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginTop: 1 },
+  headerTitle: { color: "#fff", fontSize: 28, fontWeight: "900", letterSpacing: -1 },
+  headerSub: { color: "#4b5563", fontSize: 13, lineHeight: 20 },
+  langBtn: { backgroundColor: "#0e0e1a", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#ffffff12" },
+  langBtnText: { color: "#6b7280", fontSize: 11, fontWeight: "700" },
+  proBtn: { backgroundColor: "#140e2e", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "#7c3aed44" },
+  proBtnText: { color: "#a78bfa", fontSize: 12, fontWeight: "700" },
 
   // Stats
   statsRow: { flexDirection: "row", gap: 10, marginTop: 4 },
@@ -667,15 +676,15 @@ const styles = StyleSheet.create({
 
   // Check button
   checkBtn: {
-    backgroundColor: "#4f46e5", borderRadius: 18, padding: 18, alignItems: "center",
-    shadowColor: "#4f46e5", shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
+    backgroundColor: "#4f46e5", borderRadius: 20, padding: 20, alignItems: "center",
+    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6, shadowRadius: 20, elevation: 12,
   },
-  checkBtnLoading: { backgroundColor: "#1f1f35" },
+  checkBtnLoading: { backgroundColor: "#1a1a35" },
   checkBtnInner: { alignItems: "center", gap: 8, width: "100%" },
-  checkBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  checkBtnText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 0.3 },
   loadingBar: { height: 2, width: "60%", backgroundColor: "#ffffff22", borderRadius: 1 },
-  loadingFill: { height: 2, width: "40%", backgroundColor: "#6366f1", borderRadius: 1 },
+  loadingFill: { height: 2, width: "40%", backgroundColor: "#818cf8", borderRadius: 1 },
 
   // Premium banner
   premiumBanner: {
@@ -695,20 +704,21 @@ const styles = StyleSheet.create({
   clearBtn: { color: "#374151", fontSize: 12 },
 
   // History
-  historyRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#0c0c1a", borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#ffffff07" },
-  historyBar: { width: 3, alignSelf: "stretch" },
-  historyInfo: { flex: 1, gap: 3, padding: 14 },
-  historyTitle: { color: "#d1d5db", fontSize: 13, fontWeight: "600" },
-  historyUrl: { color: "#374151", fontSize: 10 },
-  historyTime: { color: "#2d3748", fontSize: 10 },
-  historyPctWrap: { marginRight: 14, width: 50, height: 50, borderRadius: 25, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  historyPct: { fontSize: 14, fontWeight: "800" },
+  historyRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#0a0a18", borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: "#ffffff08" },
+  historyBar: { width: 4, alignSelf: "stretch" },
+  historyInfo: { flex: 1, gap: 3, padding: 15 },
+  historyTitle: { color: "#e5e7eb", fontSize: 14, fontWeight: "700" },
+  historyUrl: { color: "#374151", fontSize: 10, marginTop: 1 },
+  historyTime: { color: "#1f2937", fontSize: 9 },
+  historyPctWrap: { marginRight: 15, width: 52, height: 52, borderRadius: 26, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  historyPct: { fontSize: 15, fontWeight: "900" },
 
   // Empty
-  empty: { alignItems: "center", paddingVertical: 50, gap: 10 },
-  emptyIcon: { fontSize: 56 },
-  emptyTitle: { color: "#374151", fontSize: 16, fontWeight: "700" },
-  emptyHint: { color: "#1f2937", fontSize: 13, textAlign: "center", lineHeight: 19, paddingHorizontal: 20 },
+  empty: { alignItems: "center", paddingVertical: 60, gap: 12 },
+  emptyIcon: { fontSize: 64, opacity: 0.6 },
+  emptyTitle: { color: "#4b5563", fontSize: 17, fontWeight: "700" },
+  emptyHint: { color: "#2d3748", fontSize: 13, textAlign: "center", lineHeight: 20, paddingHorizontal: 32 },
+  emptyDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#1f2937", marginTop: 4 },
 
   // Download
   downloadLink: { alignItems: "center", paddingVertical: 12 },
