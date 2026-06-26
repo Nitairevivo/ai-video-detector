@@ -26,6 +26,7 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -230,14 +231,74 @@ public class OverlayService extends Service {
         return new JSONObject(sb.toString());
     }
 
+    private String resolveTikTokCdnUrl(String shareUrl) {
+        // Extract video ID from TikTok share URL
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("/video/(\\d+)");
+        java.util.regex.Matcher m = p.matcher(shareUrl);
+        if (!m.find()) return null;
+        String videoId = m.group(1);
+
+        // Call TikTok's internal API to get CDN URL (works from phone with residential IP)
+        String[] apiEndpoints = {
+            "https://api19-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id=" + videoId,
+            "https://api22-normal-c-alisg.tiktokv.com/aweme/v1/feed/?aweme_id=" + videoId,
+        };
+
+        for (String apiUrl : apiEndpoints) {
+            try {
+                URL url = new URL(apiUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("User-Agent",
+                    "com.zhiliaoapp.musically/2022600040 (Linux; U; Android 9; en_US; SM-G973F; Build/PPR1.180610.011; Cronet/TTNetVersion:6c7b701a 2021-08-23)");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(10000);
+
+                if (conn.getResponseCode() == 200) {
+                    java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+
+                    JSONObject data = new JSONObject(sb.toString());
+                    JSONArray awemes = data.optJSONArray("aweme_list");
+                    if (awemes != null && awemes.length() > 0) {
+                        JSONObject aweme = awemes.getJSONObject(0);
+                        JSONObject video = aweme.optJSONObject("video");
+                        if (video != null) {
+                            JSONObject playAddr = video.optJSONObject("play_addr");
+                            if (playAddr != null) {
+                                JSONArray urls = playAddr.optJSONArray("url_list");
+                                if (urls != null && urls.length() > 0) {
+                                    return urls.getString(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
     private JSONObject detectViaPhoneDownload(String videoUrl) throws Exception {
-        // Download video on phone (residential IP = TikTok allows it)
+        // Step 1: If TikTok, resolve share URL to actual CDN video URL
+        String downloadUrl = videoUrl;
+        if (videoUrl.contains("tiktok.com") || videoUrl.contains("vm.tiktok")) {
+            String cdnUrl = resolveTikTokCdnUrl(videoUrl);
+            if (cdnUrl != null) {
+                downloadUrl = cdnUrl;
+            }
+        }
+
+        // Download video on phone (residential IP)
         java.io.File tmpFile = new java.io.File(getCacheDir(), "verifai_tmp.mp4");
         try {
-            URL dlUrl = new URL(videoUrl);
+            URL dlUrl = new URL(downloadUrl);
             HttpURLConnection dlConn = (HttpURLConnection) dlUrl.openConnection();
             dlConn.setRequestProperty("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
-            dlConn.setRequestProperty("Referer", dlUrl.getProtocol() + "://" + dlUrl.getHost());
+            dlConn.setRequestProperty("Referer", "https://www.tiktok.com/");
             dlConn.setConnectTimeout(15000);
             dlConn.setReadTimeout(30000);
             dlConn.setInstanceFollowRedirects(true);
