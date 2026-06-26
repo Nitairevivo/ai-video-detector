@@ -179,9 +179,21 @@ def detect_visual(video_path: str) -> VisualDetectionResult:
         "frames_analyzed": len(frames),
     }
 
+    # Motion features (strongest signal for TikTok re-encoded content)
+    try:
+        from analyzer.motion_analyzer import analyze_motion
+        mot = analyze_motion(video_path)
+        motion_std = mot.signals.get("motion_std", 0.0)
+        motion_cv = mot.signals.get("motion_temporal_cv", 0.0)
+        signals["motion_std"] = round(motion_std, 3)
+        signals["motion_cv"] = round(motion_cv, 3)
+    except Exception:
+        motion_std = motion_cv = 0.0
+
     feature_vec = [
         local_var, ifd_mean, ifd_std, ifd_range, ifd_p10, ifd_p90,
         fft_ratio, temp_cv, brightness_std, lv_p5, lv_p50, lv_p95,
+        motion_std, motion_cv,
     ]
 
     # ── Try ML model first ────────────────────────────────────────────────────
