@@ -28,7 +28,9 @@
       },
       "package": "com.verifai.app",
       "permissions": [
-        "android.permission.READ_CLIPBOARD"
+        "android.permission.READ_CLIPBOARD",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "intentFilters": [
         {

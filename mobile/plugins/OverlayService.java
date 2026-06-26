@@ -72,12 +72,40 @@ public class OverlayService extends Service {
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
+    private GalleryWatcher galleryWatcher;
+
     @Override
     public void onCreate() {
         super.onCreate();
         startForegroundService();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         showButton();
+        startGalleryWatcher();
+    }
+
+    private void startGalleryWatcher() {
+        galleryWatcher = new GalleryWatcher(this, new GalleryWatcher.DetectionCallback() {
+            @Override
+            public void onResult(String filePath, String verdict, float confidence, String method) {
+                int pct = Math.round(confidence * 100);
+                String title;
+                if ("ai_generated".equals(verdict)) {
+                    title = "🤖 AI Generated";
+                } else if ("ai_edited".equals(verdict)) {
+                    title = "✏️ Real Video, AI Edited";
+                } else {
+                    title = "✅ Authentic Footage";
+                }
+                String sub = pct + "% · " + (method.length() > 40 ? method.substring(0, 40) + "…" : method);
+                showToastResult(title, verdict, sub, pct);
+            }
+
+            @Override
+            public void onError(String filePath, String error) {
+                // Silent fail — don't disturb the user
+            }
+        });
+        galleryWatcher.start();
     }
 
     // ─── Foreground Notification ────────────────────────────────────────────
@@ -604,6 +632,7 @@ public class OverlayService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (galleryWatcher != null) galleryWatcher.stop();
         try { if (buttonView != null) windowManager.removeView(buttonView); } catch (Exception ignored) {}
         try { if (resultView != null) windowManager.removeView(resultView); } catch (Exception ignored) {}
         executor.shutdownNow();
