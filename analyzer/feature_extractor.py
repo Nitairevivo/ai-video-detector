@@ -3,6 +3,7 @@ Combines all analysis results into a unified feature vector for the ML classifie
 Also produces a rule-based confidence score as a fallback when the ML model
 has not been trained yet.
 """
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from typing import Optional
 import numpy as np
@@ -34,10 +35,15 @@ def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
     deep=True runs visual + frequency analysis (slower, ~5-15s extra).
     When metadata is stripped or platform re-encoded, deep analysis runs automatically.
     """
-    meta = read_metadata(file_path)
-    codec = analyze_codec(file_path)
-    container = parse_container(file_path)
-    audio = analyze_audio(file_path)
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        f_meta = ex.submit(read_metadata, file_path)
+        f_codec = ex.submit(analyze_codec, file_path)
+        f_container = ex.submit(parse_container, file_path)
+        f_audio = ex.submit(analyze_audio, file_path)
+        meta = f_meta.result()
+        codec = f_codec.result()
+        container = f_container.result()
+        audio = f_audio.result()
 
     # Run deep analysis when we need it: stripped metadata, platform re-encode,
     # or explicitly requested. Skip for very short clips (not enough frames).
@@ -50,14 +56,17 @@ def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
     freq: Optional[FreqResult] = None
     visual: Optional[VisualResult] = None
     if run_deep:
-        try:
-            freq = analyze_frequency(file_path)
-        except Exception:
-            freq = None
-        try:
-            visual = analyze_visual(file_path)
-        except Exception:
-            visual = None
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f_freq = ex.submit(analyze_frequency, file_path)
+            f_visual = ex.submit(analyze_visual, file_path)
+            try:
+                freq = f_freq.result()
+            except Exception:
+                freq = None
+            try:
+                visual = f_visual.result()
+            except Exception:
+                visual = None
 
     signals = _collect_signals(meta, codec, container, audio, freq, visual)
     feature_vector = _build_vector(signals)

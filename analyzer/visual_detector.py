@@ -53,15 +53,20 @@ def detect_visual_with_motion(video_path: str) -> VisualDetectionResult:
     Combined detection: frame analysis + motion analysis + ensemble voting.
     Significantly higher accuracy than each signal alone.
     """
-    # Run frame analysis
-    frame_result = detect_visual(video_path)
+    from concurrent.futures import ThreadPoolExecutor
 
-    # Run motion analysis
-    try:
-        from analyzer.motion_analyzer import analyze_motion
-        motion = analyze_motion(video_path)
-    except Exception:
-        motion = None
+    def _run_motion():
+        try:
+            from analyzer.motion_analyzer import analyze_motion
+            return analyze_motion(video_path)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_frame = ex.submit(detect_visual, video_path)
+        f_motion = ex.submit(_run_motion)
+        frame_result = f_frame.result()
+        motion = f_motion.result()
 
     if motion is None:
         return frame_result

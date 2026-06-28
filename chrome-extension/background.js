@@ -127,7 +127,11 @@ async function analyzeBlob(dataUrl, filename) {
   const blob = await response.blob();
   const form = new FormData();
   form.append("file", blob, filename || "video.mp4");
-  const res = await fetch(`${API}/detect`, { method: "POST", body: form });
+  const res = await fetch(`${API}/detect`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(30000),
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `API error ${res.status}`);

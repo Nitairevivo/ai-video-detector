@@ -18,6 +18,8 @@ const PLATFORM = (() => {
   if (h.includes("vimeo"))     return "vimeo";
   if (h.includes("twitch"))    return "twitch";
   if (h.includes("dailymotion")) return "dailymotion";
+  if (h.includes("whatsapp")) return "whatsapp";
+  if (h.includes("telegram"))  return "telegram";
   return "unknown";
 })();
 
@@ -42,6 +44,10 @@ const SELECTORS = {
   vimeo:       '.player_container',
   twitch:      '.video-player',
   dailymotion: '.player-root',
+  // WhatsApp Web: each message row can contain a video message
+  whatsapp:    'div[data-js-msg-id], div[role="row"]',
+  // Telegram Web: message containers and the media viewer
+  telegram:    '.message, .MediaViewer .MediaViewerContent',
 };
 
 function getVideoUrl(container) {
@@ -119,6 +125,17 @@ function getVideoUrl(container) {
       const link = container.querySelector('a[href*="/watch/"], a[href*="/reel/"], a[href*="videos/"]');
       if (link) return link.href;
       if (/\/(watch|reel|videos)/.test(location.pathname)) return location.href;
+      return null;
+    }
+    case "whatsapp": {
+      const video = container.querySelector('video[src^="blob:"]');
+      return video?.src || null;
+    }
+    case "telegram": {
+      const video = container.querySelector('video[src^="blob:"]');
+      if (video?.src) return video.src;
+      // Public Telegram channel posts can be analyzed via URL
+      if (/\/c\/\d+\/\d+|\/[^/]+\/\d+/.test(location.pathname)) return location.href;
       return null;
     }
     default:
@@ -218,9 +235,53 @@ function _shouldShow(auto, verdict) {
   return verdict === "ai_generated" || verdict === "ai_edited";
 }
 
+// Blob video analysis (WhatsApp/Telegram): read video bytes and upload to /detect.
+// Only reads the first 5MB — server needs just enough for metadata + frame analysis.
+async function analyzeBlobVideo(container, blobUrl, auto) {
+  if (analyzing.has(blobUrl)) return;
+  analyzing.add(blobUrl);
+  const loader = injectLoader(container);
+  try {
+    const resp = await fetch(blobUrl);
+    if (!resp.ok) return;
+    const fullBlob = await resp.blob();
+    if (fullBlob.size < 5000) return; // skip thumbnails / tiny blobs
+    const MAX = 5 * 1024 * 1024;
+    const slice = fullBlob.size > MAX ? fullBlob.slice(0, MAX) : fullBlob;
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(slice);
+    });
+    const response = await chrome.runtime.sendMessage({
+      type: "ANALYZE_FILE",
+      dataUrl,
+      filename: "video.mp4",
+    });
+    loader?.remove();
+    if (response?.ok && response.result) {
+      if (_shouldShow(auto, response.result.verdict)) showResult(container, response.result);
+      if (response.result.verdict === "ai_generated") {
+        aiDetectedCount++;
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: aiDetectedCount }).catch(() => {});
+      }
+    }
+  } catch { loader?.remove(); }
+  finally { analyzing.delete(blobUrl); }
+}
+
 async function analyze(container, auto = true) {
   const url = getVideoUrl(container);
-  if (!url || analyzing.has(url)) return;
+  if (!url) return;
+
+  // Blob URLs (WhatsApp/Telegram): bypass URL cache and upload directly
+  if (url.startsWith("blob:")) {
+    await analyzeBlobVideo(container, url, auto);
+    return;
+  }
+
+  if (analyzing.has(url)) return;
   if (resultCache[url]) {
     if (_shouldShow(auto, resultCache[url].verdict)) showResult(container, resultCache[url]);
     return;

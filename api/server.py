@@ -4,6 +4,7 @@ FastAPI server — upload a video, get AI detection results in seconds.
 import os
 import tempfile
 import urllib.request
+import concurrent.futures
 from pathlib import Path
 from typing import Optional
 
@@ -230,15 +231,31 @@ def train_model():
 PLATFORM_DOMAINS = [
     "tiktok.com", "instagram.com", "youtube.com", "youtu.be",
     "twitter.com", "x.com", "reddit.com", "v.redd.it",
-    "facebook.com", "fb.watch", "t.me", "snapchat.com",
+    "facebook.com", "fb.watch", "t.me", "telegram.org", "snapchat.com",
     "pinterest.com", "pin.it", "twitch.tv", "clips.twitch.tv",
     "vimeo.com", "dailymotion.com", "triller.co", "rumble.com",
     "odysee.com", "bitchute.com", "streamable.com", "medal.tv",
-    "likee.video", "kwai.com",
+    "likee.video", "kwai.com", "web.whatsapp.com",
 ]
 
 def _is_platform_url(url: str) -> bool:
     return any(d in url for d in PLATFORM_DOMAINS)
+
+
+def _run_visual_analysis(tmp_path: str):
+    try:
+        from analyzer.visual_detector import detect_visual_with_motion
+        return detect_visual_with_motion(tmp_path)
+    except Exception:
+        return None
+
+
+def _run_audio_ai_analysis(tmp_path: str):
+    try:
+        from analyzer.audio_analyzer_ai import analyze_audio_ai
+        return analyze_audio_ai(tmp_path)
+    except Exception:
+        return None
 
 
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
@@ -248,14 +265,16 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     except ImportError:
         return False
 
-    # Prefer a pre-muxed mp4 at low resolution (no ffmpeg required for merging).
-    # Falls back to any available format if none match the quality constraints.
+    # Prefer lowest quality (smallest file) — AI detection works at any resolution.
+    # Pre-muxed mp4 avoids ffmpeg merge step.
     fmt = (
-        "best[ext=mp4][height<=480]"
-        "/best[ext=mp4]"
-        "/best[height<=480]"
-        "/worst[ext=mp4]"
+        "worst[ext=mp4]"
         "/worst"
+        "/best[ext=mp4][height<=360]"
+        "/best[height<=360]"
+        "/best[ext=mp4][height<=480]"
+        "/best[ext=mp4]"
+        "/best"
     )
 
     ydl_opts = {
@@ -263,13 +282,14 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "socket_timeout": 20,
-        "retries": 1,
+        "socket_timeout": 12,
+        "retries": 0,
+        "fragment_retries": 0,
         "format": fmt,
         # When ffmpeg is available (production), merge into mp4.
         "merge_output_format": "mp4",
         "nopart": True,
-        "max_filesize": 200 * 1024 * 1024,  # skip formats >200 MB
+        "max_filesize": 50 * 1024 * 1024,  # skip formats >50 MB
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
@@ -380,35 +400,32 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         method = result.method
         has_camera_origin = bool(result.signals.get("camera_origin_detected"))
 
-        # Visual AI detection (ML model + rule-based, works after TikTok re-encoding)
+        # Visual + Audio AI analysis — run in parallel for speed
+        visual_said_real = False
         if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
-                vis = detect_visual(tmp_path)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+                f_vis = ex.submit(_run_visual_analysis, tmp_path)
+                f_audio = ex.submit(_run_audio_ai_analysis, tmp_path)
+                vis = f_vis.result()
+                audio_ai = f_audio.result()
+
+            if vis:
                 if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                     final_confidence = max(final_confidence, vis.confidence * 0.80)
                     method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
                 elif vis.verdict == "real" and vis.confidence <= 0.15:
-                    # Confidence here is "AI score" — low score + "real" verdict = clearly real
                     final_confidence = min(final_confidence, 0.06)
                     method = vis.method
-            except Exception:
-                pass
+                    visual_said_real = True
 
-        # Audio AI analysis
-        if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.audio_analyzer_ai import analyze_audio_ai
-                audio_ai = analyze_audio_ai(tmp_path)
+            if audio_ai and final_confidence < 0.5:
                 if audio_ai.verdict == "ai_audio" and audio_ai.confidence >= 0.65:
                     final_confidence = max(final_confidence, audio_ai.confidence * 0.55)
                     method = f"Audio: {audio_ai.reason}"
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-            except Exception:
-                pass
 
         # ML: only if very high confidence AND no camera origin
         if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
@@ -417,8 +434,8 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                 verdict = "ai_generated"
                 method = f"ML classifier ({ml_prob:.0%})"
 
-        # Gemini Vision: 0.70 threshold for all platforms
-        if final_confidence < 0.50 and not has_camera_origin:
+        # Gemini Vision — skip when visual already gave a strong "real" verdict
+        if final_confidence < 0.50 and not has_camera_origin and not visual_said_real:
             try:
                 import time as _time2
                 from analyzer.gemini_analyzer import analyze_with_gemini
@@ -433,7 +450,6 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
                     elif gemini.verdict == "real" and gemini.confidence >= 0.80:
-                        # Gemini confidently says real → lower our score
                         final_confidence = min(final_confidence, 0.08)
                         method = f"Gemini Vision: {gemini.reason}"
             except Exception:
