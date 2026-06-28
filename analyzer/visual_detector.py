@@ -106,6 +106,13 @@ def detect_visual_with_motion(video_path: str) -> VisualDetectionResult:
             f"Ensemble: motion confirms real camera ({motion.method[:40]})",
             signals)
 
+    # Frame confidently identifies re-encoded real camera; motion is non-committal
+    # (low motion content can leave motion analyzer uncertain on genuine real footage)
+    if frame_real and frame_result.confidence <= 0.10 and not motion_ai:
+        return VisualDetectionResult("real", frame_result.confidence,
+            f"Ensemble: frame confirms real camera ({frame_result.method[:50]})",
+            signals)
+
     # Disagreement or both uncertain
     if frame_result.verdict == "uncertain" and motion.verdict == "uncertain":
         best_conf = max(frame_result.confidence, motion.confidence)
