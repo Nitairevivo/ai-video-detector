@@ -241,42 +241,55 @@ def _is_platform_url(url: str) -> bool:
 
 
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
-    """Use yt-dlp to download video. Tries multiple format strategies."""
-    import subprocess, shutil
-    ytdlp = shutil.which("yt-dlp")
-    if not ytdlp:
+    """Download video via yt-dlp Python API. Works for YouTube, TikTok, Instagram, etc."""
+    try:
+        import yt_dlp
+    except ImportError:
         return False
 
-    base_args = [ytdlp, "--no-playlist", "--output", tmp_path,
-                 "--no-warnings", "--quiet",
-                 "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                 "--add-header", "Referer:https://www.google.com/"]
+    # Prefer a pre-muxed mp4 at low resolution (no ffmpeg required for merging).
+    # Falls back to any available format if none match the quality constraints.
+    fmt = (
+        "best[ext=mp4][height<=480]"
+        "/best[ext=mp4]"
+        "/best[height<=480]"
+        "/worst[ext=mp4]"
+        "/worst"
+    )
 
-    # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
-    formats = [
-        "91",           # YouTube HLS 144p (always available, not blocked)
-        "93",           # YouTube HLS 360p
-        "best[ext=mp4][filesize<10M]",
-        "best[filesize<10M]",
-        "worst",        # absolute fallback
-    ]
+    ydl_opts = {
+        "outtmpl": tmp_path,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 20,
+        "retries": 1,
+        "format": fmt,
+        # When ffmpeg is available (production), merge into mp4.
+        "merge_output_format": "mp4",
+        "nopart": True,
+        "max_filesize": 200 * 1024 * 1024,  # skip formats >200 MB
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                "Version/17.0 Mobile/15E148 Safari/604.1"
+            ),
+            "Referer": "https://www.google.com/",
+        },
+    }
 
-    for fmt in formats:
-        try:
-            result = subprocess.run(
-                base_args + ["--format", fmt, url],
-                timeout=30, capture_output=True,
-            )
-            if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000:
-                return True
-            # Remove partial file before next attempt
-            if os.path.exists(tmp_path):
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
                 os.unlink(tmp_path)
-        except Exception:
-            if os.path.exists(tmp_path):
-                try: os.unlink(tmp_path)
-                except: pass
-    return False
+            except Exception:
+                pass
+        return False
 
 
 def _download_direct(url: str, tmp_path: str) -> bool:
