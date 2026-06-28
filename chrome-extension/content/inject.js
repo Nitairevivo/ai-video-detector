@@ -47,26 +47,49 @@ const SELECTORS = {
 function getVideoUrl(container) {
   switch (PLATFORM) {
     case "tiktok": {
-      // Direct link inside the container (most reliable)
+      // Strategy 1: direct video link inside container (profile grid, search results)
       const link = container.querySelector('a[href*="/video/"]');
       if (link) return new URL(link.href, "https://www.tiktok.com").href;
-      // Already on a video page
+
+      // Strategy 2: For You / Following full-screen feed — TikTok updates location.href
+      // to /@user/video/ID as each video becomes active, so location is authoritative here.
       if (/\/@[^/]+\/video\/\d+/.test(location.pathname)) return location.href;
-      // data-e2e profile grid: video ID stored as attribute or child
-      const videoId = (
-        container.getAttribute("data-video-id") ||
-        container.querySelector("[data-video-id]")?.getAttribute("data-video-id") ||
-        // Some layouts encode it in the item link itself
-        container.querySelector('a[href*="/video/"]')
-          ?.href?.match(/\/video\/(\d+)/)?.[1]
-      );
-      if (videoId) {
+
+      // Strategy 3: data attributes — TikTok stores the video ID in various attributes
+      // depending on layout version (data-video-id, data-item-id, data-aweme-id).
+      const rawId =
+        container.dataset.videoId ||
+        container.dataset.itemId ||
+        container.dataset.awemeId ||
+        container.querySelector("[data-video-id]")?.dataset.videoId ||
+        container.querySelector("[data-item-id]")?.dataset.itemId ||
+        container.querySelector("[data-aweme-id]")?.dataset.awemeId;
+
+      if (rawId) {
         const userLink = container.querySelector("a[href*='/@']");
         const user = userLink
-          ? new URL(userLink.href).pathname.split("/video/")[0]
+          ? new URL(userLink.href, "https://www.tiktok.com").pathname.replace(/\/video\/.*$/, "")
           : "/@unknown";
-        return `https://www.tiktok.com${user}/video/${videoId}`;
+        return `https://www.tiktok.com${user}/video/${rawId}`;
       }
+
+      // Strategy 4: any link containing a long numeric ID (TikTok video IDs are 15-19 digits)
+      const numericLink = [...container.querySelectorAll("a[href]")].find(a =>
+        /\/video\/\d{15,19}/.test(a.pathname) || /\/\d{15,19}$/.test(a.pathname)
+      );
+      if (numericLink) {
+        const m = numericLink.pathname.match(/\/video\/(\d+)/) || numericLink.pathname.match(/\/(\d{15,19})$/);
+        if (m) {
+          const userLink = container.querySelector("a[href*='/@']");
+          const user = userLink
+            ? new URL(userLink.href, "https://www.tiktok.com").pathname.replace(/\/video\/.*$/, "")
+            : "/@unknown";
+          return `https://www.tiktok.com${user}/video/${m[1]}`;
+        }
+      }
+
+      // Strategy 5: fallback — if we're anywhere on TikTok, current URL is better than nothing
+      if (location.hostname.includes("tiktok") && location.pathname.length > 1) return location.href;
       return null;
     }
     case "instagram": {
