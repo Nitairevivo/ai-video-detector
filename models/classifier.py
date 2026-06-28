@@ -9,10 +9,11 @@ import numpy as np
 import joblib
 from pathlib import Path
 from typing import Optional
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score
+from sklearn.calibration import CalibratedClassifierCV
 
 
 MODEL_PATH = Path(__file__).parent / "trained_model.joblib"
@@ -57,15 +58,30 @@ class VideoAIClassifier:
             return False
 
     def _build_pipeline(self) -> Pipeline:
+        gb = GradientBoostingClassifier(
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.04,
+            subsample=0.8,
+            min_samples_leaf=4,
+            random_state=42,
+        )
+        rf = RandomForestClassifier(
+            n_estimators=200,
+            max_depth=10,
+            min_samples_leaf=3,
+            max_features="sqrt",
+            random_state=42,
+        )
+        # Soft-voting ensemble: averages probability estimates from both models.
+        # GradientBoosting handles non-linear patterns; RandomForest adds diversity.
+        ensemble = VotingClassifier(
+            estimators=[("gb", gb), ("rf", rf)],
+            voting="soft",
+        )
         return Pipeline([
             ('scaler', StandardScaler()),
-            ('clf', GradientBoostingClassifier(
-                n_estimators=200,
-                max_depth=4,
-                learning_rate=0.05,
-                subsample=0.8,
-                random_state=42,
-            ))
+            ('clf', ensemble),
         ])
 
     def predict(self, feature_vector: list) -> tuple[float, bool]:
@@ -82,37 +98,55 @@ class VideoAIClassifier:
 
     def add_sample(self, feature_vector: list, label: bool, source: str = "manual"):
         """
-        Adds a labeled sample to the training dataset.
-        label=True means AI-generated, False means real.
+        Appends a labeled sample to the training dataset.
+        Uses JSON Lines append to avoid O(n²) full-file rewrites.
         """
         TRAINING_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-        samples = []
-        if TRAINING_DATA_PATH.exists():
-            with open(TRAINING_DATA_PATH) as f:
-                samples = json.load(f)
-
-        samples.append({
+        record = json.dumps({
             "features": feature_vector,
             "label": int(label),
             "source": source,
         })
 
-        with open(TRAINING_DATA_PATH, 'w') as f:
-            json.dump(samples, f)
-
-        print(f"Sample added. Total samples: {len(samples)}")
+        # Append to a companion .jsonl file (fast, no full-file rewrite).
+        # train() merges both files automatically.
+        jsonl_path = TRAINING_DATA_PATH.with_suffix('.jsonl')
+        with open(jsonl_path, 'a') as f:
+            f.write(record + '\n')
 
     def train(self) -> dict:
         """
         Trains the model on all collected samples.
-        Needs at least 20 samples (10 AI, 10 real) to train.
+        Merges main JSON + append-only JSONL before training.
         """
         if not TRAINING_DATA_PATH.exists():
             return {"error": "No training data found. Add samples first."}
 
         with open(TRAINING_DATA_PATH) as f:
             samples = json.load(f)
+
+        # Merge any samples appended via add_sample() since last train()
+        jsonl_path = TRAINING_DATA_PATH.with_suffix('.jsonl')
+        if jsonl_path.exists():
+            seen_sources = {s.get('source', '') for s in samples}
+            new_lines = 0
+            with open(jsonl_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                        if rec.get('source') not in seen_sources:
+                            samples.append(rec)
+                            new_lines += 1
+                    except Exception:
+                        pass
+            if new_lines > 0:
+                # Consolidate into main JSON and clear the .jsonl
+                with open(TRAINING_DATA_PATH, 'w') as f:
+                    json.dump(samples, f)
+                jsonl_path.unlink()
 
         if len(samples) < 20:
             return {"error": f"Need at least 20 samples, have {len(samples)}"}
@@ -189,7 +223,20 @@ class VideoAIClassifier:
             # File
             "fps",
         ]
-        importances = clf.feature_importances_
+        # Handle both single classifier and VotingClassifier ensemble
+        if hasattr(clf, 'feature_importances_'):
+            importances = clf.feature_importances_
+        elif hasattr(clf, 'estimators_'):
+            # VotingClassifier.estimators_ is a list of fitted estimators (no names)
+            all_imp = [
+                e.feature_importances_ for e in clf.estimators_
+                if hasattr(e, 'feature_importances_')
+            ]
+            if not all_imp:
+                return None
+            importances = np.mean(all_imp, axis=0)
+        else:
+            return None
         n = min(len(feature_names), len(importances))
         return dict(sorted(
             zip(feature_names[:n], importances[:n]),
