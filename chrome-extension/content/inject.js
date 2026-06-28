@@ -116,6 +116,11 @@ function getVerdictStyle(result) {
     icon: "✏️", label: "AI EDITED",
     title: result.edit_tool_detected ? `Edited with ${result.edit_tool_detected}` : "Real video, AI-edited",
   };
+  if (v === "uncertain") return {
+    color: "#f59e0b", bg: "rgba(10,8,2,0.93)", border: "#f59e0b66",
+    icon: "⚠️", label: "UNCERTAIN",
+    title: "Could not determine",
+  };
   return {
     color: "#22c55e", bg: "rgba(2,10,4,0.93)", border: "#22c55e66",
     icon: "✅", label: "AUTHENTIC",
@@ -184,10 +189,19 @@ function showResult(container, result) {
 const analyzing = new Set();
 let aiDetectedCount = 0;
 
+// In auto mode only show AI/edited results — don't flash overlays on real/uncertain videos.
+function _shouldShow(auto, verdict) {
+  if (!auto) return true;
+  return verdict === "ai_generated" || verdict === "ai_edited";
+}
+
 async function analyze(container, auto = true) {
   const url = getVideoUrl(container);
   if (!url || analyzing.has(url)) return;
-  if (resultCache[url]) { showResult(container, resultCache[url]); return; }
+  if (resultCache[url]) {
+    if (_shouldShow(auto, resultCache[url].verdict)) showResult(container, resultCache[url]);
+    return;
+  }
 
   analyzing.add(url);
   const loader = injectLoader(container);
@@ -197,7 +211,7 @@ async function analyze(container, auto = true) {
     if (response?.ok && response.result) {
       resultCache[url] = response.result;
       chrome.storage.local.set({ [CACHE_KEY]: resultCache });
-      if (!auto || response.result.verdict !== "real") showResult(container, response.result);
+      if (_shouldShow(auto, response.result.verdict)) showResult(container, response.result);
       if (response.result.verdict === "ai_generated") {
         aiDetectedCount++;
         chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: aiDetectedCount }).catch(() => {});
@@ -240,6 +254,7 @@ function stopObserver() { io?.disconnect(); io = null; mo?.disconnect(); mo = nu
 // ─── Messages ─────────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "GET_STATS") sendResponse({ total: Object.keys(resultCache).length, ai: aiDetectedCount });
+
   if (msg.type === "SCAN_CURRENT") {
     const sel = SELECTORS[PLATFORM];
     const containers = sel ? [...document.querySelectorAll(sel)] : [];
@@ -249,7 +264,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }) || containers[0];
     if (visible) analyze(visible, false);
   }
+
   if (msg.type === "SET_AUTO_ANALYZE") msg.enabled ? startObserver() : stopObserver();
+
+  // Result from right-click context menu — show overlay on matching container
+  if (msg.type === "SHOW_RESULT_FROM_CONTEXT") {
+    const sel = SELECTORS[PLATFORM];
+    const containers = sel ? [...document.querySelectorAll(sel)] : [];
+    const target = containers.find(c => getVideoUrl(c) === msg.url) || containers[0];
+    if (target) showResult(target, msg.result);
+    if (msg.url) resultCache[msg.url] = msg.result;
+  }
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

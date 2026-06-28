@@ -113,6 +113,7 @@ async function analyzeUrl(url, deep = false) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(50000), // 50s — gives yt-dlp time to download
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
