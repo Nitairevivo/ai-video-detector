@@ -241,7 +241,8 @@ def detect_visual(video_path: str) -> VisualDetectionResult:
     # AI over-sharp (re-encoded):       var=300-500, temp_cv=0.05-0.15, fft=0.20-0.35
 
     # Strong REAL signal — re-encoded platform content (TikTok/YouTube/Instagram)
-    # Key: real cameras land at var=190-310 after re-encoding; AI-smooth is <150
+    # Key: real cameras land at var=190-310 after re-encoding; AI-smooth is <150.
+    # temp_cv >= 0.18 guards against AI oversharp content that can reach var=200+.
     if local_var >= 190 and local_var <= 310 and temp_cv >= 0.18:
         return VisualDetectionResult("real", 0.07, f"Frame analysis: re-encoded camera signature (var={local_var:.0f}, cv={temp_cv:.3f})", signals)
     # Strong REAL signal — raw/unencoded footage
@@ -260,6 +261,21 @@ def detect_visual(video_path: str) -> VisualDetectionResult:
         return VisualDetectionResult("ai_generated", 0.75, f"Frame analysis: AI diffusion pattern (smooth+clean spectrum)", signals)
     if local_var < 200 and temp_cv < 0.10:
         return VisualDetectionResult("ai_generated", 0.68, f"Frame analysis: suspiciously smooth and uniform", signals)
+
+    # ── Border zone: var 150-190, temp_cv 0.10-0.18 ──────────────────────────
+    # ifd_range (p90-p10 of inter-frame diffs) distinguishes real burst patterns
+    # from AI's characteristically uniform inter-frame changes.
+    # Real cameras: ifd_range > 3.0 (bursts of motion, then static moments)
+    # AI videos:    ifd_range < 1.5 (every frame changes by similar amount)
+    if 150 <= local_var < 190 and temp_cv < 0.18:
+        if ifd_range < 1.5 and temp_cv < 0.16:
+            return VisualDetectionResult("ai_generated", 0.62,
+                f"Frame analysis: AI-uniform motion in border zone (var={local_var:.0f}, range={ifd_range:.2f})",
+                signals)
+        if ifd_range > 3.0 and temp_cv >= 0.14:
+            return VisualDetectionResult("real", 0.12,
+                f"Frame analysis: natural burst motion in border zone (var={local_var:.0f}, range={ifd_range:.2f})",
+                signals)
 
     # Moderate AI signals
     if temp_cv < 0.08 and ifd_mean < 2.0:

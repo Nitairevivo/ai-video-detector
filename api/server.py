@@ -449,16 +449,17 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
 
         # If TikTok itself labeled this as AIGC — that's definitive
         if aigc_from_page:
-            # Auto-label: extract features in background for future training
-            def _label_aigc():
-                try:
-                    r = extract_features(tmp_path if os.path.exists(tmp_path) else "")
-                    if r:
-                        _auto_add_sample(r.feature_vector, label=True,
-                                         source=f"tiktok_aigc:{url[:50]}")
-                except Exception:
-                    pass
-            threading.Thread(target=_label_aigc, daemon=True).start()
+            # Extract features now while the file still exists, then auto-label asynchronously.
+            # We can't do this in a thread that outlives the finally-block cleanup.
+            try:
+                _fv = extract_features(tmp_path).feature_vector
+                _src = f"tiktok_aigc:{url[:50]}"
+                threading.Thread(
+                    target=lambda fv=_fv, s=_src: _auto_add_sample(fv, label=True, source=s),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
             return {
                 "url": url,
                 "is_ai_generated": True,
