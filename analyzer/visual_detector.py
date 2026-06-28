@@ -222,12 +222,17 @@ def detect_visual(video_path: str) -> VisualDetectionResult:
             pass
 
     # ── Rule-based fallback ───────────────────────────────────────────────────
-    # Based on calibration from real camera footage:
-    # Real camera: var=600-800, temp_cv=0.40-0.60, fft=0.20-0.26
-    # AI smooth:   var=90-250,  temp_cv=0.05-0.15, fft=0.05-0.12
-    # AI sharp:    var=350-500, temp_cv=0.05-0.15, fft=0.20-0.35
+    # Calibration — raw footage vs platform re-encoded:
+    # Real camera (raw/Wikimedia):      var=600-800, temp_cv=0.40-0.60, fft=0.20-0.26
+    # Real camera (TikTok/YouTube):     var=180-280, temp_cv=0.15-0.35
+    # AI smooth (re-encoded):           var=90-150,  temp_cv=0.05-0.15, fft=0.05-0.12
+    # AI over-sharp (re-encoded):       var=300-500, temp_cv=0.05-0.15, fft=0.20-0.35
 
-    # Strong REAL signal
+    # Strong REAL signal — re-encoded platform content (TikTok/YouTube/Instagram)
+    # Key: real cameras land at var=190-310 after re-encoding; AI-smooth is <150
+    if local_var >= 190 and local_var <= 310 and temp_cv >= 0.18:
+        return VisualDetectionResult("real", 0.07, f"Frame analysis: re-encoded camera signature (var={local_var:.0f}, cv={temp_cv:.3f})", signals)
+    # Strong REAL signal — raw/unencoded footage
     if local_var >= 580 and temp_cv >= 0.35:
         return VisualDetectionResult("real", 0.05, f"Frame analysis: real camera signature (var={local_var:.0f}, cv={temp_cv:.3f})", signals)
     if local_var >= 500 and temp_cv >= 0.40:

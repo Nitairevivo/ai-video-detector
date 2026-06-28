@@ -151,7 +151,8 @@ async def detect(
                     method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
+                elif vis.verdict == "real" and vis.confidence <= 0.15:
+                    # Confidence here is "AI score" — low score + "real" verdict = clearly real
                     final_confidence = min(final_confidence, 0.06)
                     method = vis.method
             except Exception:
@@ -389,8 +390,8 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                     method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
-                    # Strong visual evidence of real camera
+                elif vis.verdict == "real" and vis.confidence <= 0.15:
+                    # Confidence here is "AI score" — low score + "real" verdict = clearly real
                     final_confidence = min(final_confidence, 0.06)
                     method = vis.method
             except Exception:
