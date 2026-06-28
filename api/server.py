@@ -344,17 +344,13 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             except Exception:
                 pass
 
-        # Strategy 2: yt-dlp
-        if not ok and _is_platform_url(url):
+        # Strategy 2: yt-dlp (handles YouTube, TikTok, Instagram, etc.)
+        if not ok:
             ok = _download_with_ytdlp(url, tmp_path)
 
-        # Strategy 3: Direct HTTP
+        # Strategy 3: Direct HTTP fallback (CDN links, direct mp4 URLs)
         if not ok:
             ok = _download_direct(url, tmp_path)
-
-        # Strategy 4: yt-dlp as last resort
-        if not ok:
-            ok = _download_with_ytdlp(url, tmp_path)
 
         if not ok:
             raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
