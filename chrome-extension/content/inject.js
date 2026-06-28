@@ -205,6 +205,8 @@ function showResult(container, result) {
   removeResult(container);
   const style = getVerdictStyle(result);
   const pct = Math.round(result.confidence * 100);
+  const videoUrl = getVideoUrl(container) || result.url || "";
+  const isAi = result.verdict === "ai_generated";
 
   const el = document.createElement("div");
   el.className = "aivd-result";
@@ -215,11 +217,31 @@ function showResult(container, result) {
       <div class="aivd-result-badge" style="color:${style.color};background:${style.color}22">${style.icon} ${style.label}</div>
       <div class="aivd-result-title">${style.title}</div>
       <div class="aivd-result-method">${(result.detection_method || "").slice(0, 60)}</div>
+      <div class="aivd-feedback-row">
+        <span class="aivd-feedback-label">Correct?</span>
+        <button class="aivd-feedback-btn aivd-fb-yes" title="Yes, correct">👍</button>
+        <button class="aivd-feedback-btn aivd-fb-no" title="Wrong, flip it">👎</button>
+      </div>
     </div>
     <div class="aivd-result-pct" style="color:${style.color}">${pct}%</div>
     <button class="aivd-result-close">✕</button>
   `;
   el.querySelector(".aivd-result-close").addEventListener("click", (e) => { e.stopPropagation(); el.remove(); });
+
+  const fbRow = el.querySelector(".aivd-feedback-row");
+  el.querySelector(".aivd-fb-yes").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (videoUrl && !videoUrl.startsWith("blob:"))
+      chrome.runtime.sendMessage({ type: "FEEDBACK", url: videoUrl, is_ai: isAi, verdict_was: result.verdict }).catch(() => {});
+    fbRow.innerHTML = '<span class="aivd-feedback-thanks">✓ Thanks!</span>';
+  });
+  el.querySelector(".aivd-fb-no").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (videoUrl && !videoUrl.startsWith("blob:"))
+      chrome.runtime.sendMessage({ type: "FEEDBACK", url: videoUrl, is_ai: !isAi, verdict_was: result.verdict }).catch(() => {});
+    fbRow.innerHTML = '<span class="aivd-feedback-thanks">✓ Noted!</span>';
+  });
+
   if (result.verdict !== "ai_generated") setTimeout(() => el.remove(), 8000);
   container.appendChild(el);
   container.querySelector(".aivd-scan-btn")?.remove();

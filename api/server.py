@@ -21,8 +21,9 @@ from api.billing import create_checkout_session, handle_webhook
 # Init DB on startup
 init_db()
 
-# Build frame visual model if not present (runs once at startup, ~2 min)
 import threading
+
+# Build frame visual model if not present (runs once at startup, ~2 min)
 def _build_frame_model_bg():
     try:
         from analyzer.build_frame_model import ensure_model
@@ -30,6 +31,36 @@ def _build_frame_model_bg():
     except Exception as e:
         print(f"[startup] frame model build failed: {e}")
 threading.Thread(target=_build_frame_model_bg, daemon=True).start()
+
+# Auto-retrain when enough new labeled samples accumulate
+_samples_since_retrain = 0
+_RETRAIN_THRESHOLD = 8
+_retrain_lock = threading.Lock()
+
+def _auto_add_sample(feature_vector: list, label: bool, source: str):
+    """Add a sample and trigger retraining if threshold reached."""
+    global _samples_since_retrain
+    try:
+        classifier = get_classifier()
+        classifier.add_sample(feature_vector, label=label, source=source[:80])
+        with _retrain_lock:
+            _samples_since_retrain += 1
+            should_retrain = _samples_since_retrain >= _RETRAIN_THRESHOLD
+            if should_retrain:
+                _samples_since_retrain = 0
+        if should_retrain:
+            threading.Thread(target=_retrain_bg, daemon=True).start()
+    except Exception:
+        pass
+
+def _retrain_bg():
+    try:
+        classifier = get_classifier()
+        result = classifier.train()
+        if result.get("model_active"):
+            print(f"[auto-retrain] AUC={result.get('cv_auc_mean', 0):.3f} on {result.get('n_samples', '?')} samples")
+    except Exception as e:
+        print(f"[auto-retrain] failed: {e}")
 
 app = FastAPI(
     title="AI Video Detector API",
@@ -46,7 +77,7 @@ app.add_middleware(
 
 # ─── API Key auth ──────────────────────────────────────────────────────────────
 
-FREE_ENDPOINTS = {"/", "/register", "/docs", "/openapi.json", "/stripe/webhook"}
+FREE_ENDPOINTS = {"/", "/register", "/feedback", "/docs", "/openapi.json", "/stripe/webhook"}
 
 def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
     """
@@ -195,6 +226,46 @@ async def detect(
         }
     finally:
         os.unlink(tmp_path)
+
+
+class FeedbackRequest(BaseModel):
+    url: str
+    is_ai: bool  # corrected label — True = AI-generated, False = real
+    verdict_was: Optional[str] = None  # what the model predicted (for logging)
+
+
+@app.post("/feedback")
+async def feedback(body: FeedbackRequest):
+    """
+    User feedback: was our verdict correct?
+    Triggers a background re-download + feature extraction to add a labeled sample.
+    Returns immediately (202) — the actual work happens in a daemon thread.
+    """
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(400, "Invalid URL")
+
+    def _process():
+        tmp_path = tempfile.mktemp(suffix=".mp4")
+        try:
+            ok = _download_with_ytdlp(body.url, tmp_path)
+            if not ok:
+                ok = _download_direct(body.url, tmp_path)
+            if not ok:
+                return
+            result = extract_features(tmp_path)
+            _auto_add_sample(result.feature_vector, label=body.is_ai,
+                             source=f"feedback:{body.url[:60]}")
+        except Exception:
+            pass
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    threading.Thread(target=_process, daemon=True).start()
+    return {"status": "accepted", "message": "Feedback received — thank you!"}
 
 
 @app.post("/label")
@@ -378,6 +449,16 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
 
         # If TikTok itself labeled this as AIGC — that's definitive
         if aigc_from_page:
+            # Auto-label: extract features in background for future training
+            def _label_aigc():
+                try:
+                    r = extract_features(tmp_path if os.path.exists(tmp_path) else "")
+                    if r:
+                        _auto_add_sample(r.feature_vector, label=True,
+                                         source=f"tiktok_aigc:{url[:50]}")
+                except Exception:
+                    pass
+            threading.Thread(target=_label_aigc, daemon=True).start()
             return {
                 "url": url,
                 "is_ai_generated": True,
@@ -399,6 +480,11 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         verdict = result.verdict
         method = result.method
         has_camera_origin = bool(result.signals.get("camera_origin_detected"))
+
+        # Auto-label: when camera origin is highly confident, use as real training sample
+        if has_camera_origin and result.confidence < 0.05:
+            _auto_add_sample(result.feature_vector, label=False,
+                             source=f"camera_origin:{url[:50]}")
 
         # Visual + Audio AI analysis — run in parallel for speed
         visual_said_real = False
@@ -434,8 +520,9 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                 verdict = "ai_generated"
                 method = f"ML classifier ({ml_prob:.0%})"
 
-        # Gemini Vision — skip when visual already gave a strong "real" verdict
-        if final_confidence < 0.50 and not has_camera_origin and not visual_said_real:
+        # Gemini Vision — lower threshold for platform URLs (re-encoding strips most signals)
+        _gemini_threshold = 0.35 if _is_platform_url(url) else 0.50
+        if final_confidence < _gemini_threshold and not has_camera_origin and not visual_said_real:
             try:
                 import time as _time2
                 from analyzer.gemini_analyzer import analyze_with_gemini

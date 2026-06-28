@@ -24,10 +24,11 @@ from analyzer import extract_features
 from models.classifier import get_classifier
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
-TRAINING_DATA_PATH = Path(__file__).parent / "data" / "training_samples.json"
-SEEN_PATH          = Path(__file__).parent / "data" / "seen_video_ids.json"
+_REPO = Path(__file__).parent
+AI_DIR   = Path(os.environ.get("AI_VIDEO_DIR",   str(_REPO / "data" / "training_videos" / "ai")))
+REAL_DIR = Path(os.environ.get("REAL_VIDEO_DIR", str(_REPO / "data" / "training_videos" / "real")))
+TRAINING_DATA_PATH = _REPO / "data" / "training_samples.json"
+SEEN_PATH          = _REPO / "data" / "seen_video_ids.json"
 
 AI_DIR.mkdir(parents=True, exist_ok=True)
 REAL_DIR.mkdir(parents=True, exist_ok=True)
@@ -314,7 +315,11 @@ def push_model():
              f"Auto-train: {dataset_stats()[0]+dataset_stats()[1]} samples"],
             cwd=repo, capture_output=True
         )
-        subprocess.run(["git", "push", "origin", "master"], cwd=repo, capture_output=True)
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo, capture_output=True, text=True
+        ).stdout.strip() or "main"
+        subprocess.run(["git", "push", "origin", branch], cwd=repo, capture_output=True)
         print("  ✓ pushed to production")
     except Exception as e:
         print(f"  ✗ push failed: {e}")

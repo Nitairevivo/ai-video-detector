@@ -104,6 +104,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(err => sendResponse({ ok: false, error: err.message }));
     return true;
   }
+
+  if (msg.type === "FEEDBACK") {
+    fetch(`${API}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: msg.url, is_ai: msg.is_ai, verdict_was: msg.verdict_was || null }),
+    }).catch(() => {});
+    return;
+  }
 });
 
 // ─── API calls ─────────────────────────────────────────────────────────────────
