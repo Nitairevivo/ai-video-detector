@@ -504,9 +504,8 @@ async def detect_batch(
     async def stream_results():
         yield "[\n"
         for i, url in enumerate(urls):
-            suffix = ".mp4"
-            tmp_path = tempfile.mktemp(suffix=suffix)
-            result_dict = {"url": url, "index": i}
+            tmp_path = tempfile.mktemp(suffix=".mp4")
+            result_dict: dict = {"url": url, "index": i}
             try:
                 ok = _download_with_ytdlp(url, tmp_path)
                 if not ok:
@@ -522,7 +521,8 @@ async def detect_batch(
                     method = result.method
                     has_camera = bool(result.signals.get("camera_origin_detected"))
                     if ml_prob and not has_camera and conf < 0.1 and ml_prob >= 0.88:
-                        conf = min(0.75, ml_prob); verdict = "ai_generated"
+                        conf = min(0.75, ml_prob)
+                        verdict = "ai_generated"
                     if conf < 0.5 and not has_camera:
                         try:
                             from analyzer.visual_detector import detect_visual_with_motion as detect_visual
@@ -530,7 +530,8 @@ async def detect_batch(
                             if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                                 conf = max(conf, vis.confidence * 0.80)
                                 method = vis.method
-                                if conf >= 0.5: verdict = "ai_generated"
+                                if conf >= 0.5:
+                                    verdict = "ai_generated"
                         except Exception:
                             pass
                     result_dict.update({
@@ -543,14 +544,21 @@ async def detect_batch(
                         "detection_method": method,
                     })
             except Exception as e:
-                result_dict.update({"error": str(e), "verdict": "unknown"})
+                result_dict.update({"error": str(e)[:200], "verdict": "unknown"})
             finally:
                 if os.path.exists(tmp_path):
-                    try: os.unlink(tmp_path)
-                    except: pass
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
 
+            # Always yield a valid JSON line — the generator must never raise
+            # after the opening "[" has been sent or the client gets malformed JSON.
             sep = "," if i < len(urls) - 1 else ""
-            yield f"  {_json.dumps(result_dict)}{sep}\n"
+            try:
+                yield f"  {_json.dumps(result_dict)}{sep}\n"
+            except Exception:
+                yield f"  {_json.dumps({'url': url, 'index': i, 'error': 'serialisation error', 'verdict': 'unknown'})}{sep}\n"
             await asyncio.sleep(0)  # yield control
 
         yield "]\n"

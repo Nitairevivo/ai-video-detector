@@ -22,9 +22,19 @@ const PLATFORM = (() => {
 })();
 
 const SELECTORS = {
-  tiktok:      'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
-  instagram:   'article, div[role="dialog"]',
-  youtube:     "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer, ytd-rich-item-renderer",
+  // TikTok: data-e2e attrs are more stable than class names across DOM updates.
+  // Cover For You feed, Following feed, profile grid, and search results.
+  tiktok: [
+    'div[data-e2e="recommend-list-item-container"]',
+    'div[data-e2e="following-item"]',
+    'div[data-e2e="user-post-item"]',
+    'div[data-e2e="search-card-item"]',
+    'div[class*="DivVideoContainer"]',
+  ].join(", "),
+  // Instagram: target post articles and the expand modal; avoid <main> and generic containers.
+  instagram:   'article[role="presentation"], article, div[role="dialog"] article',
+  // YouTube: cover Shorts feed, watch page reels, and homepage video cards.
+  youtube:     "ytd-reel-video-renderer, ytd-reel-item-renderer, ytd-video-renderer, ytd-rich-item-renderer",
   twitter:     'article[data-testid="tweet"]',
   reddit:      'shreddit-post, div[data-testid="post-container"]',
   facebook:    'div[data-pagelet*="FeedUnit"], div[role="article"]',
@@ -37,14 +47,24 @@ const SELECTORS = {
 function getVideoUrl(container) {
   switch (PLATFORM) {
     case "tiktok": {
+      // Direct link inside the container (most reliable)
       const link = container.querySelector('a[href*="/video/"]');
-      if (link) return link.href;
+      if (link) return new URL(link.href, "https://www.tiktok.com").href;
+      // Already on a video page
       if (/\/@[^/]+\/video\/\d+/.test(location.pathname)) return location.href;
-      const videoId = container.getAttribute("data-video-id") ||
-                      container.querySelector("[data-video-id]")?.getAttribute("data-video-id");
+      // data-e2e profile grid: video ID stored as attribute or child
+      const videoId = (
+        container.getAttribute("data-video-id") ||
+        container.querySelector("[data-video-id]")?.getAttribute("data-video-id") ||
+        // Some layouts encode it in the item link itself
+        container.querySelector('a[href*="/video/"]')
+          ?.href?.match(/\/video\/(\d+)/)?.[1]
+      );
       if (videoId) {
         const userLink = container.querySelector("a[href*='/@']");
-        const user = userLink ? new URL(userLink.href).pathname : "/@unknown";
+        const user = userLink
+          ? new URL(userLink.href).pathname.split("/video/")[0]
+          : "/@unknown";
         return `https://www.tiktok.com${user}/video/${videoId}`;
       }
       return null;

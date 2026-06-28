@@ -33,45 +33,100 @@ FFPROBE = _ffprobe_path()
 
 
 KNOWN_AI_TOOLS = {
-    # OpenAI
+    # ── OpenAI ────────────────────────────────────────────────────────────────
     "sora": "OpenAI Sora",
-    # Runway
+    "sora-turbo": "OpenAI Sora",
+    "sora_turbo": "OpenAI Sora",
+    # ── Runway ────────────────────────────────────────────────────────────────
     "runway": "Runway",
     "runwayml": "Runway",
+    "runway gen": "Runway",
     "gen-2": "Runway Gen-2",
     "gen-3": "Runway Gen-3",
     "gen-4": "Runway Gen-4",
-    "gen4": "Runway Gen-4",
-    "runway gen": "Runway",
-    # Pika
+    "runway-gen4": "Runway Gen-4",
+    "gen3alpha": "Runway Gen-3",
+    # ── Pika Labs ─────────────────────────────────────────────────────────────
     "pika": "Pika Labs",
-    # Kling / Kuaishou
+    "pika-2": "Pika Labs 2.0",
+    "pika2": "Pika Labs 2.0",
+    "pika.art": "Pika Labs",
+    "pikalabs": "Pika Labs",
+    # ── Kling / Kuaishou ──────────────────────────────────────────────────────
     "kling": "Kuaishou Kling",
     "kuaishou": "Kuaishou Kling",
-    # Luma
+    "klingai": "Kuaishou Kling",
+    "kling-2": "Kuaishou Kling 2.0",
+    "kling2": "Kuaishou Kling 2.0",
+    "kwai-kolors": "Kuaishou Kling",
+    # ── Luma AI ───────────────────────────────────────────────────────────────
     "luma": "Luma AI",
+    "lumalabs": "Luma AI",
+    "luma-dream": "Luma Dream Machine",
     "dream machine": "Luma Dream Machine",
-    # MiniMax
+    # ── MiniMax / Hailuo ──────────────────────────────────────────────────────
     "hailuo": "MiniMax Hailuo",
     "minimax": "MiniMax",
-    # Google
+    "hailuo-02": "MiniMax Hailuo 2",
+    "minimax-02": "MiniMax Hailuo 2",
+    "hailuo.video": "MiniMax Hailuo",
+    "minimax.com": "MiniMax",
+    "minimax-video": "MiniMax",
+    # ── Google ────────────────────────────────────────────────────────────────
     "veo": "Google Veo",
+    "veo2": "Google Veo 2",
+    "veo 2": "Google Veo 2",
+    "google-veo": "Google Veo",
+    "deepmind-veo": "Google Veo",
     "lumiere": "Google Lumiere",
-    # Stability AI
+    "imagen video": "Google Imagen Video",
+    # ── Stability AI ──────────────────────────────────────────────────────────
     "stable video": "Stability AI SVD",
     "stablevideo": "Stability AI SVD",
+    "stable-video": "Stability AI SVD",
     "svd": "Stability AI SVD",
-    # Wan / Alibaba
+    "stability.ai": "Stability AI SVD",
+    # ── Wan / Alibaba ─────────────────────────────────────────────────────────
     "wan2": "Wan 2.0",
     "wan 2": "Wan 2.0",
+    "wan2.0": "Wan 2.0",
+    "wan 2.1": "Wan 2.1",
+    "wan2.1": "Wan 2.1",
     "wan-video": "Wan Video",
+    "wanvideo": "Wan Video",
     "tongyi": "Tongyi Wanxiang",
-    # Haiper
+    # ── Tencent HunyuanVideo ──────────────────────────────────────────────────
+    "hunyuan": "Tencent HunyuanVideo",
+    "hunyuanvideo": "Tencent HunyuanVideo",
+    # ── ByteDance ─────────────────────────────────────────────────────────────
+    "seaweed": "ByteDance Seaweed",
+    "seaweed-video": "ByteDance Seaweed",
+    "bytedance-gen": "ByteDance Seaweed",
+    "skyreels": "SkyReels",
+    "magicvideo": "ByteDance MagicVideo",
+    "magic-video": "ByteDance MagicVideo",
+    # ── Haiper ────────────────────────────────────────────────────────────────
     "haiper": "Haiper",
-    # CogVideo / Zhipu
+    "haiper.ai": "Haiper",
+    # ── CogVideo / Zhipu ──────────────────────────────────────────────────────
     "cogvideo": "CogVideo",
     "cogvideox": "CogVideoX",
-    # Open source
+    "cog-video": "CogVideo",
+    # ── StepVideo ─────────────────────────────────────────────────────────────
+    "stepvideo": "StepVideo",
+    "step-video": "StepVideo",
+    # ── Lightricks LTX ────────────────────────────────────────────────────────
+    "ltx-video": "Lightricks LTX",
+    "ltxvideo": "Lightricks LTX",
+    "lightricks": "Lightricks LTX",
+    # ── Genmo Mochi ───────────────────────────────────────────────────────────
+    "mochi": "Genmo Mochi",
+    "genmo": "Genmo Mochi",
+    "mochi-1": "Genmo Mochi",
+    # ── Allegro ───────────────────────────────────────────────────────────────
+    "allegro": "Allegro AI",
+    "rhymesai": "Allegro AI",
+    # ── Open-source / community models ────────────────────────────────────────
     "animatediff": "AnimateDiff",
     "modelscope": "ModelScope",
     "zeroscope": "ZeroScope",
@@ -80,72 +135,16 @@ KNOWN_AI_TOOLS = {
     "lavie": "LaVie",
     "open-sora": "Open-Sora",
     "opensora": "Open-Sora",
-    "mochi": "Genmo Mochi",
-    "hunyuan": "Tencent HunyuanVideo",
-    "stepvideo": "StepVideo",
-    "seaweed": "ByteDance Seaweed",
-    # Avatar / deepfake tools
-    "synthesia": "Synthesia",
-    "heygen": "HeyGen",
-    "d-id": "D-ID",
-    "deepbrain": "DeepBrain AI",
-    "creatify": "Creatify",
-    "invideo": "InVideo AI",
-    # Generic text2video tools (specific enough)
     "text2video": "Text2Video",
-    # Newer tools (2024-2025)
-    "veo": "Google Veo",
-    "veo2": "Google Veo 2",
-    "veo 2": "Google Veo 2",
-    "imagen video": "Google Imagen Video",
-    "lumiere": "Google Lumiere",
-    "seaweed": "ByteDance Seaweed",
-    "step-video": "StepVideo",
-    "stepvideo": "StepVideo",
-    "cogvideo": "CogVideo",
-    "cogvideox": "CogVideoX",
-    "cog-video": "CogVideo",
-    "wan 2": "Wan 2.0",
-    "wan2.0": "Wan 2.0",
-    "wanvideo": "Wan Video",
-    "genmo": "Genmo Mochi",
-    "mochi-1": "Genmo Mochi",
-    "haiper": "Haiper",
-    "haiper.ai": "Haiper",
-    "morph studio": "Morph Studio",
-    "morphstudio": "Morph Studio",
-    "kaiber": "Kaiber AI",
-    "kaiber.ai": "Kaiber AI",
-    "decohere": "Decohere AI",
-    "higgsfield": "Higgsfield AI",
-    "pixverse": "PixVerse",
-    "pixverse.ai": "PixVerse",
-    "ltx-video": "Lightricks LTX",
-    "ltxvideo": "Lightricks LTX",
-    "lightricks": "Lightricks LTX",
-    "sora-turbo": "OpenAI Sora",
-    "sora_turbo": "OpenAI Sora",
-    "runway-gen4": "Runway Gen-4",
-    "gen4": "Runway Gen-4",
-    "pika-2": "Pika Labs 2.0",
-    "pika2": "Pika Labs 2.0",
-    "kling-2": "Kuaishou Kling 2.0",
-    "kling2": "Kuaishou Kling 2.0",
-    "hailuo-02": "MiniMax Hailuo 02",
-    "minimax-02": "MiniMax 02",
-    "vidu": "Shengshu Vidu",
-    "shengshu": "Shengshu Vidu",
-    "skyreels": "SkyReels",
-    "jogg.ai": "Jogg AI",
-    "jogg-ai": "Jogg AI",
-    "fliki": "Fliki AI",
-    "fliki.ai": "Fliki AI",
-    "deepmotion": "DeepMotion",
-    "genspark": "Genspark AI",
-    # Avatar/Presenter tools
+    # ── Avatar / presenter tools ──────────────────────────────────────────────
+    "synthesia": "Synthesia",
+    "synthesia.io": "Synthesia",
+    "heygen": "HeyGen",
+    "heygen.com": "HeyGen",
     "d-id": "D-ID",
     "d_id": "D-ID",
     "did.com": "D-ID",
+    "did-video": "D-ID",
     "deepbrain": "DeepBrain AI",
     "aistudios": "DeepBrain AI",
     "rephrase.ai": "Rephrase AI",
@@ -155,8 +154,28 @@ KNOWN_AI_TOOLS = {
     "vidnoz": "Vidnoz AI",
     "pictory": "Pictory AI",
     "simpleshow": "Simpleshow AI",
-    # NOTE: "aigc", "ai-generated", "ai_generated" REMOVED —
-    # TikTok adds "AIGC" to ALL videos (including real footage) as a platform label.
+    # ── Other notable tools ───────────────────────────────────────────────────
+    "creatify": "Creatify",
+    "invideo.io": "InVideo AI",
+    "invideo": "InVideo AI",
+    "vidu": "Shengshu Vidu",
+    "shengshu": "Shengshu Vidu",
+    "morph studio": "Morph Studio",
+    "morphstudio": "Morph Studio",
+    "kaiber": "Kaiber AI",
+    "kaiber.ai": "Kaiber AI",
+    "decohere": "Decohere AI",
+    "higgsfield": "Higgsfield AI",
+    "pixverse": "PixVerse",
+    "pixverse.ai": "PixVerse",
+    "jogg.ai": "Jogg AI",
+    "jogg-ai": "Jogg AI",
+    "fliki": "Fliki AI",
+    "fliki.ai": "Fliki AI",
+    "deepmotion": "DeepMotion",
+    "genspark": "Genspark AI",
+    # NOTE: "aigc", "ai-generated", "ai_generated" intentionally omitted —
+    # TikTok adds "AIGC" to all videos (including real footage) as a platform label.
 }
 
 # Encoders that are exclusively used by AI video tools
@@ -198,6 +217,20 @@ AI_NATIVE_RESOLUTIONS: dict[tuple[int, int], tuple[str, float]] = {
     (512, 512):  ("AI tool (square)", 0.82),
     (768, 768):  ("AI tool (square)", 0.82),
     (1024, 1024):("AI tool (square)", 0.85),
+    # Wan 2.1 / open-source landscape (non-standard widths)
+    (1280, 720): ("Wan/open-source AI", 0.45),  # lower confidence — also used by cameras
+    (720, 1280): ("Wan/open-source AI", 0.55),  # portrait more distinctive
+    # LTX-Video — uses exact 768×512 (mod-32 not mod-16)
+    (768, 512):  ("Lightricks LTX",    0.80),
+    (512, 768):  ("Lightricks LTX",    0.80),
+    # Kling 2.0 — ultra-wide cinematic preset
+    (1920, 832): ("Kuaishou Kling 2.0", 0.88),
+    (832, 1920): ("Kuaishou Kling 2.0", 0.88),
+    # Allegro — 1280×720 with mod-64 alignment
+    (1280, 768): ("Allegro/AI tool",   0.65),
+    # MiniMax Hailuo 2 — 1280×960 (4:3 portrait variant)
+    (960, 1280): ("MiniMax Hailuo 2",  0.82),
+    (1280, 960): ("MiniMax Hailuo 2",  0.82),
 }
 
 # Exact video durations produced by AI generation tools (±DURATION_TOL seconds).
