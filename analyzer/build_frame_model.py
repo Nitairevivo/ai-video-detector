@@ -43,7 +43,7 @@ def _reencode(src: str) -> str:
 
 
 def _extract(path: str):
-    """Extract visual features from video."""
+    """Extract visual features from video. Must return 14 features to match detect_visual()."""
     try:
         from analyzer.frame_analyzer import (
             _get_frames, _local_block_variance, _inter_frame_diff,
@@ -71,8 +71,18 @@ def _extract(path: str):
         lv_p5 = float(np.percentile(bv, 5)) if bv else 0
         lv_p50 = float(np.percentile(bv, 50)) if bv else 0
         lv_p95 = float(np.percentile(bv, 95)) if bv else 0
+        # Motion features (synthetic videos have minimal motion — use 0.0 as placeholder)
+        # This keeps the feature vector at 14 dimensions, matching detect_visual() at inference.
+        try:
+            from analyzer.motion_analyzer import analyze_motion
+            mot = analyze_motion(path)
+            motion_std = mot.signals.get("motion_std", 0.0)
+            motion_cv = mot.signals.get("motion_temporal_cv", 0.0)
+        except Exception:
+            motion_std = motion_cv = 0.0
         return [local_var, ifd_mean, ifd_std, ifd_range, ifd_p10, ifd_p90,
-                fft_ratio, temp_cv, brightness_std, lv_p5, lv_p50, lv_p95]
+                fft_ratio, temp_cv, brightness_std, lv_p5, lv_p50, lv_p95,
+                motion_std, motion_cv]
     except Exception:
         return None
 

@@ -24,7 +24,6 @@ function withOverlayManifest(config) {
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.FOREGROUND_SERVICE",
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
-      "android.permission.RECEIVE_BOOT_COMPLETED",
     ];
     for (const perm of neededPerms) {
       if (!existingPerms.includes(perm)) {
@@ -100,7 +99,7 @@ function withOverlayJavaFiles(config) {
     "android",
     (cfg) => {
       const projectRoot = cfg.modRequest.platformProjectRoot;
-      const pkg = "com/aivideodector/app";
+      const pkg = "com/verifai/app";
       const javaDestDir = path.join(
         projectRoot,
         "app/src/main/java",
@@ -116,7 +115,7 @@ function withOverlayJavaFiles(config) {
         path.join(xmlDir, "accessibility_service_config.xml"),
         `<?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewScrolled|typeWindowStateChanged|typeWindowContentChanged|typeViewClicked"
+    android:accessibilityEventTypes="typeViewScrolled|typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
@@ -155,7 +154,7 @@ function withOverlayJavaFiles(config) {
             /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
             (match) =>
               match +
-              "          packages.add(com.aivideodector.app.OverlayPackage())\n"
+              "          packages.add(com.verifai.app.OverlayPackage())\n"
           );
           fs.writeFileSync(mainAppKt, src);
           console.log("[withAndroidOverlay] Patched MainApplication.kt");

@@ -67,11 +67,22 @@ def analyze_motion(video_path: str, n_frames: int = 16) -> MotionResult:
 
     # ── Compute motion features ───────────────────────────────────────────────
     motions = []
+    raw_means = []  # raw absolute change per frame pair (captures pans/zooms)
     for i in range(len(frames) - 1):
         diff = frames[i + 1] - frames[i]
+
+        # Spatial gradient of the inter-frame difference — sensitive to regions where
+        # motion is spatially non-uniform (moving objects against a still background).
+        # AI diffusion models produce spatially localized, smooth motion that shows up here.
         gx = np.gradient(diff, axis=1)
         gy = np.gradient(diff, axis=0)
         mag = np.sqrt(gx**2 + gy**2)
+
+        # Raw pixel-change magnitude — non-zero for camera pans and zooms even when
+        # the gradient-based magnitude is near zero (because a pan shifts all pixels
+        # uniformly, making the spatial gradient of the difference ≈ 0).
+        raw_means.append(float(np.abs(diff).mean()))
+
         motions.append({
             "mean": float(mag.mean()),
             "std": float(mag.std()),
@@ -92,6 +103,7 @@ def analyze_motion(video_path: str, n_frames: int = 16) -> MotionResult:
     motion_temporal_cv = float(means.std() / (means.mean() + 1e-8))  # KEY: real >> AI
     motion_max_std = float(maxes.std())
     spatial_consistency = float(spatial_cvs.mean())  # AI > real
+    raw_motion_mean = float(np.mean(raw_means))  # overall pixel-change magnitude
 
     signals = {
         "motion_mean": round(motion_mean, 3),
@@ -99,6 +111,7 @@ def analyze_motion(video_path: str, n_frames: int = 16) -> MotionResult:
         "motion_temporal_cv": round(motion_temporal_cv, 3),
         "motion_max_std": round(motion_max_std, 3),
         "spatial_consistency": round(spatial_consistency, 3),
+        "raw_motion_mean": round(raw_motion_mean, 3),
         "frames_analyzed": len(frames),
     }
 
@@ -120,16 +133,30 @@ def analyze_motion(video_path: str, n_frames: int = 16) -> MotionResult:
             f"Motion analysis: varied camera motion (std={motion_std:.2f})",
             signals)
 
-    # Strong AI signal — unnaturally smooth
+    # Strong AI signal — unnaturally smooth gradient motion.
+    # Guard against false positives on camera pans/zooms: a real camera pan
+    # produces a spatially-uniform frame difference (spatial gradient ≈ 0, so
+    # motion_std ≈ 0 here) but still has large raw pixel change. AI truly-idle
+    # scenes have near-zero raw change too.
     if motion_std < 0.18 and motion_temporal_cv < 0.12:
+        if raw_motion_mean > 10.0:
+            # Significant pixel change with zero spatial gradient = camera pan/zoom.
+            # Don't misclassify as AI-smooth.
+            return MotionResult("uncertain", 0.20,
+                f"Motion analysis: uniform camera movement (pan/zoom) detected — not AI-smooth "
+                f"(std={motion_std:.2f}, raw={raw_motion_mean:.1f})",
+                signals)
         conf = min(0.92, 0.75 + (0.18 - motion_std) * 1.5 + (0.12 - motion_temporal_cv) * 2)
         return MotionResult("ai_generated", conf,
             f"Motion analysis: AI-smooth motion (std={motion_std:.2f}, cv={motion_temporal_cv:.3f})",
             signals)
 
     if motion_std < 0.25 and motion_temporal_cv < 0.20:
-        conf = 0.65
-        return MotionResult("ai_generated", conf,
+        if raw_motion_mean > 10.0:
+            return MotionResult("uncertain", 0.25,
+                f"Motion analysis: uniform movement (std={motion_std:.2f}, raw={raw_motion_mean:.1f})",
+                signals)
+        return MotionResult("ai_generated", 0.65,
             f"Motion analysis: suspiciously uniform motion (std={motion_std:.2f})",
             signals)
 

@@ -4,6 +4,7 @@ FastAPI server — upload a video, get AI detection results in seconds.
 import os
 import tempfile
 import urllib.request
+import concurrent.futures
 from pathlib import Path
 from typing import Optional
 
@@ -20,8 +21,9 @@ from api.billing import create_checkout_session, handle_webhook
 # Init DB on startup
 init_db()
 
-# Build frame visual model if not present (runs once at startup, ~2 min)
 import threading
+
+# Build frame visual model if not present (runs once at startup, ~2 min)
 def _build_frame_model_bg():
     try:
         from analyzer.build_frame_model import ensure_model
@@ -29,6 +31,36 @@ def _build_frame_model_bg():
     except Exception as e:
         print(f"[startup] frame model build failed: {e}")
 threading.Thread(target=_build_frame_model_bg, daemon=True).start()
+
+# Auto-retrain when enough new labeled samples accumulate
+_samples_since_retrain = 0
+_RETRAIN_THRESHOLD = 8
+_retrain_lock = threading.Lock()
+
+def _auto_add_sample(feature_vector: list, label: bool, source: str):
+    """Add a sample and trigger retraining if threshold reached."""
+    global _samples_since_retrain
+    try:
+        classifier = get_classifier()
+        classifier.add_sample(feature_vector, label=label, source=source[:80])
+        with _retrain_lock:
+            _samples_since_retrain += 1
+            should_retrain = _samples_since_retrain >= _RETRAIN_THRESHOLD
+            if should_retrain:
+                _samples_since_retrain = 0
+        if should_retrain:
+            threading.Thread(target=_retrain_bg, daemon=True).start()
+    except Exception:
+        pass
+
+def _retrain_bg():
+    try:
+        classifier = get_classifier()
+        result = classifier.train()
+        if result.get("model_active"):
+            print(f"[auto-retrain] AUC={result.get('cv_auc_mean', 0):.3f} on {result.get('n_samples', '?')} samples")
+    except Exception as e:
+        print(f"[auto-retrain] failed: {e}")
 
 app = FastAPI(
     title="AI Video Detector API",
@@ -45,7 +77,7 @@ app.add_middleware(
 
 # ─── API Key auth ──────────────────────────────────────────────────────────────
 
-FREE_ENDPOINTS = {"/", "/register", "/docs", "/openapi.json", "/stripe/webhook"}
+FREE_ENDPOINTS = {"/", "/register", "/feedback", "/docs", "/openapi.json", "/stripe/webhook"}
 
 def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
     """
@@ -151,7 +183,8 @@ async def detect(
                     method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
+                elif vis.verdict == "real" and vis.confidence <= 0.15:
+                    # Confidence here is "AI score" — low score + "real" verdict = clearly real
                     final_confidence = min(final_confidence, 0.06)
                     method = vis.method
             except Exception:
@@ -195,6 +228,46 @@ async def detect(
         os.unlink(tmp_path)
 
 
+class FeedbackRequest(BaseModel):
+    url: str
+    is_ai: bool  # corrected label — True = AI-generated, False = real
+    verdict_was: Optional[str] = None  # what the model predicted (for logging)
+
+
+@app.post("/feedback")
+async def feedback(body: FeedbackRequest):
+    """
+    User feedback: was our verdict correct?
+    Triggers a background re-download + feature extraction to add a labeled sample.
+    Returns immediately (202) — the actual work happens in a daemon thread.
+    """
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(400, "Invalid URL")
+
+    def _process():
+        tmp_path = tempfile.mktemp(suffix=".mp4")
+        try:
+            ok = _download_with_ytdlp(body.url, tmp_path)
+            if not ok:
+                ok = _download_direct(body.url, tmp_path)
+            if not ok:
+                return
+            result = extract_features(tmp_path)
+            _auto_add_sample(result.feature_vector, label=body.is_ai,
+                             source=f"feedback:{body.url[:60]}")
+        except Exception:
+            pass
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    threading.Thread(target=_process, daemon=True).start()
+    return {"status": "accepted", "message": "Feedback received — thank you!"}
+
+
 @app.post("/label")
 async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
     """
@@ -229,54 +302,86 @@ def train_model():
 PLATFORM_DOMAINS = [
     "tiktok.com", "instagram.com", "youtube.com", "youtu.be",
     "twitter.com", "x.com", "reddit.com", "v.redd.it",
-    "facebook.com", "fb.watch", "t.me", "snapchat.com",
+    "facebook.com", "fb.watch", "t.me", "telegram.org", "snapchat.com",
     "pinterest.com", "pin.it", "twitch.tv", "clips.twitch.tv",
     "vimeo.com", "dailymotion.com", "triller.co", "rumble.com",
     "odysee.com", "bitchute.com", "streamable.com", "medal.tv",
-    "likee.video", "kwai.com",
+    "likee.video", "kwai.com", "web.whatsapp.com",
 ]
 
 def _is_platform_url(url: str) -> bool:
     return any(d in url for d in PLATFORM_DOMAINS)
 
 
+def _run_visual_analysis(tmp_path: str):
+    try:
+        from analyzer.visual_detector import detect_visual_with_motion
+        return detect_visual_with_motion(tmp_path)
+    except Exception:
+        return None
+
+
+def _run_audio_ai_analysis(tmp_path: str):
+    try:
+        from analyzer.audio_analyzer_ai import analyze_audio_ai
+        return analyze_audio_ai(tmp_path)
+    except Exception:
+        return None
+
+
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
-    """Use yt-dlp to download video. Tries multiple format strategies."""
-    import subprocess, shutil
-    ytdlp = shutil.which("yt-dlp")
-    if not ytdlp:
+    """Download video via yt-dlp Python API. Works for YouTube, TikTok, Instagram, etc."""
+    try:
+        import yt_dlp
+    except ImportError:
         return False
 
-    base_args = [ytdlp, "--no-playlist", "--output", tmp_path,
-                 "--no-warnings", "--quiet",
-                 "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                 "--add-header", "Referer:https://www.google.com/"]
+    # Prefer lowest quality (smallest file) — AI detection works at any resolution.
+    # Pre-muxed mp4 avoids ffmpeg merge step.
+    fmt = (
+        "worst[ext=mp4]"
+        "/worst"
+        "/best[ext=mp4][height<=360]"
+        "/best[height<=360]"
+        "/best[ext=mp4][height<=480]"
+        "/best[ext=mp4]"
+        "/best"
+    )
 
-    # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
-    formats = [
-        "91",           # YouTube HLS 144p (always available, not blocked)
-        "93",           # YouTube HLS 360p
-        "best[ext=mp4][filesize<10M]",
-        "best[filesize<10M]",
-        "worst",        # absolute fallback
-    ]
+    ydl_opts = {
+        "outtmpl": tmp_path,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 12,
+        "retries": 0,
+        "fragment_retries": 0,
+        "format": fmt,
+        # When ffmpeg is available (production), merge into mp4.
+        "merge_output_format": "mp4",
+        "nopart": True,
+        "max_filesize": 50 * 1024 * 1024,  # skip formats >50 MB
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                "Version/17.0 Mobile/15E148 Safari/604.1"
+            ),
+            "Referer": "https://www.google.com/",
+        },
+    }
 
-    for fmt in formats:
-        try:
-            result = subprocess.run(
-                base_args + ["--format", fmt, url],
-                timeout=30, capture_output=True,
-            )
-            if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000:
-                return True
-            # Remove partial file before next attempt
-            if os.path.exists(tmp_path):
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
                 os.unlink(tmp_path)
-        except Exception:
-            if os.path.exists(tmp_path):
-                try: os.unlink(tmp_path)
-                except: pass
-    return False
+            except Exception:
+                pass
+        return False
 
 
 def _download_direct(url: str, tmp_path: str) -> bool:
@@ -331,23 +436,30 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             except Exception:
                 pass
 
-        # Strategy 2: yt-dlp
-        if not ok and _is_platform_url(url):
+        # Strategy 2: yt-dlp (handles YouTube, TikTok, Instagram, etc.)
+        if not ok:
             ok = _download_with_ytdlp(url, tmp_path)
 
-        # Strategy 3: Direct HTTP
+        # Strategy 3: Direct HTTP fallback (CDN links, direct mp4 URLs)
         if not ok:
             ok = _download_direct(url, tmp_path)
-
-        # Strategy 4: yt-dlp as last resort
-        if not ok:
-            ok = _download_with_ytdlp(url, tmp_path)
 
         if not ok:
             raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
 
         # If TikTok itself labeled this as AIGC — that's definitive
         if aigc_from_page:
+            # Extract features now while the file still exists, then auto-label asynchronously.
+            # We can't do this in a thread that outlives the finally-block cleanup.
+            try:
+                _fv = extract_features(tmp_path).feature_vector
+                _src = f"tiktok_aigc:{url[:50]}"
+                threading.Thread(
+                    target=lambda fv=_fv, s=_src: _auto_add_sample(fv, label=True, source=s),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
             return {
                 "url": url,
                 "is_ai_generated": True,
@@ -370,35 +482,37 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
         method = result.method
         has_camera_origin = bool(result.signals.get("camera_origin_detected"))
 
-        # Visual AI detection (ML model + rule-based, works after TikTok re-encoding)
+        # Auto-label: when camera origin is highly confident, use as real training sample
+        if has_camera_origin and result.confidence < 0.05:
+            _auto_add_sample(result.feature_vector, label=False,
+                             source=f"camera_origin:{url[:50]}")
+
+        # Visual + Audio AI analysis — run in parallel for speed
+        visual_said_real = False
         if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
-                vis = detect_visual(tmp_path)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+                f_vis = ex.submit(_run_visual_analysis, tmp_path)
+                f_audio = ex.submit(_run_audio_ai_analysis, tmp_path)
+                vis = f_vis.result()
+                audio_ai = f_audio.result()
+
+            if vis:
                 if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                     final_confidence = max(final_confidence, vis.confidence * 0.80)
                     method = vis.method
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
-                    # Strong visual evidence of real camera
+                elif vis.verdict == "real" and vis.confidence <= 0.15:
                     final_confidence = min(final_confidence, 0.06)
                     method = vis.method
-            except Exception:
-                pass
+                    visual_said_real = True
 
-        # Audio AI analysis
-        if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.audio_analyzer_ai import analyze_audio_ai
-                audio_ai = analyze_audio_ai(tmp_path)
+            if audio_ai and final_confidence < 0.5:
                 if audio_ai.verdict == "ai_audio" and audio_ai.confidence >= 0.65:
                     final_confidence = max(final_confidence, audio_ai.confidence * 0.55)
                     method = f"Audio: {audio_ai.reason}"
                     if final_confidence >= 0.5:
                         verdict = "ai_generated"
-            except Exception:
-                pass
 
         # ML: only if very high confidence AND no camera origin
         if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
@@ -407,8 +521,9 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                 verdict = "ai_generated"
                 method = f"ML classifier ({ml_prob:.0%})"
 
-        # Gemini Vision: 0.70 threshold for all platforms
-        if final_confidence < 0.50 and not has_camera_origin:
+        # Gemini Vision — lower threshold for platform URLs (re-encoding strips most signals)
+        _gemini_threshold = 0.35 if _is_platform_url(url) else 0.50
+        if final_confidence < _gemini_threshold and not has_camera_origin and not visual_said_real:
             try:
                 import time as _time2
                 from analyzer.gemini_analyzer import analyze_with_gemini
@@ -423,7 +538,6 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
                         verdict = gemini.verdict
                         method = f"Gemini Vision: {gemini.reason}"
                     elif gemini.verdict == "real" and gemini.confidence >= 0.80:
-                        # Gemini confidently says real → lower our score
                         final_confidence = min(final_confidence, 0.08)
                         method = f"Gemini Vision: {gemini.reason}"
             except Exception:
@@ -495,9 +609,8 @@ async def detect_batch(
     async def stream_results():
         yield "[\n"
         for i, url in enumerate(urls):
-            suffix = ".mp4"
-            tmp_path = tempfile.mktemp(suffix=suffix)
-            result_dict = {"url": url, "index": i}
+            tmp_path = tempfile.mktemp(suffix=".mp4")
+            result_dict: dict = {"url": url, "index": i}
             try:
                 ok = _download_with_ytdlp(url, tmp_path)
                 if not ok:
@@ -513,7 +626,8 @@ async def detect_batch(
                     method = result.method
                     has_camera = bool(result.signals.get("camera_origin_detected"))
                     if ml_prob and not has_camera and conf < 0.1 and ml_prob >= 0.88:
-                        conf = min(0.75, ml_prob); verdict = "ai_generated"
+                        conf = min(0.75, ml_prob)
+                        verdict = "ai_generated"
                     if conf < 0.5 and not has_camera:
                         try:
                             from analyzer.visual_detector import detect_visual_with_motion as detect_visual
@@ -521,7 +635,8 @@ async def detect_batch(
                             if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
                                 conf = max(conf, vis.confidence * 0.80)
                                 method = vis.method
-                                if conf >= 0.5: verdict = "ai_generated"
+                                if conf >= 0.5:
+                                    verdict = "ai_generated"
                         except Exception:
                             pass
                     result_dict.update({
@@ -534,14 +649,21 @@ async def detect_batch(
                         "detection_method": method,
                     })
             except Exception as e:
-                result_dict.update({"error": str(e), "verdict": "unknown"})
+                result_dict.update({"error": str(e)[:200], "verdict": "unknown"})
             finally:
                 if os.path.exists(tmp_path):
-                    try: os.unlink(tmp_path)
-                    except: pass
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
 
+            # Always yield a valid JSON line — the generator must never raise
+            # after the opening "[" has been sent or the client gets malformed JSON.
             sep = "," if i < len(urls) - 1 else ""
-            yield f"  {_json.dumps(result_dict)}{sep}\n"
+            try:
+                yield f"  {_json.dumps(result_dict)}{sep}\n"
+            except Exception:
+                yield f"  {_json.dumps({'url': url, 'index': i, 'error': 'serialisation error', 'verdict': 'unknown'})}{sep}\n"
             await asyncio.sleep(0)  # yield control
 
         yield "]\n"

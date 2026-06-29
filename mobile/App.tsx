@@ -1,9 +1,26 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, Component } from "react";
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity,
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
   Platform, Switch, Modal, Dimensions, Linking, I18nManager,
 } from "react-native";
+
+// ─── Error Boundary — prevents blank-screen crash ────────────────────────────
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(e: Error) { return { error: e.message }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, backgroundColor: "#06060f", justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <Text style={{ color: "#ef4444", fontSize: 18, fontWeight: "800", marginBottom: 12 }}>שגיאה בהפעלה</Text>
+          <Text style={{ color: "#6b7280", fontSize: 12, textAlign: "center" }}>{this.state.error}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── i18n — Hebrew / English ──────────────────────────────────────────────────
 type Lang = "he" | "en";
@@ -641,9 +658,35 @@ function AppInner() {
   );
 }
 
-export default function App() {
-  // Skip onboarding — overlay not available in this build
+function AppRoot() {
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(true));
+  }, []);
+
+  if (onboarded === null) return null; // loading
+
+  if (!onboarded) {
+    return (
+      <OnboardingScreen
+        onDone={() => {
+          SecureStore.setItemAsync("onboarded", "1").catch(() => {});
+          setOnboarded(true);
+        }}
+      />
+    );
+  }
+
   return <AppInner />;
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppRoot />
+    </ErrorBoundary>
+  );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

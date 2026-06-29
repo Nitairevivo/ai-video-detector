@@ -47,7 +47,7 @@ def _get_duration(video_path: str) -> float:
         return 5.0
 
 
-def _extract_frames(video_path: str, n: int = 8) -> list[str]:
+def _extract_frames(video_path: str, n: int = 8) -> tuple[list[str], str]:
     """Extract frames as PNG files, return paths."""
     duration = _get_duration(video_path)
     tmp = tempfile.mkdtemp()

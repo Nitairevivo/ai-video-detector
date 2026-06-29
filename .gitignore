@@ -10,5 +10,6 @@ node_modules/
 web/.next/
 web/node_modules/
 mobile/node_modules/
+mobile/.expo/
 *.log
 .vercel

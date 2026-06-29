@@ -145,25 +145,31 @@ def analyze_with_gemini(video_path: str) -> Optional[GeminiResult]:
     }).encode()
 
     import time
+    data = None
     for attempt in range(3):
         try:
-            url = f"{API_URL}?key={api_key}"
+            req_url = f"{API_URL}?key={api_key}"
             req = urllib.request.Request(
-                url, data=body,
+                req_url, data=body,
                 headers={"Content-Type": "application/json"},
                 method="POST"
             )
             with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read())
-            break  # success
+            break  # success — exit retry loop
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 2:
-                time.sleep(3 * (attempt + 1))  # 3s, 6s
+            if attempt < 2:
+                # 429 = rate-limit: back off longer; other HTTP errors: short wait
+                time.sleep(3 * (attempt + 1) if e.code == 429 else 2)
                 continue
             return None
         except Exception:
+            # Network error, timeout, JSON parse failure, etc.
+            if attempt < 2:
+                time.sleep(2)
+                continue
             return None
-    else:
+    if data is None:
         return None
 
     try:

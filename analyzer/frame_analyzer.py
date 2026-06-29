@@ -165,28 +165,32 @@ def analyze_frames(video_path: str) -> FrameAnalysisResult:
     temp_cv = _temporal_consistency(frames)
 
     # ── Score each signal ──────────────────────────────────────────────────────
-    # Calibrated from real camera footage (Wikimedia):
-    #   Real camera: var≈600-800, temp_cv≈0.4-0.6, fft≈0.20-0.26
-    # And synthetic AI patterns:
-    #   AI smooth:   var≈100-250, temp_cv≈0.05-0.15, fft≈0.05-0.10
-    #   AI sharp:    var≈350-500, temp_cv≈0.05-0.15, fft≈0.20-0.30
+    # Calibration — raw footage vs platform re-encoded:
+    #   Real camera (raw/Wikimedia):      var≈600-800, temp_cv≈0.4-0.6, fft≈0.20-0.26
+    #   Real camera (TikTok/YouTube):     var≈180-280, temp_cv≈0.15-0.35
+    #   AI smooth (re-encoded):           var≈50-150,  temp_cv≈0.05-0.15, fft≈0.05-0.10
+    #   AI over-sharp (re-encoded):       var≈300-500, temp_cv≈0.05-0.15, fft≈0.20-0.30
 
     # Signal 1: Local variance (real camera = HIGH due to natural texture + noise)
+    # After platform re-encoding, real cameras land at 180-280; AI-smooth lands at 50-150.
     if local_var < 150:
-        var_score = 0.88   # definitely AI-smooth (too clean, like Sora/Kling)
+        var_score = 0.88   # definitely AI-smooth (Sora/Kling/Runway Gen-3)
         var_reason = "over-smooth frames — no natural texture"
-    elif local_var < 250:
-        var_score = 0.70   # likely AI-smooth
-        var_reason = "unusually smooth for camera footage"
-    elif local_var < 350:
-        var_score = 0.40   # possibly AI, possibly just low-motion
-        var_reason = "below-normal texture variance"
+    elif local_var < 180:
+        var_score = 0.60   # probably AI-smooth or extreme compression
+        var_reason = "very low texture variance"
+    elif local_var <= 310:
+        var_score = 0.12   # typical re-encoded real camera range
+        var_reason = "texture consistent with re-encoded camera footage"
     elif local_var > 700:
-        var_score = 0.05   # definitely real — high natural texture
+        var_score = 0.05   # definitely real — raw/unencoded high texture
         var_reason = "natural camera texture detected"
-    elif local_var > 550:
-        var_score = 0.10   # likely real
+    elif local_var > 500:
+        var_score = 0.10   # likely raw real footage
         var_reason = "camera-like texture"
+    elif local_var > 310:
+        var_score = 0.65   # AI over-sharp range after re-encoding (300-500)
+        var_reason = "over-sharp texture — AI generation artifact"
     else:
         var_score = 0.25
         var_reason = "moderate texture variance"
@@ -237,8 +241,14 @@ def analyze_frames(video_path: str) -> FrameAnalysisResult:
 
     scores = sorted([var_score, temp_score, fft_score], reverse=True)
 
-    # Strong REAL signal: high local variance means real camera with natural noise
-    if local_var >= 600:
+    # Strong REAL signal
+    # Re-encoded real camera (TikTok/YouTube): var lands in 180-310, temp_cv 0.15-0.35
+    if 190 <= local_var <= 320 and temp_cv >= 0.18:
+        combined = 0.06
+        verdict = "real"
+        method = f"Frame analysis: re-encoded camera signature (var={local_var:.0f}, cv={temp_cv:.3f})"
+    # Raw/unencoded real camera: very high local variance
+    elif local_var >= 600:
         combined = 0.04
         verdict = "real"
         method = f"Frame analysis: high natural texture (var={local_var:.0f}) — camera footage"

@@ -18,13 +18,25 @@ const PLATFORM = (() => {
   if (h.includes("vimeo"))     return "vimeo";
   if (h.includes("twitch"))    return "twitch";
   if (h.includes("dailymotion")) return "dailymotion";
+  if (h.includes("whatsapp")) return "whatsapp";
+  if (h.includes("telegram"))  return "telegram";
   return "unknown";
 })();
 
 const SELECTORS = {
-  tiktok:      'div[class*="DivVideoContainer"], div[data-e2e="recommend-list-item-container"], article',
-  instagram:   'article, div[role="dialog"]',
-  youtube:     "ytd-reel-video-renderer, ytd-shorts, ytd-video-renderer, ytd-rich-item-renderer",
+  // TikTok: data-e2e attrs are more stable than class names across DOM updates.
+  // Cover For You feed, Following feed, profile grid, and search results.
+  tiktok: [
+    'div[data-e2e="recommend-list-item-container"]',
+    'div[data-e2e="following-item"]',
+    'div[data-e2e="user-post-item"]',
+    'div[data-e2e="search-card-item"]',
+    'div[class*="DivVideoContainer"]',
+  ].join(", "),
+  // Instagram: target post articles and the expand modal; avoid <main> and generic containers.
+  instagram:   'article[role="presentation"], article, div[role="dialog"] article',
+  // YouTube: cover Shorts feed, watch page reels, and homepage video cards.
+  youtube:     "ytd-reel-video-renderer, ytd-reel-item-renderer, ytd-video-renderer, ytd-rich-item-renderer",
   twitter:     'article[data-testid="tweet"]',
   reddit:      'shreddit-post, div[data-testid="post-container"]',
   facebook:    'div[data-pagelet*="FeedUnit"], div[role="article"]',
@@ -32,21 +44,58 @@ const SELECTORS = {
   vimeo:       '.player_container',
   twitch:      '.video-player',
   dailymotion: '.player-root',
+  // WhatsApp Web: each message row can contain a video message
+  whatsapp:    'div[data-js-msg-id], div[role="row"]',
+  // Telegram Web: message containers and the media viewer
+  telegram:    '.message, .MediaViewer .MediaViewerContent',
 };
 
 function getVideoUrl(container) {
   switch (PLATFORM) {
     case "tiktok": {
+      // Strategy 1: direct video link inside container (profile grid, search results)
       const link = container.querySelector('a[href*="/video/"]');
-      if (link) return link.href;
+      if (link) return new URL(link.href, "https://www.tiktok.com").href;
+
+      // Strategy 2: For You / Following full-screen feed — TikTok updates location.href
+      // to /@user/video/ID as each video becomes active, so location is authoritative here.
       if (/\/@[^/]+\/video\/\d+/.test(location.pathname)) return location.href;
-      const videoId = container.getAttribute("data-video-id") ||
-                      container.querySelector("[data-video-id]")?.getAttribute("data-video-id");
-      if (videoId) {
+
+      // Strategy 3: data attributes — TikTok stores the video ID in various attributes
+      // depending on layout version (data-video-id, data-item-id, data-aweme-id).
+      const rawId =
+        container.dataset.videoId ||
+        container.dataset.itemId ||
+        container.dataset.awemeId ||
+        container.querySelector("[data-video-id]")?.dataset.videoId ||
+        container.querySelector("[data-item-id]")?.dataset.itemId ||
+        container.querySelector("[data-aweme-id]")?.dataset.awemeId;
+
+      if (rawId) {
         const userLink = container.querySelector("a[href*='/@']");
-        const user = userLink ? new URL(userLink.href).pathname : "/@unknown";
-        return `https://www.tiktok.com${user}/video/${videoId}`;
+        const user = userLink
+          ? new URL(userLink.href, "https://www.tiktok.com").pathname.replace(/\/video\/.*$/, "")
+          : "/@unknown";
+        return `https://www.tiktok.com${user}/video/${rawId}`;
       }
+
+      // Strategy 4: any link containing a long numeric ID (TikTok video IDs are 15-19 digits)
+      const numericLink = [...container.querySelectorAll("a[href]")].find(a =>
+        /\/video\/\d{15,19}/.test(a.pathname) || /\/\d{15,19}$/.test(a.pathname)
+      );
+      if (numericLink) {
+        const m = numericLink.pathname.match(/\/video\/(\d+)/) || numericLink.pathname.match(/\/(\d{15,19})$/);
+        if (m) {
+          const userLink = container.querySelector("a[href*='/@']");
+          const user = userLink
+            ? new URL(userLink.href, "https://www.tiktok.com").pathname.replace(/\/video\/.*$/, "")
+            : "/@unknown";
+          return `https://www.tiktok.com${user}/video/${m[1]}`;
+        }
+      }
+
+      // Strategy 5: fallback — if we're anywhere on TikTok, current URL is better than nothing
+      if (location.hostname.includes("tiktok") && location.pathname.length > 1) return location.href;
       return null;
     }
     case "instagram": {
@@ -78,6 +127,17 @@ function getVideoUrl(container) {
       if (/\/(watch|reel|videos)/.test(location.pathname)) return location.href;
       return null;
     }
+    case "whatsapp": {
+      const video = container.querySelector('video[src^="blob:"]');
+      return video?.src || null;
+    }
+    case "telegram": {
+      const video = container.querySelector('video[src^="blob:"]');
+      if (video?.src) return video.src;
+      // Public Telegram channel posts can be analyzed via URL
+      if (/\/c\/\d+\/\d+|\/[^/]+\/\d+/.test(location.pathname)) return location.href;
+      return null;
+    }
     default:
       return location.href;
   }
@@ -95,6 +155,11 @@ function getVerdictStyle(result) {
     color: "#a855f7", bg: "rgba(8,2,14,0.93)", border: "#a855f766",
     icon: "✏️", label: "AI EDITED",
     title: result.edit_tool_detected ? `Edited with ${result.edit_tool_detected}` : "Real video, AI-edited",
+  };
+  if (v === "uncertain") return {
+    color: "#f59e0b", bg: "rgba(10,8,2,0.93)", border: "#f59e0b66",
+    icon: "⚠️", label: "UNCERTAIN",
+    title: "Could not determine",
   };
   return {
     color: "#22c55e", bg: "rgba(2,10,4,0.93)", border: "#22c55e66",
@@ -140,6 +205,8 @@ function showResult(container, result) {
   removeResult(container);
   const style = getVerdictStyle(result);
   const pct = Math.round(result.confidence * 100);
+  const videoUrl = getVideoUrl(container) || result.url || "";
+  const isAi = result.verdict === "ai_generated";
 
   const el = document.createElement("div");
   el.className = "aivd-result";
@@ -150,11 +217,31 @@ function showResult(container, result) {
       <div class="aivd-result-badge" style="color:${style.color};background:${style.color}22">${style.icon} ${style.label}</div>
       <div class="aivd-result-title">${style.title}</div>
       <div class="aivd-result-method">${(result.detection_method || "").slice(0, 60)}</div>
+      <div class="aivd-feedback-row">
+        <span class="aivd-feedback-label">Correct?</span>
+        <button class="aivd-feedback-btn aivd-fb-yes" title="Yes, correct">👍</button>
+        <button class="aivd-feedback-btn aivd-fb-no" title="Wrong, flip it">👎</button>
+      </div>
     </div>
     <div class="aivd-result-pct" style="color:${style.color}">${pct}%</div>
     <button class="aivd-result-close">✕</button>
   `;
   el.querySelector(".aivd-result-close").addEventListener("click", (e) => { e.stopPropagation(); el.remove(); });
+
+  const fbRow = el.querySelector(".aivd-feedback-row");
+  el.querySelector(".aivd-fb-yes").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (videoUrl && !videoUrl.startsWith("blob:"))
+      chrome.runtime.sendMessage({ type: "FEEDBACK", url: videoUrl, is_ai: isAi, verdict_was: result.verdict }).catch(() => {});
+    fbRow.innerHTML = '<span class="aivd-feedback-thanks">✓ Thanks!</span>';
+  });
+  el.querySelector(".aivd-fb-no").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (videoUrl && !videoUrl.startsWith("blob:"))
+      chrome.runtime.sendMessage({ type: "FEEDBACK", url: videoUrl, is_ai: !isAi, verdict_was: result.verdict }).catch(() => {});
+    fbRow.innerHTML = '<span class="aivd-feedback-thanks">✓ Noted!</span>';
+  });
+
   if (result.verdict !== "ai_generated") setTimeout(() => el.remove(), 8000);
   container.appendChild(el);
   container.querySelector(".aivd-scan-btn")?.remove();
@@ -164,10 +251,63 @@ function showResult(container, result) {
 const analyzing = new Set();
 let aiDetectedCount = 0;
 
+// In auto mode only show AI/edited results — don't flash overlays on real/uncertain videos.
+function _shouldShow(auto, verdict) {
+  if (!auto) return true;
+  return verdict === "ai_generated" || verdict === "ai_edited";
+}
+
+// Blob video analysis (WhatsApp/Telegram): read video bytes and upload to /detect.
+// Only reads the first 5MB — server needs just enough for metadata + frame analysis.
+async function analyzeBlobVideo(container, blobUrl, auto) {
+  if (analyzing.has(blobUrl)) return;
+  analyzing.add(blobUrl);
+  const loader = injectLoader(container);
+  try {
+    const resp = await fetch(blobUrl);
+    if (!resp.ok) return;
+    const fullBlob = await resp.blob();
+    if (fullBlob.size < 5000) return; // skip thumbnails / tiny blobs
+    const MAX = 5 * 1024 * 1024;
+    const slice = fullBlob.size > MAX ? fullBlob.slice(0, MAX) : fullBlob;
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(slice);
+    });
+    const response = await chrome.runtime.sendMessage({
+      type: "ANALYZE_FILE",
+      dataUrl,
+      filename: "video.mp4",
+    });
+    loader?.remove();
+    if (response?.ok && response.result) {
+      if (_shouldShow(auto, response.result.verdict)) showResult(container, response.result);
+      if (response.result.verdict === "ai_generated") {
+        aiDetectedCount++;
+        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: aiDetectedCount }).catch(() => {});
+      }
+    }
+  } catch { loader?.remove(); }
+  finally { analyzing.delete(blobUrl); }
+}
+
 async function analyze(container, auto = true) {
   const url = getVideoUrl(container);
-  if (!url || analyzing.has(url)) return;
-  if (resultCache[url]) { showResult(container, resultCache[url]); return; }
+  if (!url) return;
+
+  // Blob URLs (WhatsApp/Telegram): bypass URL cache and upload directly
+  if (url.startsWith("blob:")) {
+    await analyzeBlobVideo(container, url, auto);
+    return;
+  }
+
+  if (analyzing.has(url)) return;
+  if (resultCache[url]) {
+    if (_shouldShow(auto, resultCache[url].verdict)) showResult(container, resultCache[url]);
+    return;
+  }
 
   analyzing.add(url);
   const loader = injectLoader(container);
@@ -177,7 +317,7 @@ async function analyze(container, auto = true) {
     if (response?.ok && response.result) {
       resultCache[url] = response.result;
       chrome.storage.local.set({ [CACHE_KEY]: resultCache });
-      if (!auto || response.result.verdict !== "real") showResult(container, response.result);
+      if (_shouldShow(auto, response.result.verdict)) showResult(container, response.result);
       if (response.result.verdict === "ai_generated") {
         aiDetectedCount++;
         chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: aiDetectedCount }).catch(() => {});
@@ -220,6 +360,7 @@ function stopObserver() { io?.disconnect(); io = null; mo?.disconnect(); mo = nu
 // ─── Messages ─────────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "GET_STATS") sendResponse({ total: Object.keys(resultCache).length, ai: aiDetectedCount });
+
   if (msg.type === "SCAN_CURRENT") {
     const sel = SELECTORS[PLATFORM];
     const containers = sel ? [...document.querySelectorAll(sel)] : [];
@@ -229,7 +370,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }) || containers[0];
     if (visible) analyze(visible, false);
   }
+
   if (msg.type === "SET_AUTO_ANALYZE") msg.enabled ? startObserver() : stopObserver();
+
+  // Result from right-click context menu — show overlay on matching container
+  if (msg.type === "SHOW_RESULT_FROM_CONTEXT") {
+    const sel = SELECTORS[PLATFORM];
+    const containers = sel ? [...document.querySelectorAll(sel)] : [];
+    const target = containers.find(c => getVideoUrl(c) === msg.url) || containers[0];
+    if (target) showResult(target, msg.result);
+    if (msg.url) resultCache[msg.url] = msg.result;
+  }
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

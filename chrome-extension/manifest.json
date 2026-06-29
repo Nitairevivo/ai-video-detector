@@ -27,6 +27,8 @@
     "https://www.twitch.tv/*",
     "https://www.dailymotion.com/*",
     "https://streamable.com/*",
+    "https://web.whatsapp.com/*",
+    "https://web.telegram.org/*",
     "https://ai-video-detector-production-a305.up.railway.app/*"
   ],
 
@@ -50,7 +52,9 @@
         "https://vimeo.com/*",
         "https://www.twitch.tv/*",
         "https://www.dailymotion.com/*",
-        "https://streamable.com/*"
+        "https://streamable.com/*",
+        "https://web.whatsapp.com/*",
+        "https://web.telegram.org/*"
       ],
       "js": ["content/inject.js"],
       "css": ["content/overlay.css"],
