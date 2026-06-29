@@ -3,6 +3,7 @@
     "name": "VerifAI",
     "slug": "verifai",
     "version": "1.2.0",
+    "newArchEnabled": false,
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
