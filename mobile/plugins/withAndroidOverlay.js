@@ -124,7 +124,7 @@ function withOverlayJavaFiles(config) {
       );
 
       // Copy the Java files
-      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java"]) {
+      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java", "GalleryWatcher.java"]) {
         const src = path.join(JAVA_DIR, fname);
         const dst = path.join(javaDestDir, fname);
         if (fs.existsSync(src)) {
