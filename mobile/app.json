@@ -150,7 +150,7 @@
         }
       ]
     },
-    "plugins": [],
+    "plugins": ["./plugins/withAndroidOverlay"],
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
       "eas": {

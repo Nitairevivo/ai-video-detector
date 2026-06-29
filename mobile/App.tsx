@@ -642,7 +642,25 @@ function AppInner() {
 }
 
 export default function App() {
-  // Skip onboarding — overlay not available in this build
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1"));
+  }, []);
+
+  if (onboarded === null) return null; // loading
+
+  if (!onboarded) {
+    return (
+      <OnboardingScreen
+        onDone={() => {
+          SecureStore.setItemAsync("onboarded", "1");
+          setOnboarded(true);
+        }}
+      />
+    );
+  }
+
   return <AppInner />;
 }
 
