@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/video-ai-detection-readability-41mpza
 
       - uses: actions/setup-node@v4
         with:
