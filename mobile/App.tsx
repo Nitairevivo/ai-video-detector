@@ -12,13 +12,11 @@ let _setJsError: ((e: string) => void) | null = null;
   try {
     const EU = (global as any).ErrorUtils;
     if (!EU) return;
-    const orig = EU.getGlobalHandler?.();
-    EU.setGlobalHandler?.((error: Error | string, isFatal: boolean) => {
+    EU.setGlobalHandler?.((error: Error | string, _isFatal: boolean) => {
       const msg = (typeof error === "string" ? error : (error?.stack || error?.message || String(error))).slice(0, 2000);
       _pendingJsError = msg;
       if (_setJsError) _setJsError(msg);
-      // Delay crash 4 s so user can see + screenshot the error
-      setTimeout(() => { try { orig?.(error, isFatal); } catch {} }, 4000);
+      // Don't call original handler — keep error screen visible so user can screenshot and copy
     });
   } catch {}
 })();
@@ -691,17 +689,37 @@ function AppRoot() {
   useEffect(() => {
     SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(true));
     // Read any native crash from previous session
-    const { NativeModules } = require("react-native");
-    NativeModules.OverlayModule?.getLastCrash?.()
-      .then((crash: string | null) => { if (crash) setNativeCrash(crash); })
-      .catch(() => {});
+    try {
+      const { NativeModules } = require("react-native");
+      const lastCrashPromise = NativeModules.OverlayModule?.getLastCrash?.();
+      if (lastCrashPromise) {
+        lastCrashPromise
+          .then((crash: string | null) => { if (crash) setNativeCrash(crash); })
+          .catch(() => {});
+      }
+    } catch {}
   }, []);
 
   if (jsError) {
+    let modStatus = "?";
+    try { const { NativeModules: nm } = require("react-native"); modStatus = nm.OverlayModule ? "OK" : "NULL"; } catch { modStatus = "ERR"; }
+    const deviceInfo = `OS: ${Platform.OS} v${Platform.Version} | Mod: ${modStatus}`;
     return (
       <View style={{ flex: 1, backgroundColor: "#06060f", padding: 20, justifyContent: "center" }}>
-        <Text style={{ color: "#f97316", fontSize: 14, fontWeight: "800", marginBottom: 8 }}>JS Error — צלם מסך ושלח!</Text>
-        <Text style={{ color: "#9ca3af", fontSize: 9, fontFamily: "monospace" }} selectable>{jsError}</Text>
+        <Text style={{ color: "#f97316", fontSize: 14, fontWeight: "800", marginBottom: 6 }}>שגיאה — צלם מסך ושלח!</Text>
+        <Text style={{ color: "#6b7280", fontSize: 10, marginBottom: 10 }}>{deviceInfo}</Text>
+        <ScrollView style={{ maxHeight: 280, marginBottom: 14 }}>
+          <Text style={{ color: "#9ca3af", fontSize: 9, fontFamily: "monospace" }} selectable>{jsError}</Text>
+        </ScrollView>
+        <TouchableOpacity
+          onPress={() => { try { Clipboard.setStringAsync(deviceInfo + "\n\n" + jsError); } catch {} }}
+          style={{ backgroundColor: "#7c3aed", padding: 12, borderRadius: 10, marginBottom: 10 }}
+        >
+          <Text style={{ color: "white", textAlign: "center", fontWeight: "700" }}>העתק שגיאה 📋</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setJsError(null)} style={{ padding: 12 }}>
+          <Text style={{ color: "#374151", textAlign: "center", fontSize: 12 }}>המשך בכל זאת</Text>
+        </TouchableOpacity>
       </View>
     );
   }

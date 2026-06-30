@@ -145,6 +145,7 @@ function withOverlayJavaFiles(config) {
       if (fs.existsSync(mainAppKt)) {
         let src = fs.readFileSync(mainAppKt, "utf8");
         if (!src.includes("OverlayPackage")) {
+          let patched = false;
           // Pattern 1: val packages = PackageList(this).packages
           if (/val packages = PackageList\(this\)\.packages/.test(src)) {
             src = src.replace(
@@ -153,15 +154,31 @@ function withOverlayJavaFiles(config) {
                 match +
                 "          packages.add(com.verifai.app.OverlayPackage())\n"
             );
+            patched = true;
           // Pattern 2: PackageList(this).packages.apply { ... }
           } else if (/PackageList\(this\)\.packages\.apply\s*\{/.test(src)) {
             src = src.replace(
               /PackageList\(this\)\.packages\.apply\s*\{/,
               "PackageList(this).packages.apply {\n            add(com.verifai.app.OverlayPackage())"
             );
+            patched = true;
+          // Pattern 3: return packages (any return statement with a packages variable)
+          } else if (/return\s+packages\b/.test(src)) {
+            src = src.replace(
+              /return\s+packages\b/,
+              "packages.add(com.verifai.app.OverlayPackage())\n          return packages"
+            );
+            patched = true;
           }
-          fs.writeFileSync(mainAppKt, src);
-          console.log("[withAndroidOverlay] Patched MainApplication.kt");
+          if (patched) {
+            fs.writeFileSync(mainAppKt, src);
+            console.log("[withAndroidOverlay] Patched MainApplication.kt");
+          } else {
+            console.error("[withAndroidOverlay] ERROR: Could not find a pattern to patch MainApplication.kt!");
+            console.error("[withAndroidOverlay] File preview:", src.slice(0, 600));
+          }
+        } else {
+          console.log("[withAndroidOverlay] MainApplication.kt already contains OverlayPackage");
         }
       } else {
         // Try MainApplication.java
