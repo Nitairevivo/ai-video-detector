@@ -124,7 +124,7 @@ function withOverlayJavaFiles(config) {
       );
 
       // Copy the Java files
-      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java", "GalleryWatcher.java"]) {
+      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java", "GalleryWatcher.java", "CrashLogger.java"]) {
         const src = path.join(JAVA_DIR, fname);
         const dst = path.join(javaDestDir, fname);
         if (fs.existsSync(src)) {
@@ -145,17 +145,21 @@ function withOverlayJavaFiles(config) {
       if (fs.existsSync(mainAppKt)) {
         let src = fs.readFileSync(mainAppKt, "utf8");
         if (!src.includes("OverlayPackage")) {
-          src = src.replace(
-            "override fun getPackages(): List<ReactPackage>",
-            `override fun getPackages(): List<ReactPackage>`
-          );
-          // Insert after "PackageList(this).packages" line
-          src = src.replace(
-            /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
-            (match) =>
-              match +
-              "          packages.add(com.verifai.app.OverlayPackage())\n"
-          );
+          // Pattern 1: val packages = PackageList(this).packages
+          if (/val packages = PackageList\(this\)\.packages/.test(src)) {
+            src = src.replace(
+              /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
+              (match) =>
+                match +
+                "          packages.add(com.verifai.app.OverlayPackage())\n"
+            );
+          // Pattern 2: PackageList(this).packages.apply { ... }
+          } else if (/PackageList\(this\)\.packages\.apply\s*\{/.test(src)) {
+            src = src.replace(
+              /PackageList\(this\)\.packages\.apply\s*\{/,
+              "PackageList(this).packages.apply {\n            add(com.verifai.app.OverlayPackage())"
+            );
+          }
           fs.writeFileSync(mainAppKt, src);
           console.log("[withAndroidOverlay] Patched MainApplication.kt");
         }

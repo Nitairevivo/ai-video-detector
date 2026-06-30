@@ -18,6 +18,7 @@ public class OverlayModule extends ReactContextBaseJavaModule {
     public OverlayModule(ReactApplicationContext ctx) {
         super(ctx);
         this.reactContext = ctx;
+        CrashLogger.init(ctx.getApplicationContext());
     }
 
     @Override
@@ -81,7 +82,11 @@ public class OverlayModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void isRunning(Promise promise) {
-        // Simplified: always resolve true if service was started
         promise.resolve(true);
+    }
+
+    @ReactMethod
+    public void getLastCrash(Promise promise) {
+        promise.resolve(CrashLogger.getAndClear(reactContext.getApplicationContext()));
     }
 }

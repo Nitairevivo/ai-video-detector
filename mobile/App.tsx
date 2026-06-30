@@ -660,10 +660,25 @@ function AppInner() {
 
 function AppRoot() {
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [nativeCrash, setNativeCrash] = useState<string | null>(null);
 
   useEffect(() => {
     SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(true));
+    // Read any native crash from previous session
+    const { NativeModules } = require("react-native");
+    NativeModules.OverlayModule?.getLastCrash?.()
+      .then((crash: string | null) => { if (crash) setNativeCrash(crash); })
+      .catch(() => {});
   }, []);
+
+  if (nativeCrash) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#06060f", padding: 20, justifyContent: "center" }}>
+        <Text style={{ color: "#ef4444", fontSize: 16, fontWeight: "800", marginBottom: 12 }}>קריסה מהסשן הקודם:</Text>
+        <Text style={{ color: "#9ca3af", fontSize: 10, fontFamily: "monospace" }} selectable>{nativeCrash.slice(0, 1500)}</Text>
+      </View>
+    );
+  }
 
   if (onboarded === null) return null; // loading
 

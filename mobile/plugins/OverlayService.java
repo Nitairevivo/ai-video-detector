@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -77,10 +78,14 @@ public class OverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForegroundService();
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        showButton();
-        startGalleryWatcher();
+        try {
+            startForegroundNotification();
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            showButton();
+            startGalleryWatcher();
+        } catch (Exception e) {
+            stopSelf();
+        }
     }
 
     private void startGalleryWatcher() {
@@ -110,7 +115,7 @@ public class OverlayService extends Service {
 
     // ─── Foreground Notification ────────────────────────────────────────────
 
-    private void startForegroundService() {
+    private void startForegroundNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
                 CHANNEL_ID, "AI Detector Overlay", NotificationManager.IMPORTANCE_LOW);
@@ -123,7 +128,12 @@ public class OverlayService extends Service {
             .setSmallIcon(android.R.drawable.ic_menu_search)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build();
-        startForeground(1, n);
+        // Android 14+ requires specifying foreground service type matching the manifest declaration
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else {
+            startForeground(1, n);
+        }
     }
 
     // ─── Floating Button ────────────────────────────────────────────────────
