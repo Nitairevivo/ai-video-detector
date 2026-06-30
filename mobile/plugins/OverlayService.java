@@ -117,23 +117,34 @@ public class OverlayService extends Service {
 
     private void startForegroundNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(
-                CHANNEL_ID, "AI Detector Overlay", NotificationManager.IMPORTANCE_LOW);
-            ch.setShowBadge(false);
-            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+            try {
+                NotificationChannel ch = new NotificationChannel(
+                    CHANNEL_ID, "AI Detector Overlay", NotificationManager.IMPORTANCE_LOW);
+                ch.setShowBadge(false);
+                ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+            } catch (Exception ignored) {}
         }
-        Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AI Detector active")
-            .setContentText("Tap the floating button to check any video")
-            .setSmallIcon(android.R.drawable.ic_menu_search)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build();
-        // Android 14+ requires specifying foreground service type matching the manifest declaration
+        Notification n;
+        try {
+            n = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("AI Detector active")
+                .setContentText("Tap the floating button to check any video")
+                .setSmallIcon(android.R.drawable.ic_menu_search)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+        } catch (Exception e) {
+            n = new Notification();
+        }
+        // Android 14+ requires specifying foreground service type; fall back to 2-arg if it fails
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        } else {
-            startForeground(1, n);
+            try {
+                startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                return;
+            } catch (Exception ignored) {
+                // Fall through to 2-arg which always succeeds
+            }
         }
+        startForeground(1, n);
     }
 
     // ─── Floating Button ────────────────────────────────────────────────────

@@ -35,19 +35,23 @@ public class OverlayModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void requestPermission(Promise promise) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(reactContext)) {
-                Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + reactContext.getPackageName())
-                );
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                reactContext.startActivity(intent);
-                promise.resolve(false); // will need to check again after user returns
-                return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.canDrawOverlays(reactContext)) {
+                    Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + reactContext.getPackageName())
+                    );
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    reactContext.startActivity(intent);
+                    promise.resolve(false);
+                    return;
+                }
             }
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("PERMISSION_ERROR", e.getMessage());
         }
-        promise.resolve(true);
     }
 
     @ReactMethod

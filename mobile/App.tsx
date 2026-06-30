@@ -5,6 +5,24 @@ import {
   Platform, Switch, Modal, Dimensions, Linking, I18nManager,
 } from "react-native";
 
+// ─── Global JS error trap — catches useEffect / async errors ────────────────
+let _pendingJsError: string | null = null;
+let _setJsError: ((e: string) => void) | null = null;
+(function setupGlobalErrorHandler() {
+  try {
+    const EU = (global as any).ErrorUtils;
+    if (!EU) return;
+    const orig = EU.getGlobalHandler?.();
+    EU.setGlobalHandler?.((error: Error | string, isFatal: boolean) => {
+      const msg = (typeof error === "string" ? error : (error?.stack || error?.message || String(error))).slice(0, 2000);
+      _pendingJsError = msg;
+      if (_setJsError) _setJsError(msg);
+      // Delay crash 4 s so user can see + screenshot the error
+      setTimeout(() => { try { orig?.(error, isFatal); } catch {} }, 4000);
+    });
+  } catch {}
+})();
+
 // ─── Error Boundary — prevents blank-screen crash ────────────────────────────
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
   state = { error: null };
@@ -661,6 +679,14 @@ function AppInner() {
 function AppRoot() {
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [nativeCrash, setNativeCrash] = useState<string | null>(null);
+  const [jsError, setJsError] = useState<string | null>(_pendingJsError);
+
+  useEffect(() => {
+    // Register setter so global error handler can push errors here
+    _setJsError = setJsError;
+    if (_pendingJsError) setJsError(_pendingJsError);
+    return () => { _setJsError = null; };
+  }, []);
 
   useEffect(() => {
     SecureStore.getItemAsync("onboarded").then((v) => setOnboarded(v === "1")).catch(() => setOnboarded(true));
@@ -670,6 +696,15 @@ function AppRoot() {
       .then((crash: string | null) => { if (crash) setNativeCrash(crash); })
       .catch(() => {});
   }, []);
+
+  if (jsError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#06060f", padding: 20, justifyContent: "center" }}>
+        <Text style={{ color: "#f97316", fontSize: 14, fontWeight: "800", marginBottom: 8 }}>JS Error — צלם מסך ושלח!</Text>
+        <Text style={{ color: "#9ca3af", fontSize: 9, fontFamily: "monospace" }} selectable>{jsError}</Text>
+      </View>
+    );
+  }
 
   if (nativeCrash) {
     return (
