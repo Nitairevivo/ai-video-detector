@@ -9,16 +9,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-public class OverlayPackage implements ReactPackage {
+public class DiagPackage implements ReactPackage {
     @Override
     public List<NativeModule> createNativeModules(ReactApplicationContext ctx) {
-        try {
-            return Arrays.<NativeModule>asList(new OverlayModule(ctx));
-        } catch (Throwable e) {
-            CrashLogger.packageInitError = "OverlayModule(" + e.getClass().getSimpleName() + "): " + e.getMessage();
-            android.util.Log.e("VerifAI", "OverlayModule init FAILED", e);
-            return Collections.emptyList();
-        }
+        return Arrays.<NativeModule>asList(new DiagModule(ctx));
     }
 
     @Override

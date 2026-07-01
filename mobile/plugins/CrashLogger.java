@@ -9,6 +9,9 @@ public class CrashLogger {
     private static final String PREFS = "verifai_crash";
     private static final String KEY = "last_crash";
 
+    // Set in-process by OverlayPackage.createNativeModules if OverlayModule fails to init
+    public static volatile String packageInitError = null;
+
     public static void init(Context ctx) {
         Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {

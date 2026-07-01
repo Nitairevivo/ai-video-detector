@@ -124,7 +124,7 @@ function withOverlayJavaFiles(config) {
       );
 
       // Copy the Java files
-      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java", "GalleryWatcher.java", "CrashLogger.java"]) {
+      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java", "GalleryWatcher.java", "CrashLogger.java", "DiagModule.java", "DiagPackage.java"]) {
         const src = path.join(JAVA_DIR, fname);
         const dst = path.join(javaDestDir, fname);
         if (fs.existsSync(src)) {
@@ -152,6 +152,7 @@ function withOverlayJavaFiles(config) {
               /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
               (match) =>
                 match +
+                "          packages.add(com.verifai.app.DiagPackage())\n" +
                 "          packages.add(com.verifai.app.OverlayPackage())\n"
             );
             patched = true;
@@ -159,22 +160,22 @@ function withOverlayJavaFiles(config) {
           } else if (/PackageList\(this\)\.packages\.apply\s*\{/.test(src)) {
             src = src.replace(
               /PackageList\(this\)\.packages\.apply\s*\{/,
-              "PackageList(this).packages.apply {\n            add(com.verifai.app.OverlayPackage())"
+              "PackageList(this).packages.apply {\n            add(com.verifai.app.DiagPackage())\n            add(com.verifai.app.OverlayPackage())"
             );
             patched = true;
           // Pattern 3: return packages (any return statement with a packages variable)
           } else if (/return\s+packages\b/.test(src)) {
             src = src.replace(
               /return\s+packages\b/,
-              "packages.add(com.verifai.app.OverlayPackage())\n          return packages"
+              "packages.add(com.verifai.app.DiagPackage())\n          packages.add(com.verifai.app.OverlayPackage())\n          return packages"
             );
             patched = true;
           }
           if (patched) {
-            console.log("[withAndroidOverlay] Patched getPackages in MainApplication.kt");
+            console.log("[withAndroidOverlay] Patched getPackages in MainApplication.kt (DiagPackage + OverlayPackage)");
           } else {
             console.error("[withAndroidOverlay] ERROR: Could not find a pattern to patch getPackages!");
-            console.error("[withAndroidOverlay] File preview:", src.slice(0, 600));
+            console.error("[withAndroidOverlay] File preview:", src.slice(0, 800));
           }
 
           // Also inject early CrashLogger init into Application.onCreate (before super.onCreate)

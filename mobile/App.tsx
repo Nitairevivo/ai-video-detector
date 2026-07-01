@@ -40,23 +40,32 @@ export default function App() {
   useEffect(() => {
     log(`Platform: ${Platform.OS} ${Platform.Version}`);
     log(`OverlayModule: ${NativeModules.OverlayModule ? "LOADED ✓" : "NULL ✗"}`);
-    log(`Modules: ${Object.keys(NativeModules).slice(0, 8).join(", ")}`);
+    log(`DiagModule: ${NativeModules.DiagModule ? "LOADED ✓" : "NULL ✗"}`);
+    log(`Modules: ${Object.keys(NativeModules).slice(0, 10).join(", ")}`);
 
+    // DiagModule always loads even if OverlayModule crashes
     try {
-      const p = NativeModules.OverlayModule?.getLastCrash?.();
-      if (p) {
-        p.then((crash: string | null) => {
-          if (crash) {
-            log("⚠ Prev crash: " + crash.slice(0, 300));
-          } else {
-            log("No prev crash logged");
-          }
-        }).catch((e: any) => log("getLastCrash err: " + (e?.message || e)));
+      const dm = NativeModules.DiagModule;
+      if (dm) {
+        const dp = dm.getError?.();
+        if (dp) {
+          dp.then((err: string | null) => {
+            log("Diag: " + (err || "all_ok"));
+          }).catch((e: any) => log("DiagModule err: " + (e?.message || e)));
+        }
       } else {
-        log("getLastCrash: not available");
+        // Fallback: try OverlayModule directly
+        const p = NativeModules.OverlayModule?.getLastCrash?.();
+        if (p) {
+          p.then((crash: string | null) => {
+            log(crash ? "⚠ Prev crash: " + crash.slice(0, 300) : "No prev crash");
+          }).catch((e: any) => log("getLastCrash err: " + (e?.message || e)));
+        } else {
+          log("No diag available");
+        }
       }
     } catch (e: any) {
-      log("Crash check threw: " + (e?.message || String(e)));
+      log("Diag threw: " + (e?.message || String(e)));
     }
   }, []);
 
@@ -111,7 +120,7 @@ export default function App() {
       <StatusBar style="light" />
 
       <Text style={{ color: "#a78bfa", fontSize: 24, fontWeight: "800", marginTop: 44, marginBottom: 2 }}>
-        VerifAI v8
+        VerifAI v9
       </Text>
       <Text style={{ color: "#374151", fontSize: 11, marginBottom: 20 }}>
         diagnostic — אם רואה את זה: צלם מסך ושלח!
