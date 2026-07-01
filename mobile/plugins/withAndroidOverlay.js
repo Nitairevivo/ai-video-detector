@@ -171,12 +171,23 @@ function withOverlayJavaFiles(config) {
             patched = true;
           }
           if (patched) {
-            fs.writeFileSync(mainAppKt, src);
-            console.log("[withAndroidOverlay] Patched MainApplication.kt");
+            console.log("[withAndroidOverlay] Patched getPackages in MainApplication.kt");
           } else {
-            console.error("[withAndroidOverlay] ERROR: Could not find a pattern to patch MainApplication.kt!");
+            console.error("[withAndroidOverlay] ERROR: Could not find a pattern to patch getPackages!");
             console.error("[withAndroidOverlay] File preview:", src.slice(0, 600));
           }
+
+          // Also inject early CrashLogger init into Application.onCreate (before super.onCreate)
+          // so crashes during native-module initialization are captured
+          if (!src.includes("CrashLogger.init") && /override fun onCreate\(\)/.test(src)) {
+            src = src.replace(
+              /override fun onCreate\(\)\s*\{/,
+              "override fun onCreate() {\n        com.verifai.app.CrashLogger.init(this)"
+            );
+            console.log("[withAndroidOverlay] Injected early CrashLogger.init into Application.onCreate");
+          }
+
+          fs.writeFileSync(mainAppKt, src);
         } else {
           console.log("[withAndroidOverlay] MainApplication.kt already contains OverlayPackage");
         }
