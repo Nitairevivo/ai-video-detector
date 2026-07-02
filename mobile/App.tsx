@@ -9,7 +9,7 @@ export default function App() {
     setLines((p) => [...p, new Date().toISOString().slice(11, 19) + " " + msg]);
 
   useEffect(() => {
-    log("VerifAI v10 started ✓");
+    log("VerifAI v11 started ✓");
     const moduleKeys = Object.keys(NativeModules);
     log(`Total modules: ${moduleKeys.length}`);
     log(`DiagModule: ${NativeModules.DiagModule ? "LOADED ✓" : "NULL ✗"}`);
@@ -29,7 +29,7 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: "#06060f", padding: 16 }}>
       <StatusBar style="light" />
       <Text style={{ color: "#a78bfa", fontSize: 22, fontWeight: "800", marginTop: 44, marginBottom: 4 }}>
-        VerifAI v10
+        VerifAI v11
       </Text>
       <Text style={{ color: "#374151", fontSize: 11, marginBottom: 16 }}>
         nuclear test — אם רואה את זה: שלח צילום מסך!

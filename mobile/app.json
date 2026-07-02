@@ -3,7 +3,7 @@
     "name": "VerifAI",
     "slug": "verifai",
     "version": "1.2.0",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -69,7 +69,6 @@
         },
         {
           "action": "android.intent.action.VIEW",
-          "autoVerify": true,
           "data": [
             {
               "scheme": "https",
