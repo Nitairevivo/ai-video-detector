@@ -55,9 +55,15 @@ def _run_telegram_bot_bg():
 threading.Thread(target=_run_telegram_bot_bg, daemon=True).start()
 
 app = FastAPI(
-    title="AI Video Detector API",
-    description="Detect AI-generated videos by reading file signatures — no frame decoding required.",
-    version="2.0.0",
+    title="VerifAI — AI Video Detector API",
+    description=(
+        "Detect AI-generated videos with three layers of evidence: "
+        "cryptographic C2PA verification + file forensics, the platforms' own "
+        "AI-disclosure labels, and a calibrated vision ensemble. "
+        "Every response includes an `explanation` audit object. "
+        "Videos are deleted immediately after analysis."
+    ),
+    version="2.1.0",
 )
 
 app.add_middleware(
