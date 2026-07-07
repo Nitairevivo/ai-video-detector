@@ -319,6 +319,59 @@ def _download_direct(url: str, tmp_path: str) -> bool:
         return False
 
 
+def download_video_from_url(url: str, tmp_path: str):
+    """
+    Shared URL → file pipeline used by /detect-url and the Telegram bot.
+
+    Returns (ok, aigc_flagged, aigc_info):
+      ok           — a playable video file was written to tmp_path
+      aigc_flagged — the platform ITSELF labels this video as AI-generated
+                     (TikTok AIGC label / YouTube "Altered or synthetic content" /
+                     Meta "AI info"). This is definitive: the label lives in the
+                     platform's page JSON, so it survives transcoding even though
+                     the file's own metadata does not.
+      aigc_info    — human-readable description of the label found
+    """
+    is_tiktok = any(x in url for x in ["tiktok.com", "vm.tiktok", "douyin.com"])
+    ok = False
+    aigc_flagged = False
+    aigc_info = ""
+
+    # Strategy 0: platform AI-disclosure label (YouTube/Instagram/Facebook).
+    if not is_tiktok:
+        try:
+            from analyzer.platform_flags import check_platform_ai_flag
+            pf = check_platform_ai_flag(url)
+            if pf.flagged:
+                return False, True, f"{pf.platform.capitalize()}: {pf.info}"
+        except Exception:
+            pass
+
+    # Strategy 1: TikTok-specific resolver (gets CDN URL + AIGC labels)
+    if is_tiktok:
+        try:
+            from analyzer.tiktok_resolver import download_tiktok_video
+            ok, aigc_flagged, aigc_info = download_tiktok_video(url, tmp_path)
+            if aigc_flagged:
+                return ok, True, aigc_info
+        except Exception:
+            pass
+
+    # Strategy 2: yt-dlp
+    if not ok and _is_platform_url(url):
+        ok = _download_with_ytdlp(url, tmp_path)
+
+    # Strategy 3: Direct HTTP
+    if not ok:
+        ok = _download_direct(url, tmp_path)
+
+    # Strategy 4: yt-dlp as last resort
+    if not ok:
+        ok = _download_with_ytdlp(url, tmp_path)
+
+    return ok, aigc_flagged, aigc_info
+
+
 @app.post("/detect-url")
 async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
     """
@@ -336,53 +389,22 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
 
     tmp_path = tempfile.mktemp(suffix=suffix)
 
-    is_tiktok = any(x in url for x in ["tiktok.com", "vm.tiktok", "douyin.com"])
-    aigc_from_page = False
-    aigc_info = ""
-
     try:
-        ok = False
+        ok, aigc_from_page, aigc_info = download_video_from_url(url, tmp_path)
 
-        # Strategy 0: platform AI-disclosure label (YouTube/Instagram/Facebook).
-        # Survives transcoding because it lives in the page JSON, not the file.
-        if not is_tiktok:
-            try:
-                from analyzer.platform_flags import check_platform_ai_flag
-                pf = check_platform_ai_flag(url)
-                if pf.flagged:
-                    return {
-                        "url": url,
-                        "is_ai_generated": True,
-                        "verdict": "ai_generated",
-                        "confidence": 0.96,
-                        "confidence_pct": "96.0%",
-                        "ai_tool_detected": f"{pf.platform.capitalize()} AI label",
-                        "edit_tool_detected": None,
-                        "detection_method": f"Platform AI disclosure: {pf.info}",
-                        "deep_analysis_ran": False,
-                    }
-            except Exception:
-                pass
-
-        # Strategy 1: TikTok-specific resolver (gets CDN URL + AIGC labels)
-        if is_tiktok:
-            try:
-                from analyzer.tiktok_resolver import download_tiktok_video
-                ok, aigc_from_page, aigc_info = download_tiktok_video(url, tmp_path)
-            except Exception:
-                pass
-
-        # Strategy 2: yt-dlp
-        if not ok and _is_platform_url(url):
-            ok = _download_with_ytdlp(url, tmp_path)
-
-        # Strategy 3: Direct HTTP
-        if not ok:
-            ok = _download_direct(url, tmp_path)
-
-        # Strategy 4: yt-dlp as last resort
-        if not ok:
-            ok = _download_with_ytdlp(url, tmp_path)
+        # Platform label without a downloadable file — still definitive
+        if aigc_from_page and not ok:
+            return {
+                "url": url,
+                "is_ai_generated": True,
+                "verdict": "ai_generated",
+                "confidence": 0.96,
+                "confidence_pct": "96.0%",
+                "ai_tool_detected": "Platform AI label",
+                "edit_tool_detected": None,
+                "detection_method": f"Platform AI disclosure: {aigc_info}",
+                "deep_analysis_ran": False,
+            }
 
         if not ok:
             raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
@@ -616,7 +638,7 @@ class UpgradeRequest(BaseModel):
 @app.post("/register", tags=["billing"])
 def register(body: RegisterRequest):
     """
-    Get a free API key (50 requests/month).
+    Get a free API key (100 requests/month).
     If the email already has a key, returns existing key info instead.
     """
     existing = get_key_by_email(body.email)
