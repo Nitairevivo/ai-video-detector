@@ -2,8 +2,6 @@ package com.verifai.app;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,14 +13,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.regex.Pattern;
 
 public class VerifAIAccessibilityService extends AccessibilityService {
 
-    // Supported apps
-    private static final Set<String> SUPPORTED_PACKAGES = new HashSet<>(Arrays.asList(
+    /** Apps where the floating button is allowed to appear. */
+    public static final Set<String> SUPPORTED_PACKAGES = new HashSet<>(Arrays.asList(
         "com.zhiliaoapp.musically",   // TikTok
         "com.ss.android.ugc.trill",   // TikTok (some regions)
         "com.instagram.android",       // Instagram
@@ -30,6 +25,14 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         "com.facebook.katana",         // Facebook
         "com.twitter.android",         // Twitter/X
         "com.reddit.frontpage"         // Reddit
+    ));
+
+    // Windows that must NOT change the button visibility (transient system UI,
+    // share sheets, keyboards, and our own overlay/clipboard-reader windows).
+    private static final Set<String> TRANSIENT_PACKAGES = new HashSet<>(Arrays.asList(
+        "android",
+        "com.android.systemui",
+        "com.android.internal.app"
     ));
 
     // Share/copy button labels across languages
@@ -42,31 +45,51 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         "copy", "העתק", "复制链接", "copier le lien"
     );
 
-    private static final Pattern VIDEO_URL_PATTERN = Pattern.compile(
-        "https?://(www\\.)?(tiktok\\.com|instagram\\.com/(reel|p|tv)/|youtube\\.com/(shorts|watch)|youtu\\.be/|twitter\\.com/.*/status|x\\.com/.*/status|fb\\.watch/|reddit\\.com/r/.*/comments)"
-    );
+    private static volatile VerifAIAccessibilityService instance;
+    private static volatile String foregroundPackage = null;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    private String currentPackage = "";
-    private String lastAnalyzedUrl = "";
-    private long lastScrollTime = 0;
-    private boolean isWaitingForShareSheet = false;
-    private boolean isWaitingForCopyLink = false;
+    private boolean grabInProgress = false;
+    private boolean waitingForShareSheet = false;
+    private static final long SHARE_SHEET_TIMEOUT_MS = 2500;
 
-    private static final long SCROLL_DEBOUNCE_MS = 1800; // Wait before triggering after scroll
-    private static final long SHARE_SHEET_TIMEOUT_MS = 3000;
+    public static String getForegroundPackage() { return foregroundPackage; }
+
+    /**
+     * Called by OverlayService when the floating button is tapped and the
+     * clipboard has no fresh link. Clicks Share → Copy Link in the current app,
+     * then hands off to ClipboardReaderActivity, which reports back to
+     * OverlayService (ACTION_CLIPBOARD_RESULT / source=automation).
+     * Returns false when the accessibility service isn't running or the
+     * foreground app isn't supported — the caller then shows guidance instead.
+     */
+    public static boolean grabCurrentVideoUrl() {
+        VerifAIAccessibilityService s = instance;
+        if (s == null) return false;
+        String fg = foregroundPackage;
+        if (fg == null || !SUPPORTED_PACKAGES.contains(fg)) return false;
+        s.mainHandler.post(s::startGrabFlow);
+        return true;
+    }
 
     @Override
     protected void onServiceConnected() {
+        instance = this;
+        try {
+            configureAndStart();
+        } catch (Throwable t) {
+            CrashLog.log(this, "VerifAIAccessibilityService.onServiceConnected", t);
+        }
+    }
+
+    private void configureAndStart() {
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.eventTypes =
-            AccessibilityEvent.TYPE_VIEW_SCROLLED |
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED |
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED |
-            AccessibilityEvent.TYPE_VIEW_CLICKED;
-        info.packageNames = SUPPORTED_PACKAGES.toArray(new String[0]);
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED;
+        // No package filter: we must see every app to know when to HIDE the button
+        info.packageNames = null;
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
         info.notificationTimeout = 100;
         info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS |
@@ -82,77 +105,75 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        String pkg = event.getPackageName() != null ? event.getPackageName().toString() : "";
-        if (!SUPPORTED_PACKAGES.contains(pkg)) return;
-        currentPackage = pkg;
+        try {
+            handleEvent(event);
+        } catch (Throwable t) {
+            CrashLog.log(this, "VerifAIAccessibilityService.onAccessibilityEvent", t);
+        }
+    }
 
+    private void handleEvent(AccessibilityEvent event) {
+        String pkg = event.getPackageName() != null ? event.getPackageName().toString() : "";
         int type = event.getEventType();
 
-        // ── Detect video scroll (new video in feed) ──────────────────────────
-        if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            long now = System.currentTimeMillis();
-            lastScrollTime = now;
-            isWaitingForShareSheet = false;
-            isWaitingForCopyLink = false;
+        // ── Track the foreground app → show/hide the floating button ─────────
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (!pkg.isEmpty() && !isTransient(pkg)) {
+                foregroundPackage = pkg;
+                OverlayService.notifyForegroundApp(pkg);
+            }
 
-            // Debounce: trigger analysis after user settles on a video
-            mainHandler.removeCallbacksAndMessages(null);
-            mainHandler.postDelayed(() -> {
-                if (System.currentTimeMillis() - lastScrollTime >= SCROLL_DEBOUNCE_MS - 50) {
-                    triggerAutoDetect();
-                }
-            }, SCROLL_DEBOUNCE_MS);
+            // Share sheet opened as part of the grab flow
+            if (waitingForShareSheet) {
+                mainHandler.postDelayed(this::findAndClickCopyLink, 400);
+            }
         }
 
-        // ── Detect share sheet opened ─────────────────────────────────────────
-        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && isWaitingForShareSheet) {
-            mainHandler.postDelayed(() -> findAndClickCopyLink(), 500);
-        }
-
-        // ── Detect windows changed (share sheet items loaded) ─────────────────
-        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isWaitingForCopyLink) {
+        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && waitingForShareSheet) {
             findAndClickCopyLink();
         }
     }
 
-    // ─── Step 1: Find and click the Share button ──────────────────────────────
+    private boolean isTransient(String pkg) {
+        if (TRANSIENT_PACKAGES.contains(pkg)) return true;
+        if (pkg.equals(getPackageName())) return true;      // our own overlay / clipboard reader
+        if (pkg.contains("inputmethod")) return true;        // keyboards
+        return false;
+    }
 
-    private void triggerAutoDetect() {
-        // First, check if there's already a TikTok URL in clipboard
-        String clipUrl = getClipboardUrl();
-        if (clipUrl != null && !clipUrl.equals(lastAnalyzedUrl)) {
-            sendToOverlay(clipUrl);
+    // ─── Grab flow: Share → Copy Link → ClipboardReaderActivity ──────────────
+
+    private void startGrabFlow() {
+        if (grabInProgress) return;
+        grabInProgress = true;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo shareBtn = root != null ? findShareButton(root) : null;
+
+        if (shareBtn == null) {
+            if (root != null) root.recycle();
+            // Can't find a Share button — maybe the clipboard still helps
+            finishGrab();
             return;
         }
 
-        // Otherwise, find the share button and click it
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
+        waitingForShareSheet = true;
+        shareBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        shareBtn.recycle();
+        if (root != null) root.recycle();
 
-        AccessibilityNodeInfo shareBtn = findShareButton(root);
-        if (shareBtn != null) {
-            isWaitingForShareSheet = true;
-            isWaitingForCopyLink = false;
-            shareBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-
-            // Fallback: look for copy link after share sheet opens
-            mainHandler.postDelayed(() -> {
-                if (isWaitingForShareSheet) {
-                    isWaitingForShareSheet = false;
-                    isWaitingForCopyLink = true;
-                    findAndClickCopyLink();
-                }
-            }, SHARE_SHEET_TIMEOUT_MS);
-        }
-        root.recycle();
+        // Fallback if the share sheet never opens
+        mainHandler.postDelayed(() -> {
+            if (waitingForShareSheet) findAndClickCopyLink();
+        }, SHARE_SHEET_TIMEOUT_MS);
     }
 
-    // ─── Step 2: Find and click "Copy Link" ───────────────────────────────────
-
     private void findAndClickCopyLink() {
-        isWaitingForCopyLink = false;
+        if (!waitingForShareSheet) return;
+        waitingForShareSheet = false;
+
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
+        if (root == null) { closeSheetAndFinish(); return; }
 
         List<AccessibilityNodeInfo> nodes = getAllNodes(root);
         for (AccessibilityNodeInfo node : nodes) {
@@ -165,19 +186,11 @@ public class VerifAIAccessibilityService extends AccessibilityService {
             for (String label : COPY_LINK_LABELS) {
                 if (combined.contains(label.toLowerCase())) {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-
-                    // Read clipboard after a short delay
-                    mainHandler.postDelayed(() -> {
-                        String url = getClipboardUrl();
-                        if (url != null && !url.equals(lastAnalyzedUrl)) {
-                            sendToOverlay(url);
-                        }
-                        // Close share sheet
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                    }, 600);
-
                     recycleAll(nodes);
                     root.recycle();
+                    // Give the app a moment to write the clipboard, then close
+                    // the sheet and read the clipboard via the transparent activity
+                    mainHandler.postDelayed(this::closeSheetAndFinish, 600);
                     return;
                 }
             }
@@ -185,18 +198,28 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
         recycleAll(nodes);
         root.recycle();
-
-        // If we couldn't find copy link, close sheet and try clipboard
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        mainHandler.postDelayed(() -> {
-            String url = getClipboardUrl();
-            if (url != null && !url.equals(lastAnalyzedUrl)) {
-                sendToOverlay(url);
-            }
-        }, 400);
+        closeSheetAndFinish();
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
+    private void closeSheetAndFinish() {
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        mainHandler.postDelayed(this::finishGrab, 350);
+    }
+
+    private void finishGrab() {
+        grabInProgress = false;
+        waitingForShareSheet = false;
+        // Read the clipboard through the focused transparent activity
+        // (background clipboard reads are blocked on Android 10+).
+        try {
+            Intent i = new Intent(this, ClipboardReaderActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            i.putExtra(ClipboardReaderActivity.EXTRA_SOURCE, OverlayService.SOURCE_AUTOMATION);
+            startActivity(i);
+        } catch (Exception ignored) {}
+    }
+
+    // ─── Node helpers ─────────────────────────────────────────────────────────
 
     private AccessibilityNodeInfo findShareButton(AccessibilityNodeInfo root) {
         List<AccessibilityNodeInfo> nodes = getAllNodes(root);
@@ -212,7 +235,6 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
             for (String label : SHARE_LABELS) {
                 if (combined.contains(label.toLowerCase())) {
-                    // Prefer exact "share" match to avoid false positives
                     if (result == null) result = node;
                 }
             }
@@ -248,25 +270,18 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         }
     }
 
-    private String getClipboardUrl() {
-        try {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm == null || !cm.hasPrimaryClip()) return null;
-            String text = cm.getPrimaryClip().getItemAt(0).coerceToText(this).toString().trim();
-            if (text.startsWith("http") && VIDEO_URL_PATTERN.matcher(text).find()) {
-                return text;
-            }
-        } catch (Exception ignored) {}
-        return null;
+    @Override
+    public boolean onUnbind(Intent intent) {
+        instance = null;
+        foregroundPackage = null;
+        return super.onUnbind(intent);
     }
 
-    private void sendToOverlay(String url) {
-        lastAnalyzedUrl = url;
-        // Send to OverlayService via intent
-        Intent intent = new Intent(this, OverlayService.class);
-        intent.setAction("DETECT_URL");
-        intent.putExtra("url", url);
-        startForegroundService(intent);
+    @Override
+    public void onDestroy() {
+        instance = null;
+        foregroundPackage = null;
+        super.onDestroy();
     }
 
     @Override

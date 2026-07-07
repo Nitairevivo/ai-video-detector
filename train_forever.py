@@ -282,6 +282,38 @@ def label_file(path: Path, is_ai: bool, classifier) -> bool:
     return True
 
 
+def _trained_sources() -> set:
+    """Filenames already present in the training set (authoritative dedup)."""
+    try:
+        return {s.get("source", "") for s in load_samples()}
+    except Exception:
+        return set()
+
+
+def _harvest_existing(classifier, seen: set) -> int:
+    """
+    Label any video already on disk that isn't in the training set yet.
+    This prevents downloaded-but-unlabeled files from being wasted — the bug
+    that left the dataset frozen at 220 while 800+ files sat unused.
+    """
+    trained = _trained_sources()
+    added = 0
+    for d, is_ai in ((AI_DIR, True), (REAL_DIR, False)):
+        if not d.exists():
+            continue
+        for f in d.glob("*"):
+            if f.suffix.lower() not in EXTENSIONS or f.stat().st_size < 10000:
+                continue
+            if f.name in trained:
+                seen.add(f.stem)
+                continue
+            if label_file(f, is_ai=is_ai, classifier=classifier):
+                trained.add(f.name)
+                seen.add(f.stem)
+                added += 1
+    return added
+
+
 def retrain(classifier):
     ai, real = dataset_stats()
     if ai < 15 or real < 15:
@@ -337,6 +369,15 @@ def run(batch: int, max_samples: int, once: bool):
 
     print(f"Starting continuous training pipeline")
     print(f"  Batch size: {batch} per class | Max: {max_samples} | Once: {once}")
+
+    # Harvest any already-downloaded files that were never labeled, so nothing
+    # sitting on disk is wasted (this is what left the dataset stuck at 220).
+    harvested = _harvest_existing(classifier, seen)
+    if harvested:
+        print(f"  Harvested {harvested} on-disk files into the training set")
+        save_seen(seen)
+        retrain(classifier)
+
     ai_now, real_now = dataset_stats()
     print(f"  Current dataset: {ai_now} AI + {real_now} Real\n")
 
@@ -362,8 +403,9 @@ def run(batch: int, max_samples: int, once: bool):
             real_queries = REAL_QUERY_POOL.copy()
             random.shuffle(real_queries)
 
-        # Clear yt-dlp archives every 30 rounds so queries stay fresh
-        if round_num % 30 == 0:
+        # Clear yt-dlp archives every 8 rounds so queries keep finding new videos
+        # (30 was too slow — the pipeline starved and added 0 samples for hours).
+        if round_num % 8 == 0:
             for d in [AI_DIR, REAL_DIR]:
                 arch = d / ".yt_archive"
                 if arch.exists():

@@ -228,7 +228,10 @@ class MetadataResult:
 
     # Detection signals
     has_c2pa: bool = False
-    c2pa_is_ai: bool = False
+    c2pa_is_ai: bool = False                 # valid signed manifest claims AI
+    c2pa_verified: bool = False              # manifest signature validated
+    c2pa_digital_source_type: Optional[str] = None
+    c2pa_claim_generator: Optional[str] = None
     ai_tool_detected: Optional[str] = None
     has_ai_exclusive_encoder: bool = False
 
@@ -407,10 +410,30 @@ def _check_duration(result: MetadataResult):
 
 def _check_c2pa(file_path: str, result: MetadataResult):
     """
-    C2PA (Content Credentials) embedded as UUID/JUMBF box in MP4.
-    AI tools can place this anywhere in the file, so we scan in chunks.
-    Also scans for binary AI tool signatures embedded in the bitstream.
+    C2PA (Content Credentials) + binary AI-tool watermark detection.
+
+    Two layers:
+      1. Cryptographic C2PA verification via the official library — validates the
+         manifest signature and reads digitalSourceType. Only this can set
+         c2pa_is_ai (real proof of AI generation).
+      2. Byte scan for the C2PA UUID box (presence signal) and for binary AI-tool
+         watermarks embedded in the bitstream (Sora/Runway/Kling/...). A raw
+         'c2pa.ai' string is treated as *presence only*, never as proof — anyone
+         can embed that string.
     """
+    # ── Layer 1: real cryptographic verification ─────────────────────────────
+    try:
+        from analyzer.c2pa_verifier import read_c2pa
+        c2pa = read_c2pa(file_path)
+        if c2pa.present:
+            result.has_c2pa = True
+            result.c2pa_verified = c2pa.signature_valid
+            result.c2pa_is_ai = c2pa.is_ai
+            result.c2pa_digital_source_type = c2pa.digital_source_type
+            result.c2pa_claim_generator = c2pa.claim_generator
+    except Exception:
+        pass
+
     C2PA_UUID = b'\xd8\xfe\xc3\xd6\x1b\x0e\x48\x3c\x92\x97\x58\x28\x87\x7e\xc4\x81'
     CHUNK = 65536  # 64KB per read
     MAX_SCAN = 5 * 1024 * 1024  # scan up to 5MB
@@ -484,7 +507,8 @@ def _check_c2pa(file_path: str, result: MetadataResult):
                 if C2PA_UUID in chunk:
                     result.has_c2pa = True
                 if b'c2pa.ai' in chunk:
-                    result.c2pa_is_ai = True
+                    # Presence only — a raw string is not cryptographic proof.
+                    # c2pa_is_ai is set exclusively by Layer 1 verification above.
                     result.has_c2pa = True
 
                 for sig, tool_name in BINARY_SIGS:

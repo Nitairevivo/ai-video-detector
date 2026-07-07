@@ -84,4 +84,32 @@ public class OverlayModule extends ReactContextBaseJavaModule {
         // Simplified: always resolve true if service was started
         promise.resolve(true);
     }
+
+    @ReactMethod
+    public void isAccessibilityEnabled(Promise promise) {
+        try {
+            String enabled = Settings.Secure.getString(
+                reactContext.getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String pkg = reactContext.getPackageName();
+            boolean on = enabled != null &&
+                (enabled.contains(pkg + "/" + VerifAIAccessibilityService.class.getName())
+                 || enabled.contains(pkg + "/.VerifAIAccessibilityService"));
+            promise.resolve(on);
+        } catch (Exception e) {
+            promise.resolve(false);
+        }
+    }
+
+    @ReactMethod
+    public void openAccessibilitySettings(Promise promise) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(intent);
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("OPEN_SETTINGS_ERROR", e.getMessage());
+        }
+    }
 }

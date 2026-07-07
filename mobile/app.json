@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -27,6 +27,7 @@
         "backgroundColor": "#07070f"
       },
       "package": "com.verifai.app",
+      "versionCode": 13,
       "permissions": [
         "android.permission.READ_CLIPBOARD",
         "android.permission.READ_MEDIA_VIDEO",
@@ -150,13 +151,15 @@
         }
       ]
     },
-    "plugins": [],
+    "plugins": [
+      "./plugins/withAndroidOverlay.js"
+    ],
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
       "eas": {
-        "projectId": "f28a080f-e9bc-419d-a743-303345577fe4"
+        "projectId": "1ccf6c26-6560-4dfa-96d0-a026d693bbab"
       }
     },
-    "owner": "mmmnnn123"
+    "owner": "052676"
   }
 }

@@ -6,12 +6,15 @@ const { OverlayModule } = NativeModules;
 export function useOverlay() {
   const [overlayActive, setOverlayActive] = useState(false);
 
-  const startOverlay = useCallback(async () => {
+  // Start the overlay service. When silent=true, never open the system
+  // permission screen — used for auto-start so the app doesn't kick the
+  // user into settings on every launch.
+  const startOverlay = useCallback(async (silent = false) => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     try {
       const hasPerm = await OverlayModule.hasPermission();
       if (!hasPerm) {
-        await OverlayModule.requestPermission();
+        if (!silent) await OverlayModule.requestPermission();
         // User goes to settings — we'll check when they return
         return;
       }

@@ -34,11 +34,20 @@ const STEPS: Step[] = [
   },
   {
     emoji: "⚡",
-    title: "זיהוי אוטומטי בזמן גלילה",
-    desc: 'לחץ "הפעל" ← נגישות ← VerifAI Auto-Detect ← הפעל מתג',
+    title: "זיהוי בלחיצה אחת",
+    desc: 'לחץ "הפעל" ← VerifAI Auto-Detect ← הפעל את המתג\nכך הכפתור יופיע רק בתוך TikTok, Instagram וכו\' ויביא תשובה בלחיצה',
     btnLabel: "הפעל נגישות",
-    check: async () => false, // Always requires manual check
-    open: () => Linking.openSettings(),
+    check: async () => {
+      if (Platform.OS !== "android" || !OverlayModule?.isAccessibilityEnabled) return false;
+      try { return await OverlayModule.isAccessibilityEnabled(); } catch { return false; }
+    },
+    open: () => {
+      if (Platform.OS === "android" && OverlayModule?.openAccessibilitySettings) {
+        OverlayModule.openAccessibilitySettings().catch(() => Linking.openSettings());
+      } else {
+        Linking.openSettings();
+      }
+    },
   },
   {
     emoji: "✅",
@@ -110,10 +119,8 @@ export function OnboardingScreen({ onDone }: Props) {
   const handleBtn = () => {
     if (step === STEPS.length - 1) { onDone(); return; }
     current.open();
-    // If it's the last real step, move forward after tap
-    if (step === 1) {
-      setTimeout(() => goNext(), 3000);
-    }
+    // Advancing happens via the AppState listener once the permission
+    // is actually granted, or manually via the skip button.
   };
 
   const isLast = step === STEPS.length - 1;
@@ -186,8 +193,8 @@ export function OnboardingScreen({ onDone }: Props) {
       {!isLast && (
         <View style={s.howWrap}>
           <Text style={s.howTitle}>איך זה עובד?</Text>
-          {step === 0 && <Text style={s.howText}>כפתור 🔍 יצוף מעל TikTok ותוכל ללחוץ בכל זמן</Text>}
-          {step === 1 && <Text style={s.howText}>בזמן שאתה גולל, VerifAI מזהה סרטונים אוטומטית</Text>}
+          {step === 0 && <Text style={s.howText}>כפתור 🔍 קבוע יופיע למעלה בצד — רק בתוך אפליקציות הסרטונים</Text>}
+          {step === 1 && <Text style={s.howText}>לחיצה על הכפתור שולפת את הסרטון הנוכחי ומחזירה תשובה</Text>}
         </View>
       )}
     </View>

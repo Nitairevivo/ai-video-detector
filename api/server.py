@@ -30,6 +30,19 @@ def _build_frame_model_bg():
         print(f"[startup] frame model build failed: {e}")
 threading.Thread(target=_build_frame_model_bg, daemon=True).start()
 
+# Run the Telegram bot in-process (long polling) when a token is configured.
+# One Railway service then serves BOTH the API and the bot — no extra config.
+def _run_telegram_bot_bg():
+    try:
+        if not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
+            return
+        from api.telegram_bot import main as _tg_main
+        print("[startup] launching Telegram bot…")
+        _tg_main()
+    except Exception as e:
+        print(f"[startup] telegram bot stopped: {e}")
+threading.Thread(target=_run_telegram_bot_bg, daemon=True).start()
+
 app = FastAPI(
     title="AI Video Detector API",
     description="Detect AI-generated videos by reading file signatures — no frame decoding required.",
@@ -119,80 +132,41 @@ async def detect(
         tmp.write(chunk)
 
     try:
-        result = extract_features(tmp_path, deep=deep)
-        classifier = get_classifier()
-        ml_prob, _ = classifier.predict(result.feature_vector)
-
-        final_confidence = result.confidence
-        verdict = result.verdict
-        method = result.method
-
-        # ML model: only use if it gives VERY HIGH confidence (≥ 0.85) AND metadata gave no signal.
-        # The current model is trained on synthetic data and causes false positives on real phone videos.
-        # Only trust ML when it's extremely confident AND there's no camera-origin metadata.
-        has_camera_origin = bool(result.signals.get("camera_origin_detected"))
-        if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
-            if ml_prob >= 0.88:
-                # ML is very confident → use it but cap at 75% (not as trustworthy as metadata)
-                final_confidence = min(0.75, ml_prob)
-                verdict = "ai_generated"
-                method = f"ML classifier ({ml_prob:.0%}) — {result.method}"
-            # Below 0.88 → ignore ML, trust metadata-only result
-
-        # Visual frame analysis (ML model + rules, survives TikTok re-encoding)
-        if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
-                vis = detect_visual(tmp_path)
-                # Add visual signals to result signals
-                result.signals.update({f"vis_{k}": v for k, v in vis.signals.items()})
-                if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
-                    final_confidence = max(final_confidence, vis.confidence * 0.80)
-                    method = vis.method
-                    if final_confidence >= 0.5:
-                        verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
-                    final_confidence = min(final_confidence, 0.06)
-                    method = vis.method
-            except Exception:
-                pass
-
-        # Gemini Vision: visual analysis for all inconclusive cases
-        if final_confidence < 0.50 and not has_camera_origin:
-            try:
-                import time as _time
-                from analyzer.gemini_analyzer import analyze_with_gemini
-                gemini = None
-                for _attempt in range(3):
-                    gemini = analyze_with_gemini(tmp_path)
-                    if gemini is not None:
-                        break
-                    _time.sleep(3 * (_attempt + 1))
-                if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.70:
-                        final_confidence = max(final_confidence, gemini.confidence * 0.90)
-                        verdict = gemini.verdict
-                        method = f"Gemini Vision: {gemini.reason}"
-                    elif gemini.verdict == "real" and gemini.confidence >= 0.80:
-                        final_confidence = min(final_confidence, 0.08)
-                        method = f"Gemini Vision: {gemini.reason or 'No AI artifacts detected'}"
-            except Exception:
-                pass
-
-        return {
-            "filename": file.filename,
-            "is_ai_generated": verdict == "ai_generated",
-            "verdict": verdict,
-            "confidence": round(final_confidence, 4),
-            "confidence_pct": f"{final_confidence * 100:.1f}%",
-            "ai_tool_detected": result.ai_tool,
-            "edit_tool_detected": result.edit_tool,
-            "detection_method": method,
-            "deep_analysis_ran": bool(result.signals.get("freq_analyzed") or result.signals.get("visual_analyzed")),
-            "signals": result.signals,
-        }
+        payload = run_full_analysis(tmp_path, deep=deep)
+        payload["filename"] = file.filename
+        payload["signals"] = payload.pop("_signals", {})
+        return payload
     finally:
         os.unlink(tmp_path)
+
+
+def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
+    """
+    Shared analysis pipeline: metadata/container features → Gemini-base ensemble
+    (Gemini + visual + audio + frame-ML fused). Used by /detect, /detect-url
+    and the Telegram bot.
+    """
+    from analyzer.ensemble import analyze_ensemble
+
+    result = extract_features(tmp_path, deep=deep)
+    classifier = get_classifier()
+    ml_prob, _ = classifier.predict(result.feature_vector)
+
+    ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True)
+
+    return {
+        "is_ai_generated": ens.verdict == "ai_generated",
+        "verdict": ens.verdict,
+        "confidence": round(ens.confidence, 4),
+        "confidence_pct": f"{ens.confidence * 100:.1f}%",
+        "ai_tool_detected": result.ai_tool,
+        "edit_tool_detected": result.edit_tool,
+        "detection_method": ens.method,
+        "deep_analysis_ran": bool(result.signals.get("freq_analyzed") or result.signals.get("visual_analyzed")),
+        "ensemble_layers": ens.layers,
+        "gemini_reason": ens.gemini_reason,
+        "_signals": result.signals,
+    }
 
 
 @app.post("/label")
@@ -216,6 +190,52 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
         return {"message": "Sample added to training set", "label": "AI" if is_ai else "Real"}
     finally:
         os.unlink(tmp_path)
+
+
+@app.post("/detect-frame")
+async def detect_frame(file: UploadFile = File(...)):
+    """
+    Last-resort detection from a SINGLE screen-captured frame (MediaProjection
+    fallback on mobile, used when no video URL/file can be obtained).
+
+    Frame-only analysis is the weakest signal — no metadata, no temporal cues —
+    so the verdict leans on Gemini Vision and is reported conservatively.
+    """
+    import base64
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty frame")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(400, "Frame too large")
+
+    try:
+        from analyzer.gemini_analyzer import analyze_image_with_gemini
+        img_b64 = base64.standard_b64encode(raw).decode()
+        g = analyze_image_with_gemini(img_b64)
+    except Exception:
+        g = None
+
+    if g is None:
+        return {
+            "is_ai_generated": False,
+            "verdict": "unknown",
+            "confidence": 0.0,
+            "confidence_pct": "0.0%",
+            "ai_tool_detected": None,
+            "detection_method": "Frame analysis unavailable",
+            "source": "frame",
+        }
+
+    return {
+        "is_ai_generated": g.verdict == "ai_generated",
+        "verdict": g.verdict,
+        "confidence": round(g.ai_probability, 4),
+        "confidence_pct": f"{g.ai_probability * 100:.1f}%",
+        "ai_tool_detected": None,
+        "detection_method": f"Single-frame Gemini Vision: {g.reason}",
+        "artifacts": g.artifacts,
+        "source": "frame",
+    }
 
 
 @app.post("/train")
@@ -323,6 +343,27 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
     try:
         ok = False
 
+        # Strategy 0: platform AI-disclosure label (YouTube/Instagram/Facebook).
+        # Survives transcoding because it lives in the page JSON, not the file.
+        if not is_tiktok:
+            try:
+                from analyzer.platform_flags import check_platform_ai_flag
+                pf = check_platform_ai_flag(url)
+                if pf.flagged:
+                    return {
+                        "url": url,
+                        "is_ai_generated": True,
+                        "verdict": "ai_generated",
+                        "confidence": 0.96,
+                        "confidence_pct": "96.0%",
+                        "ai_tool_detected": f"{pf.platform.capitalize()} AI label",
+                        "edit_tool_detected": None,
+                        "detection_method": f"Platform AI disclosure: {pf.info}",
+                        "deep_analysis_ran": False,
+                    }
+            except Exception:
+                pass
+
         # Strategy 1: TikTok-specific resolver (gets CDN URL + AIGC labels)
         if is_tiktok:
             try:
@@ -361,86 +402,11 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             }
 
         force_deep = deep or _is_platform_url(url)
-        result = extract_features(tmp_path, deep=force_deep)
-        classifier = get_classifier()
-        ml_prob, _ = classifier.predict(result.feature_vector)
-
-        final_confidence = result.confidence
-        verdict = result.verdict
-        method = result.method
-        has_camera_origin = bool(result.signals.get("camera_origin_detected"))
-
-        # Visual AI detection (ML model + rule-based, works after TikTok re-encoding)
-        if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.visual_detector import detect_visual_with_motion as detect_visual
-                vis = detect_visual(tmp_path)
-                if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
-                    final_confidence = max(final_confidence, vis.confidence * 0.80)
-                    method = vis.method
-                    if final_confidence >= 0.5:
-                        verdict = "ai_generated"
-                elif vis.verdict == "real" and vis.confidence >= 0.90:
-                    # Strong visual evidence of real camera
-                    final_confidence = min(final_confidence, 0.06)
-                    method = vis.method
-            except Exception:
-                pass
-
-        # Audio AI analysis
-        if final_confidence < 0.5 and not has_camera_origin:
-            try:
-                from analyzer.audio_analyzer_ai import analyze_audio_ai
-                audio_ai = analyze_audio_ai(tmp_path)
-                if audio_ai.verdict == "ai_audio" and audio_ai.confidence >= 0.65:
-                    final_confidence = max(final_confidence, audio_ai.confidence * 0.55)
-                    method = f"Audio: {audio_ai.reason}"
-                    if final_confidence >= 0.5:
-                        verdict = "ai_generated"
-            except Exception:
-                pass
-
-        # ML: only if very high confidence AND no camera origin
-        if ml_prob is not None and not has_camera_origin and result.confidence < 0.1:
-            if ml_prob >= 0.88:
-                final_confidence = min(0.75, ml_prob)
-                verdict = "ai_generated"
-                method = f"ML classifier ({ml_prob:.0%})"
-
-        # Gemini Vision: 0.70 threshold for all platforms
-        if final_confidence < 0.50 and not has_camera_origin:
-            try:
-                import time as _time2
-                from analyzer.gemini_analyzer import analyze_with_gemini
-                gemini = None
-                for _att in range(3):
-                    gemini = analyze_with_gemini(tmp_path)
-                    if gemini is not None: break
-                    _time2.sleep(3 * (_att + 1))
-                if gemini and gemini.frames_analyzed >= 3:
-                    if gemini.verdict in ("ai_generated", "ai_edited") and gemini.confidence >= 0.70:
-                        final_confidence = max(final_confidence, gemini.confidence * 0.90)
-                        verdict = gemini.verdict
-                        method = f"Gemini Vision: {gemini.reason}"
-                    elif gemini.verdict == "real" and gemini.confidence >= 0.80:
-                        # Gemini confidently says real → lower our score
-                        final_confidence = min(final_confidence, 0.08)
-                        method = f"Gemini Vision: {gemini.reason}"
-            except Exception:
-                pass
-
-        return {
-            "url": url,
-            "is_ai_generated": verdict == "ai_generated",
-            "verdict": verdict,
-            "confidence": round(final_confidence, 4),
-            "confidence_pct": f"{final_confidence * 100:.1f}%",
-            "ai_tool_detected": result.ai_tool,
-            "edit_tool_detected": result.edit_tool,
-            "detection_method": method,
-            "deep_analysis_ran": bool(result.signals.get("freq_analyzed") or result.signals.get("visual_analyzed")),
-            "aigc_page_label": aigc_from_page,
-        }
+        payload = run_full_analysis(tmp_path, deep=force_deep)
+        payload.pop("_signals", None)
+        payload["url"] = url
+        payload["aigc_page_label"] = aigc_from_page
+        return payload
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)

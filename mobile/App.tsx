@@ -310,9 +310,9 @@ function AppInner() {
 
   const { overlayActive, startOverlay, stopOverlay } = useOverlay();
 
-  // Auto-start overlay on Android
+  // Auto-start overlay on Android — silent: only if permission already granted
   useEffect(() => {
-    if (Platform.OS === "android") startOverlay();
+    if (Platform.OS === "android") startOverlay(true);
   }, []);
 
   // Show premium popup: first time after 3 scans, then every 5 scans
@@ -333,7 +333,7 @@ function AppInner() {
 
   // Clipboard auto-detect when app comes foreground
   useEffect(() => {
-    const { remove } = require("react-native").AppState.addEventListener("change", async (state: string) => {
+    const sub = require("react-native").AppState.addEventListener("change", async (state: string) => {
       if (state !== "active") return;
       try {
         const text = await Clipboard.getStringAsync();
@@ -343,7 +343,7 @@ function AppInner() {
         }
       } catch {}
     });
-    return remove;
+    return () => sub.remove();
   }, []);
 
   const LOADING_ID = "__loading__";
@@ -483,7 +483,7 @@ function AppInner() {
               </View>
               <View>
                 <Text style={styles.headerTitle}>VerifAI</Text>
-                <Text style={styles.headerEyebrow}>{t.poweredBy}</Text>
+                <Text style={styles.headerEyebrow}>{t.poweredBy} · v{APP_VERSION}</Text>
               </View>
             </View>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -641,8 +641,145 @@ function AppInner() {
   );
 }
 
+const ONBOARDING_KEY = "verifai_onboarding_done";
+const APP_VERSION = "1.3.0";
+const JS_ERROR_KEY = "verifai_last_js_error";
+
+// ─── Crash visibility ─────────────────────────────────────────────────────────
+// Any fatal JS error is persisted so the next launch SHOWS it instead of a
+// blank screen. Native services write to verifai_crash.txt (see CrashLog.java).
+
+const g: any = global as any;
+if (g.ErrorUtils && !g.__verifaiErrHandler) {
+  g.__verifaiErrHandler = true;
+  const prev = g.ErrorUtils.getGlobalHandler?.();
+  g.ErrorUtils.setGlobalHandler?.((e: any, isFatal?: boolean) => {
+    try { SecureStore.setItemAsync(JS_ERROR_KEY, String(e?.stack || e).slice(0, 4000)).catch(() => {}); } catch {}
+    prev?.(e, isFatal);
+  });
+}
+
+function ErrorScreen({ title, text, onDismiss }: { title: string; text: string; onDismiss: () => void }) {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#06060f", padding: 20 }}>
+      <Text style={{ color: "#ef4444", fontSize: 18, fontWeight: "800", marginTop: 30 }}>{title}</Text>
+      <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 6 }}>
+        צלם מסך של העמוד הזה ושלח — זה בדיוק מה שצריך כדי לתקן. v{APP_VERSION}
+      </Text>
+      <ScrollView style={{ marginTop: 14, flex: 1 }}>
+        <Text selectable style={{ color: "#e5e7eb", fontSize: 11, fontFamily: Platform.OS === "android" ? "monospace" : "Menlo" }}>
+          {text}
+        </Text>
+      </ScrollView>
+      <TouchableOpacity
+        onPress={onDismiss}
+        style={{ backgroundColor: "#4f46e5", borderRadius: 14, padding: 16, alignItems: "center", marginTop: 12 }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "700" }}>המשך לאפליקציה</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: any) {
+    try { SecureStore.setItemAsync(JS_ERROR_KEY, (String(error?.stack || error) + "\n" + String(info?.componentStack || "")).slice(0, 4000)).catch(() => {}); } catch {}
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <ErrorScreen
+          title="😵 האפליקציה נתקלה בשגיאה"
+          text={String(this.state.error?.stack || this.state.error)}
+          onDismiss={() => this.setState({ error: null })}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function useStoredCrashLogs(): [string | null, () => void] {
+  const [log, setLog] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      let combined = "";
+      try {
+        const js = await SecureStore.getItemAsync(JS_ERROR_KEY);
+        if (js) {
+          combined += "── שגיאת JS מהריצה הקודמת ──\n" + js + "\n\n";
+          SecureStore.deleteItemAsync(JS_ERROR_KEY).catch(() => {});
+        }
+      } catch {}
+      try {
+        const FileSystem = require("expo-file-system");
+        const path = FileSystem.documentDirectory + "verifai_crash.txt";
+        const info = await FileSystem.getInfoAsync(path);
+        if (info.exists) {
+          const native = await FileSystem.readAsStringAsync(path);
+          if (native?.trim()) combined += "── שגיאה נייטיבית ──\n" + native.slice(-3000);
+          FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
+        }
+      } catch {}
+      if (combined) setLog(combined);
+    })();
+  }, []);
+  return [log, () => setLog(null)];
+}
+
 export default function App() {
-  // Skip onboarding — overlay not available in this build
+  return (
+    <ErrorBoundary>
+      <AppRouter />
+    </ErrorBoundary>
+  );
+}
+
+function AppRouter() {
+  // null = still loading the stored flag, true/false = decided.
+  // Any failure (SecureStore error, timeout) falls back to showing the app —
+  // the user must never be stuck on an empty screen.
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let decided = false;
+    const decide = (v: boolean) => {
+      if (!decided) { decided = true; setShowOnboarding(v); }
+    };
+
+    if (Platform.OS !== "android") {
+      decide(false); // onboarding steps are Android-only (overlay + accessibility)
+      return;
+    }
+
+    SecureStore.getItemAsync(ONBOARDING_KEY)
+      .then((v) => decide(v !== "1"))
+      .catch(() => decide(false));
+
+    // Safety net: if SecureStore hangs, go straight to the home screen
+    const t = setTimeout(() => decide(false), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const finishOnboarding = useCallback(() => {
+    setShowOnboarding(false); // switch screens first — persistence is best-effort
+    SecureStore.setItemAsync(ONBOARDING_KEY, "1").catch(() => {});
+  }, []);
+
+  // Crash from a previous run? Show it before anything else.
+  const [crashLog, dismissCrashLog] = useStoredCrashLogs();
+  if (crashLog) {
+    return <ErrorScreen title="🛠️ נתפסה שגיאה מהריצה הקודמת" text={crashLog} onDismiss={dismissCrashLog} />;
+  }
+
+  if (showOnboarding === null) {
+    return <View style={{ flex: 1, backgroundColor: "#06060f" }} />;
+  }
+  if (showOnboarding) {
+    return <OnboardingScreen onDone={finishOnboarding} />;
+  }
   return <AppInner />;
 }
 

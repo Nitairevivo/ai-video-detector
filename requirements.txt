@@ -14,3 +14,4 @@ yt-dlp==2025.6.9
 stripe==10.12.0
 slowapi==0.1.9
 anthropic>=0.40.0
+c2pa-python==0.9.0

@@ -24,6 +24,7 @@ function withOverlayManifest(config) {
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.FOREGROUND_SERVICE",
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
       "android.permission.RECEIVE_BOOT_COMPLETED",
     ];
     for (const perm of neededPerms) {
@@ -53,6 +54,17 @@ function withOverlayManifest(config) {
       });
     }
 
+    // Screen-capture service (MediaProjection frame fallback)
+    if (!existingServices.includes(".ScreenCaptureService")) {
+      app.service.push({
+        $: {
+          "android:name": ".ScreenCaptureService",
+          "android:exported": "false",
+          "android:foregroundServiceType": "mediaProjection",
+        },
+      });
+    }
+
     // Accessibility service
     if (!existingServices.includes(".VerifAIAccessibilityService")) {
       app.service.push({
@@ -71,6 +83,36 @@ function withOverlayManifest(config) {
             "android:resource": "@xml/accessibility_service_config",
           }
         }]
+      });
+    }
+
+    // Invisible clipboard-reader activity (Android 10+ clipboard focus workaround)
+    if (!app.activity) app.activity = [];
+    const existingActivities = app.activity.map((a) => a.$["android:name"]);
+    if (!existingActivities.includes(".ClipboardReaderActivity")) {
+      app.activity.push({
+        $: {
+          "android:name": ".ClipboardReaderActivity",
+          "android:exported": "false",
+          "android:theme": "@android:style/Theme.Translucent.NoTitleBar",
+          "android:excludeFromRecents": "true",
+          "android:noHistory": "true",
+          "android:taskAffinity": "",
+        },
+      });
+    }
+
+    // Transparent activity that requests screen-capture consent
+    if (!existingActivities.includes(".MediaProjectionRequestActivity")) {
+      app.activity.push({
+        $: {
+          "android:name": ".MediaProjectionRequestActivity",
+          "android:exported": "false",
+          "android:theme": "@android:style/Theme.Translucent.NoTitleBar",
+          "android:excludeFromRecents": "true",
+          "android:noHistory": "true",
+          "android:taskAffinity": "",
+        },
       });
     }
 
@@ -100,7 +142,9 @@ function withOverlayJavaFiles(config) {
     "android",
     (cfg) => {
       const projectRoot = cfg.modRequest.platformProjectRoot;
-      const pkg = "com/aivideodector/app";
+      // Must match the `package com.verifai.app;` declaration in the Java files
+      // and the android.package in app.json
+      const pkg = "com/verifai/app";
       const javaDestDir = path.join(
         projectRoot,
         "app/src/main/java",
@@ -125,7 +169,17 @@ function withOverlayJavaFiles(config) {
       );
 
       // Copy the Java files
-      for (const fname of ["OverlayService.java", "OverlayModule.java", "OverlayPackage.java", "VerifAIAccessibilityService.java"]) {
+      for (const fname of [
+        "OverlayService.java",
+        "OverlayModule.java",
+        "OverlayPackage.java",
+        "VerifAIAccessibilityService.java",
+        "GalleryWatcher.java",
+        "ClipboardReaderActivity.java",
+        "ScreenCaptureService.java",
+        "MediaProjectionRequestActivity.java",
+        "CrashLog.java",
+      ]) {
         const src = path.join(JAVA_DIR, fname);
         const dst = path.join(javaDestDir, fname);
         if (fs.existsSync(src)) {
@@ -155,7 +209,7 @@ function withOverlayJavaFiles(config) {
             /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
             (match) =>
               match +
-              "          packages.add(com.aivideodector.app.OverlayPackage())\n"
+              "          packages.add(com.verifai.app.OverlayPackage())\n"
           );
           fs.writeFileSync(mainAppKt, src);
           console.log("[withAndroidOverlay] Patched MainApplication.kt");
@@ -175,7 +229,7 @@ function withOverlayJavaFiles(config) {
               /List<ReactPackage> packages = new PackageList\(this\)\.getPackages\(\);/,
               (match) =>
                 match +
-                "\n          packages.add(new com.aivideodector.app.OverlayPackage());"
+                "\n          packages.add(new com.verifai.app.OverlayPackage());"
             );
             fs.writeFileSync(mainAppJava, src);
             console.log("[withAndroidOverlay] Patched MainApplication.java");

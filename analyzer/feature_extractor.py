@@ -236,7 +236,15 @@ def _rule_based_decision(
     # ── Tier 1: Definitive proof — always AI-generated ────────────────────────
 
     if meta.c2pa_is_ai:
-        return 0.99, "C2PA cryptographic proof of AI generation", ai_tool
+        src = meta.c2pa_digital_source_type
+        gen = meta.c2pa_claim_generator
+        detail = "C2PA cryptographic proof of AI generation"
+        if gen:
+            detail += f" (signed by {gen})"
+        if src:
+            detail += f" [{src.rsplit('/', 1)[-1]}]"
+        c2pa_tool = ai_tool or (f"C2PA: {gen}" if gen else "C2PA")
+        return 0.99, detail, c2pa_tool
 
     if meta.ai_tool_detected:
         return 0.97, f"AI generation tool in metadata: '{meta.ai_tool_detected}'", ai_tool

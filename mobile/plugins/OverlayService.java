@@ -4,8 +4,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -17,7 +15,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -43,19 +40,35 @@ public class OverlayService extends Service {
     private static final String API = "https://ai-video-detector-production-a305.up.railway.app";
     private static final String CHANNEL_ID = "overlay_service";
 
+    public static final String ACTION_DETECT_URL = "DETECT_URL";
+    public static final String ACTION_CLIPBOARD_RESULT = "CLIPBOARD_RESULT";
+    public static final String SOURCE_TAP = "tap";
+    public static final String SOURCE_AUTOMATION = "automation";
+
+    /** Same-process handle so the accessibility service can push foreground-app changes. */
+    public static volatile OverlayService instance;
+
     private WindowManager windowManager;
     private WindowManager.LayoutParams buttonParams;
-    private WindowManager.LayoutParams resultParams;
 
     private View buttonView;
     private View resultView;
 
-    private int initialX, initialY;
-    private float initialTouchX, initialTouchY;
-    private boolean isDragging = false;
-
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private volatile boolean detectionPending = false;
+    private volatile String lastAnalyzedUrl = "";
+
+    private final Runnable detectionTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (!detectionPending) return;
+            detectionPending = false;
+            resetButton();
+            showToastResult("⏱️ לא התקבלה תשובה", "real", "נסה שוב, או העתק קישור (Share ← Copy Link) ולחץ על הכפתור", 0);
+        }
+    };
 
     private static final Pattern[] VIDEO_PATTERNS = {
         Pattern.compile("tiktok\\.com"),
@@ -77,10 +90,37 @@ public class OverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        startForegroundService();
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        showButton();
-        startGalleryWatcher();
+        instance = this;
+        try {
+            startForegroundService();
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            showButton();
+            startGalleryWatcher();
+
+            // If the accessibility service already knows which app is in front,
+            // sync the button visibility immediately.
+            String fg = VerifAIAccessibilityService.getForegroundPackage();
+            if (fg != null) onForegroundApp(fg);
+        } catch (Throwable t) {
+            // Never take the whole app process down — record and stop cleanly
+            CrashLog.log(this, "OverlayService.onCreate", t);
+            stopSelf();
+        }
+    }
+
+    // ─── Foreground-app gating ───────────────────────────────────────────────
+
+    /** Called by VerifAIAccessibilityService whenever the foreground app changes. */
+    public static void notifyForegroundApp(String pkg) {
+        OverlayService s = instance;
+        if (s != null) s.onForegroundApp(pkg);
+    }
+
+    private void onForegroundApp(String pkg) {
+        final boolean show = VerifAIAccessibilityService.SUPPORTED_PACKAGES.contains(pkg);
+        mainHandler.post(() -> {
+            if (buttonView != null) buttonView.setVisibility(show ? View.VISIBLE : View.GONE);
+        });
     }
 
     private void startGalleryWatcher() {
@@ -118,15 +158,15 @@ public class OverlayService extends Service {
             ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
         }
         Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AI Detector active")
-            .setContentText("Tap the floating button to check any video")
+            .setContentTitle("VerifAI active")
+            .setContentText("The 🔍 button appears inside TikTok, Instagram, YouTube…")
             .setSmallIcon(android.R.drawable.ic_menu_search)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build();
         startForeground(1, n);
     }
 
-    // ─── Floating Button ────────────────────────────────────────────────────
+    // ─── Floating Button (pinned top-side, hidden until a supported app opens) ──
 
     private View buildButtonView() {
         FrameLayout root = new FrameLayout(this);
@@ -135,7 +175,6 @@ public class OverlayService extends Service {
         bg.setShape(GradientDrawable.OVAL);
         bg.setColor(Color.parseColor("#6366f1"));
         bg.setSize(dp(60), dp(60));
-        // shadow not available on old API, elevation on FrameLayout
         root.setBackground(bg);
         root.setElevation(dp(12));
 
@@ -166,6 +205,12 @@ public class OverlayService extends Service {
     }
 
     private void showButton() {
+        // Accessibility service may start us before the overlay permission is
+        // granted — in that case run without the button instead of crashing.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && !android.provider.Settings.canDrawOverlays(this)) {
+            return;
+        }
         buttonView = buildButtonView();
 
         buttonParams = new WindowManager.LayoutParams(
@@ -174,42 +219,18 @@ public class OverlayService extends Service {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         );
-        buttonParams.gravity = Gravity.TOP | Gravity.START;
-        buttonParams.x = 20;
-        buttonParams.y = 300;
+        // Pinned: top edge, side of the screen. Not draggable.
+        buttonParams.gravity = Gravity.TOP | Gravity.END;
+        buttonParams.x = dp(10);
+        buttonParams.y = dp(130);
 
-        buttonView.setOnTouchListener((v, e) -> {
-            switch (e.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    initialX = buttonParams.x;
-                    initialY = buttonParams.y;
-                    initialTouchX = e.getRawX();
-                    initialTouchY = e.getRawY();
-                    isDragging = false;
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    float dx = e.getRawX() - initialTouchX;
-                    float dy = e.getRawY() - initialTouchY;
-                    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) isDragging = true;
-                    if (isDragging) {
-                        buttonParams.x = initialX + (int) dx;
-                        buttonParams.y = initialY + (int) dy;
-                        windowManager.updateViewLayout(buttonView, buttonParams);
-                    }
-                    return true;
-                case MotionEvent.ACTION_UP:
-                    if (!isDragging) onButtonTapped();
-                    return true;
-            }
-            return false;
-        });
-
+        buttonView.setOnClickListener(v -> onButtonTapped());
+        buttonView.setVisibility(View.GONE); // hidden until a supported app is foreground
         windowManager.addView(buttonView, buttonParams);
     }
 
     private void showLoading() {
         mainHandler.post(() -> {
-            View icon = buttonView.findViewWithTag("icon");
             if (buttonView instanceof FrameLayout) {
                 LinearLayout inner = (LinearLayout) ((FrameLayout) buttonView).getChildAt(0);
                 ((TextView) inner.getChildAt(0)).setText("⏳");
@@ -249,7 +270,7 @@ public class OverlayService extends Service {
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         conn.setConnectTimeout(10000);
-        conn.setReadTimeout(30000);
+        conn.setReadTimeout(90000); // deep analysis can take 40s+
         try (OutputStream os = conn.getOutputStream()) { os.write(json.toString().getBytes("UTF-8")); }
         if (conn.getResponseCode() != 200) throw new Exception("Server error " + conn.getResponseCode());
         StringBuilder sb = new StringBuilder();
@@ -352,7 +373,7 @@ public class OverlayService extends Service {
             upConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             upConn.setDoOutput(true);
             upConn.setConnectTimeout(10000);
-            upConn.setReadTimeout(30000);
+            upConn.setReadTimeout(90000); // deep analysis can take 40s+
 
             try (OutputStream out = upConn.getOutputStream()) {
                 String header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"video.mp4\"\r\nContent-Type: video/mp4\r\n\r\n";
@@ -378,32 +399,82 @@ public class OverlayService extends Service {
     // ─── Button Tap ─────────────────────────────────────────────────────────
 
     private void onButtonTapped() {
-        ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cb == null || !cb.hasPrimaryClip()) {
-            showToastResult("📋 Copy a video link first!", "real", "In TikTok: Share → Copy Link", 0);
-            return;
-        }
-        String text = "";
-        try {
-            text = cb.getPrimaryClip().getItemAt(0).coerceToText(this).toString().trim();
-        } catch (Exception e) { return; }
-
-        if (!text.startsWith("http")) {
-            showToastResult("📋 No URL found in clipboard", "real", "Copy a video link first", 0);
-            return;
-        }
-
-        boolean isVideo = false;
-        for (Pattern p : VIDEO_PATTERNS) {
-            if (p.matcher(text).find()) { isVideo = true; break; }
-        }
-        if (!isVideo) {
-            showToastResult("⚠️ URL not recognized", "real", text.length() > 50 ? text.substring(0, 50) + "…" : text, 0);
-            return;
-        }
-
+        if (detectionPending) return;
+        detectionPending = true;
         showLoading();
-        final String url = text;
+        // Stage timeout: covers clipboard check + accessibility automation.
+        // detectAndShow() reschedules it for the (slower) network stage.
+        mainHandler.removeCallbacks(detectionTimeout);
+        mainHandler.postDelayed(detectionTimeout, 12000);
+
+        // Android 10+ blocks clipboard reads from background services, so a
+        // transparent activity grabs focus for a moment and reports back.
+        launchClipboardReader(SOURCE_TAP);
+    }
+
+    private void launchClipboardReader(String source) {
+        try {
+            Intent i = new Intent(this, ClipboardReaderActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            i.putExtra(ClipboardReaderActivity.EXTRA_SOURCE, source);
+            startActivity(i);
+        } catch (Exception e) {
+            finishDetection();
+            showToastResult("❌ " + e.getMessage(), "real", "נסה שוב", 0);
+        }
+    }
+
+    private String extractVideoUrl(String text) {
+        if (text == null) return null;
+        text = text.trim();
+        if (!text.startsWith("http")) return null;
+        for (Pattern p : VIDEO_PATTERNS) {
+            if (p.matcher(text).find()) return text;
+        }
+        return null;
+    }
+
+    private void finishDetection() {
+        detectionPending = false;
+        mainHandler.removeCallbacks(detectionTimeout);
+        resetButton();
+    }
+
+    private void handleClipboardResult(String text, String source) {
+        String url = extractVideoUrl(text);
+
+        if (SOURCE_TAP.equals(source)) {
+            boolean fresh = url != null && !url.equals(lastAnalyzedUrl);
+            if (fresh) {
+                detectAndShow(url);
+            } else if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
+                // Accessibility service is clicking Share → Copy Link for us;
+                // it will come back through ACTION_CLIPBOARD_RESULT (automation).
+            } else if (url != null) {
+                detectAndShow(url); // same link again — user asked, re-check it
+            } else {
+                // No URL from clipboard or accessibility automation —
+                // last resort: capture a screen frame and analyze that.
+                startScreenCaptureFallback();
+            }
+        } else { // automation
+            if (url != null) {
+                detectAndShow(url);
+            } else {
+                // Automation ran but produced no link — fall back to a frame.
+                startScreenCaptureFallback();
+            }
+        }
+    }
+
+    private void detectAndShow(final String url) {
+        lastAnalyzedUrl = url;
+        detectionPending = true;
+        showLoading();
+        // Network stage can take a while (phone download + upload + analysis)
+        mainHandler.removeCallbacks(detectionTimeout);
+        mainHandler.postDelayed(detectionTimeout, 120000);
+
         executor.submit(() -> {
             try {
                 JSONObject result;
@@ -418,30 +489,111 @@ public class OverlayService extends Service {
                 }
 
                 if (result == null) throw new Exception("Detection failed");
-                String verdict = result.optString("verdict", result.optBoolean("is_ai_generated", false) ? "ai_generated" : "real");
-                double confidence = result.getDouble("confidence");
-                String tool = result.optString("ai_tool_detected", "");
-                String editTool = result.optString("edit_tool_detected", "");
-                String method = result.optString("detection_method", "");
-                int pct = (int) Math.round(confidence * 100);
-
-                String title;
-                if ("ai_generated".equals(verdict)) {
-                    title = (tool != null && !tool.isEmpty()) ? "🤖 AI · " + tool : "🤖 AI Generated";
-                } else if ("ai_edited".equals(verdict)) {
-                    title = (editTool != null && !editTool.isEmpty()) ? "✏️ Edited · " + editTool : "✏️ Real Video, AI-Edited";
-                } else {
-                    title = "✅ Authentic Footage";
-                }
-                String sub = pct + "% · " + (method.length() > 40 ? method.substring(0, 40) + "…" : method);
-
-                showToastResult(title, verdict, sub, pct);
+                renderResult(result);
 
             } catch (Exception e) {
-                resetButton();
-                mainHandler.post(() -> showToastResult("❌ Error: " + e.getMessage(), "real", "Check your connection", 0));
+                mainHandler.post(this::finishDetection);
+                showToastResult("❌ Error: " + e.getMessage(), "real", "Check your connection", 0);
             }
         });
+    }
+
+    /** Map a detection JSON (from /detect, /detect-url or /detect-frame) to the
+     *  floating result card. Shared by the URL and screen-frame paths. */
+    private void renderResult(JSONObject result) throws Exception {
+        String verdict = result.optString("verdict", result.optBoolean("is_ai_generated", false) ? "ai_generated" : "real");
+        double confidence = result.getDouble("confidence");
+        String tool = result.optString("ai_tool_detected", "");
+        String editTool = result.optString("edit_tool_detected", "");
+        String method = result.optString("detection_method", "");
+        int pct = (int) Math.round(confidence * 100);
+
+        String title;
+        if ("ai_generated".equals(verdict)) {
+            title = (tool != null && !tool.isEmpty()) ? "🤖 AI · " + tool : "🤖 AI Generated";
+        } else if ("ai_edited".equals(verdict)) {
+            title = (editTool != null && !editTool.isEmpty()) ? "✏️ Edited · " + editTool : "✏️ Real Video, AI-Edited";
+        } else if ("unknown".equals(verdict)) {
+            title = "❓ לא הצלחתי להכריע";
+        } else {
+            title = "✅ Authentic Footage";
+        }
+        String sub = pct + "% · " + (method.length() > 40 ? method.substring(0, 40) + "…" : method);
+
+        mainHandler.post(this::finishDetection);
+        showToastResult(title, verdict, sub, pct);
+    }
+
+    // ─── MediaProjection frame fallback ─────────────────────────────────────
+
+    /** Called by ScreenCaptureService once it has a JPEG frame of the screen. */
+    public static void onFrameCaptured(byte[] jpeg) {
+        OverlayService s = instance;
+        if (s != null) s.handleFrameCaptured(jpeg);
+    }
+
+    /** Called by the capture activity/service when capture couldn't happen. */
+    public static void onFrameCaptureFailed(String reason) {
+        OverlayService s = instance;
+        if (s == null) return;
+        s.mainHandler.post(s::finishDetection);
+        s.showToastResult("📷 לא ניתן לצלם מסך", "real",
+            (reason == null || reason.isEmpty()) ? "נסה שוב" : reason, 0);
+    }
+
+    /** Last resort when no video URL/file is obtainable: capture a screen frame. */
+    private void startScreenCaptureFallback() {
+        detectionPending = true;
+        mainHandler.post(this::showLoading);
+        mainHandler.removeCallbacks(detectionTimeout);
+        mainHandler.postDelayed(detectionTimeout, 120000);
+        try {
+            Intent i = new Intent(this, MediaProjectionRequestActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(i);
+        } catch (Exception e) {
+            mainHandler.post(this::finishDetection);
+            showToastResult("📷 לא ניתן לצלם מסך", "real", "נסה שוב", 0);
+        }
+    }
+
+    private void handleFrameCaptured(final byte[] jpeg) {
+        executor.submit(() -> {
+            try {
+                if (jpeg == null || jpeg.length == 0) throw new Exception("empty frame");
+                JSONObject result = detectViaFrame(jpeg);
+                if (result == null) throw new Exception("frame analysis failed");
+                renderResult(result);
+            } catch (Exception e) {
+                mainHandler.post(this::finishDetection);
+                showToastResult("❌ " + e.getMessage(), "real", "נסה שוב", 0);
+            }
+        });
+    }
+
+    private JSONObject detectViaFrame(byte[] jpeg) throws Exception {
+        String boundary = "VerifAIBoundary" + System.currentTimeMillis();
+        URL uploadUrl = new URL(API + "/detect-frame");
+        HttpURLConnection upConn = (HttpURLConnection) uploadUrl.openConnection();
+        upConn.setRequestMethod("POST");
+        upConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        upConn.setDoOutput(true);
+        upConn.setConnectTimeout(10000);
+        upConn.setReadTimeout(90000);
+
+        try (OutputStream out = upConn.getOutputStream()) {
+            String header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"frame.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
+            out.write(header.getBytes("UTF-8"));
+            out.write(jpeg);
+            out.write(("\r\n--" + boundary + "--\r\n").getBytes("UTF-8"));
+        }
+
+        if (upConn.getResponseCode() != 200) throw new Exception("Frame upload error " + upConn.getResponseCode());
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(upConn.getInputStream()))) {
+            String line; while ((line = br.readLine()) != null) sb.append(line);
+        }
+        return new JSONObject(sb.toString());
     }
 
     // ─── Result Card (shown over other apps) ────────────────────────────────
@@ -620,6 +772,8 @@ public class OverlayService extends Service {
         });
     }
 
+    private WindowManager.LayoutParams resultParams;
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private int dp(int val) {
@@ -632,6 +786,7 @@ public class OverlayService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        instance = null;
         if (galleryWatcher != null) galleryWatcher.stop();
         try { if (buttonView != null) windowManager.removeView(buttonView); } catch (Exception ignored) {}
         try { if (resultView != null) windowManager.removeView(resultView); } catch (Exception ignored) {}
@@ -640,53 +795,21 @@ public class OverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Called by VerifAIAccessibilityService with a URL to detect
-        if (intent != null && "DETECT_URL".equals(intent.getAction())) {
-            String url = intent.getStringExtra("url");
-            if (url != null && !url.isEmpty()) {
-                showLoading();
-                final String finalUrl = url;
-                executor.submit(() -> {
-                    try {
-                        JSONObject json = new JSONObject();
-                        json.put("url", finalUrl);
-                        URL apiUrl = new URL(API + "/detect-url");
-                        HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
-                        conn.setRequestMethod("POST");
-                        conn.setRequestProperty("Content-Type", "application/json");
-                        conn.setDoOutput(true);
-                        conn.setConnectTimeout(10000);
-                        conn.setReadTimeout(20000);
-                        try (OutputStream os = conn.getOutputStream()) {
-                            os.write(json.toString().getBytes("UTF-8"));
-                        }
-                        if (conn.getResponseCode() != 200) throw new Exception("Server error " + conn.getResponseCode());
-                        StringBuilder sb = new StringBuilder();
-                        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                            String line; while ((line = br.readLine()) != null) sb.append(line);
-                        }
-                        JSONObject result = new JSONObject(sb.toString());
-                        String verdict2 = result.optString("verdict", result.optBoolean("is_ai_generated", false) ? "ai_generated" : "real");
-                        int pct = (int) Math.round(result.getDouble("confidence") * 100);
-                        String tool = result.optString("ai_tool_detected", "");
-                        String editTool2 = result.optString("edit_tool_detected", "");
-                        String method = result.optString("detection_method", "");
-                        String title;
-                        if ("ai_generated".equals(verdict2)) {
-                            title = (tool != null && !tool.isEmpty()) ? "🤖 AI · " + tool : "🤖 AI Generated";
-                        } else if ("ai_edited".equals(verdict2)) {
-                            title = (editTool2 != null && !editTool2.isEmpty()) ? "✏️ Edited · " + editTool2 : "✏️ Real Video, AI-Edited";
-                        } else {
-                            title = "✅ Authentic Footage";
-                        }
-                        String sub = pct + "% · " + (method.length() > 40 ? method.substring(0, 40) + "…" : method);
-                        showToastResult(title, verdict2, sub, pct);
-                    } catch (Exception e) {
-                        resetButton();
-                        mainHandler.post(() -> showToastResult("❌ " + e.getMessage(), "real", "Check connection", 0));
-                    }
-                });
+        try {
+            if (intent != null && ACTION_DETECT_URL.equals(intent.getAction())) {
+                // Direct request (e.g. from the accessibility service) with a known URL
+                String url = intent.getStringExtra("url");
+                if (url != null && !url.isEmpty()) {
+                    detectAndShow(url);
+                }
+            } else if (intent != null && ACTION_CLIPBOARD_RESULT.equals(intent.getAction())) {
+                // ClipboardReaderActivity finished reading the clipboard
+                String text = intent.getStringExtra("text");
+                String source = intent.getStringExtra(ClipboardReaderActivity.EXTRA_SOURCE);
+                handleClipboardResult(text, source != null ? source : SOURCE_TAP);
             }
+        } catch (Throwable t) {
+            CrashLog.log(this, "OverlayService.onStartCommand", t);
         }
         return START_STICKY;
     }
