@@ -9,6 +9,18 @@ export type DetectionResult = {
   ai_tool_detected: string | null;
   edit_tool_detected: string | null;
   detection_method: string;
+  // Audit breakdown from the server: provenance flags + per-layer scores
+  explanation?: {
+    provenance?: {
+      c2pa_present?: boolean;
+      c2pa_claims_ai?: boolean;
+      metadata_stripped?: boolean;
+      platform_reencoded?: boolean;
+      ai_tool?: string | null;
+    };
+    layer_scores?: Record<string, number>;
+    caveats?: string[];
+  } | null;
 };
 
 // Download video ON THE PHONE (residential IP → TikTok allows it)

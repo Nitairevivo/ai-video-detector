@@ -52,6 +52,9 @@ const T = {
     statEdited: "✏️ נערך",
     statReal: "✅ אמיתי",
     confidence: "ביטחון",
+    provC2paAi: "🔏 חתימת C2PA: נוצר ב-AI (מאומת)",
+    provC2pa: "🔏 נמצאו Content Credentials",
+    provStripped: "⚠️ מטא-דאטה מקורי נמחק ע\u05f4י הפלטפורמה",
     accessBtn: "⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI",
     downloadText: "📲 הורד VerifAI לטלפון אחר",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -100,6 +103,9 @@ const T = {
     statEdited: "✏️ Edited",
     statReal: "✅ Real",
     confidence: "confidence",
+    provC2paAi: "🔏 C2PA signature: AI-generated (verified)",
+    provC2pa: "🔏 Content Credentials found",
+    provStripped: "⚠️ Original metadata stripped by platform",
     accessBtn: "⚙️ Enable auto-detection in Settings → Accessibility → VerifAI",
     downloadText: "📲 Download VerifAI on another phone",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -264,6 +270,14 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
           </View>
           <Text style={styles.bannerTitle}>{title}</Text>
           <Text style={styles.bannerMethod} numberOfLines={1}>{result.detection_method}</Text>
+          {(() => {
+            const prov = result.explanation?.provenance;
+            const line = prov?.c2pa_claims_ai ? t.provC2paAi
+              : prov?.c2pa_present ? t.provC2pa
+              : (prov?.metadata_stripped || prov?.platform_reencoded) ? t.provStripped
+              : null;
+            return line ? <Text style={styles.bannerProv} numberOfLines={1}>{line}</Text> : null;
+          })()}
         </View>
         <View style={[styles.bannerCircle, { borderColor: color }]}>
           <Text style={[styles.bannerPct, { color }]}>{pct}%</Text>
@@ -805,6 +819,7 @@ const styles = StyleSheet.create({
   bannerBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
   bannerTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bannerMethod: { color: "#555", fontSize: 11 },
+  bannerProv: { color: "#8a7f4a", fontSize: 10, marginTop: 2 },
   bannerCircle: { width: 66, height: 66, borderRadius: 33, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },
