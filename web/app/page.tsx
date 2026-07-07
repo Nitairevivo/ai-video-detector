@@ -19,6 +19,7 @@ type Explanation = {
     ai_tool?: string | null;
     edit_tool?: string | null;
   };
+  visual_artifacts?: string[];
   caveats?: string[];
 };
 
@@ -242,6 +243,18 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                  !r.explanation.provenance.metadata_stripped && !r.explanation.provenance.platform_reencoded && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-400 border border-white/15">No provenance markers</span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Visual artifacts spotted by the vision layer */}
+          {r.explanation?.visual_artifacts && r.explanation.visual_artifacts.length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Visual artifacts spotted</p>
+              <div className="flex flex-wrap gap-1.5">
+                {r.explanation.visual_artifacts.map((a) => (
+                  <span key={a} className="px-2 py-0.5 rounded-full text-[11px] bg-orange-500/10 text-orange-300 border border-orange-500/25">👁 {a}</span>
+                ))}
               </div>
             </div>
           )}
