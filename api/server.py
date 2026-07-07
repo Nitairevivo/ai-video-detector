@@ -19,6 +19,15 @@ from api.database import (init_db, create_key, lookup_key, record_request,
                           record_request_by_id, rotate_key, get_key_by_email, TIERS)
 from api.billing import create_checkout_session, handle_webhook
 
+# Error monitoring — active only when SENTRY_DSN is set (roadmap 4.2)
+if os.environ.get("SENTRY_DSN"):
+    try:
+        import sentry_sdk
+        sentry_sdk.init(dsn=os.environ["SENTRY_DSN"], traces_sample_rate=0.1)
+        print("[startup] Sentry error monitoring enabled")
+    except Exception as e:
+        print(f"[startup] Sentry init failed: {e}")
+
 # Init DB on startup
 init_db()
 

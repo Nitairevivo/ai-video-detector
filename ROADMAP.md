@@ -56,8 +56,8 @@
 
 ## שלב 4 — Enterprise readiness: מה שחברת ענק בודקת לפני צ'ק (~8 שעות)
 
-- [ ] **4.1** תיעוד API מלא: OpenAPI מלוטש, מדריכי אינטגרציה, SDK פייתון/JS מפורסמים ל-PyPI/npm
-- [~] **4.2** לוגים מובנים (JSON לכל בקשה) + `GET /health` (מודל/אינטגרציות/uptime) ✅ — נותר: Sentry + מוניטור uptime חיצוני
+- [~] **4.1** SDK פייתון/JS מוכנים לפרסום (pyproject/README/package.json/types, נבדקו ב-pip dry-run) + חושפים explanation ✅ — נותר: `pip publish`/`npm publish` (דורש חשבונות PyPI/npm שלך)
+- [~] **4.2** לוגים מובנים + `GET /health` + Sentry מובנה (נדלק עם SENTRY_DSN) ✅ — נותר: לפתוח חשבון Sentry חינמי ולשים את ה-DSN, ומוניטור uptime חיצוני על `/health`
 - [x] **4.3** הגבלת קצב לפי IP ✅; מחיקת סרטונים מיידית ✅; סיבוב מפתחות (`POST /rotate-key` + UI בדשבורד) ✅; עמוד מדיניות פרטיות (`/privacy`) ✅. בונוס: תוקן באג שבו שימוש ב-batch לא נספר במכסה
 - [x] **4.4** CI על כל push: pytest (25 טסטים) + בדיקת טעינת שרת/מודל (`.github/workflows/ci.yml`) ✅
 - [x] **4.5** אובייקט `explanation` בכל תשובת API: שכבה מכריעה, ציוני שכבות, provenance, הסתייגויות ✅
