@@ -1,16 +1,15 @@
 # Building the Mobile App
 
+> ⚠️ **`/mobile` is the canonical app — build from there directly.**
+> Do NOT copy files from `mobile-src` over `mobile`: `mobile-src` is a
+> legacy staging mirror and copying it over `/mobile` can revert newer
+> fixes. It is kept in sync from `/mobile`, never edited directly.
+
 ## Setup
 
 ```bash
 cd mobile
-cp ../mobile-src/App.tsx ./App.tsx
-cp -r ../mobile-src/components ./components
-cp -r ../mobile-src/hooks ./hooks
-cp -r ../mobile-src/services ./services
-
-npm install react-native-share-menu
-npx expo install expo-clipboard
+npm install
 ```
 
 ## Update API URL
