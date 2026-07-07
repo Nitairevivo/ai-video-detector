@@ -310,10 +310,11 @@ function AppInner() {
 
   const { overlayActive, startOverlay, stopOverlay } = useOverlay();
 
-  // Auto-start overlay on Android — silent: only if permission already granted
-  useEffect(() => {
-    if (Platform.OS === "android") startOverlay(true);
-  }, []);
+  // NOTE: we deliberately do NOT auto-start the overlay on launch. Starting a
+  // specialUse foreground service at app startup crashes the process on
+  // Android 14+ (ForegroundServiceStartNotAllowed / DidNotStartInTime — thrown
+  // by the framework, uncatchable). The overlay starts ONLY when the user flips
+  // the switch on the card below, which runs while the app is in the foreground.
 
   // Show premium popup: first time after 3 scans, then every 5 scans
   useEffect(() => {
@@ -642,7 +643,7 @@ function AppInner() {
 }
 
 const ONBOARDING_KEY = "verifai_onboarding_done";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const JS_ERROR_KEY = "verifai_last_js_error";
 
 // ─── Crash visibility ─────────────────────────────────────────────────────────

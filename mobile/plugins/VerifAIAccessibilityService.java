@@ -96,11 +96,12 @@ public class VerifAIAccessibilityService extends AccessibilityService {
                      AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
         setServiceInfo(info);
 
-        // Start the overlay service too
-        try {
-            Intent overlayIntent = new Intent(this, OverlayService.class);
-            startForegroundService(overlayIntent);
-        } catch (Exception ignored) {}
+        // Do NOT start the overlay foreground service from here. This runs in the
+        // background, and starting a specialUse FGS from the background crashes
+        // the process on Android 14+ (uncatchable framework exception). The user
+        // starts the overlay from the home-screen toggle (foreground = allowed);
+        // once running, this service only drives button visibility via
+        // OverlayService.notifyForegroundApp().
     }
 
     @Override

@@ -54,6 +54,8 @@ MODERN-TOOL NOTES (2026): top models produce very clean output — absence of cl
 
 NOT AI (normal for real social video): compression blocking, motion blur, grain/noise (real-camera sign), imperfect lighting, beauty filters.
 
+CRITICAL — chaotic materials are NOT morphing: the pair frames are ~0.6s apart. Flour, dust, smoke, water spray, fire, confetti, hair in wind, crowds — these NATURALLY appear/disappear/change shape across 0.6s in real footage. Only count "temporal inconsistency" for STRUCTURED things that should persist: object identity, limb/finger anatomy, text/logos, furniture, faces. A powder pile changing shape between frames is expected physics, not an AI artifact.
+
 AI EDITING on real footage: face swap edges/skin-tone mismatch, unnatural compositing seams, AI background replacement.
 
 Respond ONLY with this JSON (no markdown):

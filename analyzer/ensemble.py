@@ -136,6 +136,28 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
     elif strong_oppose >= 1:
         p = 0.5 + (p - 0.5) * 0.6  # conflicting evidence → hedge
 
+    # ── 3b. Single-witness rule ───────────────────────────────────────────────
+    # An AI verdict must never rest on Gemini ALONE while a measured layer
+    # (frame-ML / visual / metadata) actively disagrees. Gemini misreads chaotic
+    # real-world motion (flour, water spray, confetti) as temporal morphing —
+    # a lone 0.9 from it must not flip a real video to "AI" (false positive =
+    # the worst failure mode). Corroboration from any other AI-leaning layer
+    # restores full weight.
+    if p >= 0.5:
+        gemini_says_ai = gemini is not None and gemini.ai_probability >= 0.5
+        support_ai = [
+            k for k, lp in layers.items()
+            if k != "gemini" and isinstance(lp, (int, float)) and lp >= 0.5
+        ]
+        oppose_real = [
+            k for k, lp in layers.items()
+            if k != "gemini" and isinstance(lp, (int, float)) and lp <= 0.15
+        ]
+        if gemini_says_ai and not support_ai and oppose_real:
+            # Gemini is the only accuser and hard evidence points real → hold
+            # below the AI threshold but keep it visibly "suspicious".
+            p = min(p, 0.45)
+
     # ── 4. Camera-origin guard (deepfakes can still exceed it) ───────────────
     if camera_origin and p < 0.90:
         p = min(p, 0.35)
