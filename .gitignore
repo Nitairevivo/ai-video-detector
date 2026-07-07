@@ -12,3 +12,4 @@ web/node_modules/
 mobile/node_modules/
 *.log
 .vercel
+dataset_cache/

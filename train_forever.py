@@ -24,8 +24,18 @@ from analyzer import extract_features
 from models.classifier import get_classifier
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
+# Dataset location is configurable so the loop can run anywhere (cloud worker,
+# CI, any machine) — not just on one laptop. Order of preference:
+#   1. VERIFAI_DATASET_DIR env var
+#   2. the original local dev path, if it exists on this machine
+#   3. ./dataset_cache next to the repo
+_default_root = Path("/Users/nitai/Desktop/dataset")
+DATASET_ROOT = Path(
+    os.environ.get("VERIFAI_DATASET_DIR", "").strip()
+    or (_default_root if _default_root.exists() else Path(__file__).parent / "dataset_cache")
+)
+AI_DIR   = DATASET_ROOT / "AI_Videos"
+REAL_DIR = DATASET_ROOT / "Real_Videos"
 TRAINING_DATA_PATH = Path(__file__).parent / "data" / "training_samples.json"
 SEEN_PATH          = Path(__file__).parent / "data" / "seen_video_ids.json"
 
