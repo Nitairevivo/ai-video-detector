@@ -35,3 +35,35 @@ jobs:
           assert c.is_trained, "committed model fails its own quality gate"
           print("imports + model quality gate OK")
           EOF
+
+  web-build:
+    name: Web production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        working-directory: web
+        run: npm ci || npm install --no-audit --no-fund
+      - name: Build
+        working-directory: web
+        run: npx next build
+
+  mobile-syntax:
+    name: Mobile syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: esbuild parse App + services
+        run: |
+          npx --yes esbuild mobile/App.tsx --loader:.tsx=tsx --outfile=/dev/null
+          for f in mobile/services/*.ts mobile/hooks/*.ts; do
+            npx --yes esbuild "$f" --outfile=/dev/null
+          done
