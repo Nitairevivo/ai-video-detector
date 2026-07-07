@@ -56,6 +56,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# WhatsApp Business Cloud API webhook (active when WHATSAPP_* env vars are set)
+from api.whatsapp_bot import router as _whatsapp_router
+app.include_router(_whatsapp_router, tags=["whatsapp"])
+
 # ─── API Key auth ──────────────────────────────────────────────────────────────
 
 FREE_ENDPOINTS = {"/", "/register", "/docs", "/openapi.json", "/stripe/webhook"}

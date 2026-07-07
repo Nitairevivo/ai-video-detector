@@ -18,7 +18,7 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements.txt pytest httpx
       - name: Run tests
         run: python -m pytest tests/ -q
       - name: Import smoke test (server + bots load)
