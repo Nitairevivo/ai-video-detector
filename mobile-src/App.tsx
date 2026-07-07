@@ -55,6 +55,7 @@ const T = {
     provC2paAi: "🔏 חתימת C2PA: נוצר ב-AI (מאומת)",
     provC2pa: "🔏 נמצאו Content Credentials",
     provStripped: "⚠️ מטא-דאטה מקורי נמחק ע\u05f4י הפלטפורמה",
+    layers: "שכבות",
     accessBtn: "⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI",
     downloadText: "📲 הורד VerifAI לטלפון אחר",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -106,6 +107,7 @@ const T = {
     provC2paAi: "🔏 C2PA signature: AI-generated (verified)",
     provC2pa: "🔏 Content Credentials found",
     provStripped: "⚠️ Original metadata stripped by platform",
+    layers: "Layers",
     accessBtn: "⚙️ Enable auto-detection in Settings → Accessibility → VerifAI",
     downloadText: "📲 Download VerifAI on another phone",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -277,6 +279,15 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
               : (prov?.metadata_stripped || prov?.platform_reencoded) ? t.provStripped
               : null;
             return line ? <Text style={styles.bannerProv} numberOfLines={1}>{line}</Text> : null;
+          })()}
+          {(() => {
+            const scores = result.explanation?.layer_scores;
+            if (!scores) return null;
+            const parts = Object.entries(scores).slice(0, 3)
+              .map(([k, v]) => `${k} ${Math.round((v as number) * 100)}%`);
+            return parts.length
+              ? <Text style={styles.bannerLayers} numberOfLines={1}>{t.layers}: {parts.join(" · ")}</Text>
+              : null;
           })()}
         </View>
         <View style={[styles.bannerCircle, { borderColor: color }]}>
@@ -820,6 +831,7 @@ const styles = StyleSheet.create({
   bannerTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bannerMethod: { color: "#555", fontSize: 11 },
   bannerProv: { color: "#8a7f4a", fontSize: 10, marginTop: 2 },
+  bannerLayers: { color: "#556", fontSize: 9, marginTop: 2 },
   bannerCircle: { width: 66, height: 66, borderRadius: 33, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },
