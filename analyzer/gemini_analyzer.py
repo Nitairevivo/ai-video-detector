@@ -143,19 +143,42 @@ def _call_gemini(api_key: str, pairs: list) -> Optional[dict]:
     return _post_parts(api_key, parts)
 
 
+def _extract_text(data: dict) -> Optional[str]:
+    """Pull the first text part from a Gemini response, tolerating missing
+    candidates/parts (e.g. a thinking model that emitted no answer)."""
+    try:
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        for p in parts:
+            if isinstance(p, dict) and p.get("text"):
+                return p["text"].strip()
+    except Exception:
+        pass
+    return None
+
+
 def _post_parts(api_key: str, parts: list) -> Optional[dict]:
     """POST prebuilt content parts to Gemini, walking the model fallback chain."""
     global _working_model
-
-    body = json.dumps({
-        "contents": [{"parts": parts}],
-        "generationConfig": {"maxOutputTokens": 300, "temperature": 0.0}
-    }).encode()
 
     models = [_working_model] if _working_model else []
     models += [m for m in _MODEL_CHAIN if m and m not in models]
 
     for model in models:
+        gen_cfg = {"maxOutputTokens": 800, "temperature": 0.0}
+        # Gemini 2.5 models "think" by default and can burn the whole output
+        # budget before emitting any text (empty response → no verdict).
+        # Disable thinking so the budget goes to the JSON answer. 2.0 models
+        # reject thinkingConfig, so only send it for 2.5.
+        if "2.5" in model:
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        body = json.dumps({
+            "contents": [{"parts": parts}],
+            "generationConfig": gen_cfg,
+        }).encode()
+
         url = API_URL_TPL.format(model=model) + f"?key={api_key}"
         for attempt in range(3):
             try:
@@ -166,10 +189,12 @@ def _post_parts(api_key: str, parts: list) -> Optional[dict]:
                 )
                 with urllib.request.urlopen(req, timeout=45) as resp:
                     data = json.loads(resp.read())
-                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                text = _extract_text(data)
+                if not text:
+                    break  # no usable text → try the next model in the chain
                 match = re.search(r'\{.*\}', text, re.DOTALL)
                 if not match:
-                    return None
+                    break
                 parsed = json.loads(match.group())
                 parsed["_model"] = model
                 _working_model = model
@@ -180,9 +205,9 @@ def _post_parts(api_key: str, parts: list) -> Optional[dict]:
                     continue
                 if e.code in (400, 403, 404):
                     break  # model unavailable → try next in chain
-                return None
+                break
             except Exception:
-                return None
+                break  # transient/parse error → try the next model
     return None
 
 
