@@ -1,0 +1,48 @@
+# VerifAI Python SDK
+
+Detect AI-generated videos (Sora, Veo, Kling, Runway, Pika…) with a single API call.
+
+```bash
+pip install verifai-sdk
+```
+
+```python
+from verifai import VerifAI
+
+client = VerifAI(api_key="aivd_...")  # free key: https://web-zeta-ecru-80.vercel.app/dashboard
+
+result = client.detect_url("https://www.tiktok.com/@user/video/123")
+print(result.verdict)        # "ai_generated" | "ai_edited" | "real"
+print(result.confidence)     # 0.97
+print(result.ai_tool_detected)  # "OpenAI Sora"
+
+# Audit-grade breakdown: which layer decided, per-layer scores,
+# provenance flags (C2PA credentials, metadata stripped, platform re-encode)
+print(result.explanation)
+```
+
+Files work too:
+
+```python
+result = client.detect_file("suspicious.mp4")
+if result.is_ai_generated:
+    print(f"AI video: {result}")
+```
+
+Batch (Business/Enterprise tiers):
+
+```python
+results = client.detect_batch(["https://...", "https://..."])
+```
+
+## How detection works
+
+1. **File forensics** — cryptographic C2PA Content Credentials verification, AI-tool
+   metadata signatures, proprietary MP4 boxes, codec fingerprints.
+2. **Platform intelligence** — reads the platform's own AI-disclosure labels
+   (TikTok AIGC, YouTube "Altered or synthetic content", Meta "AI info"),
+   which survive transcoding.
+3. **Vision ensemble** — Gemini temporal analysis fused with frame, frequency,
+   motion and audio models, probability-calibrated.
+
+Rate limits and quotas by tier: see the [dashboard](https://web-zeta-ecru-80.vercel.app/dashboard).
