@@ -3,6 +3,7 @@ FastAPI server — upload a video, get AI detection results in seconds.
 """
 import os
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -382,6 +383,20 @@ def _is_platform_url(url: str) -> bool:
     return any(d in url for d in PLATFORM_DOMAINS)
 
 
+# Rotating User-Agents — a fixed UA is an easy block target for CDNs (roadmap 2.3)
+_DOWNLOAD_UAS = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+]
+
+
+def _pick_ua() -> str:
+    import random
+    return random.choice(_DOWNLOAD_UAS)
+
+
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     """Use yt-dlp to download video. Tries multiple format strategies."""
     import subprocess, shutil
@@ -391,7 +406,7 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
 
     base_args = [ytdlp, "--no-playlist", "--output", tmp_path,
                  "--no-warnings", "--quiet",
-                 "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                 "--user-agent", _pick_ua(),
                  "--add-header", "Referer:https://www.google.com/"]
 
     # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
@@ -426,7 +441,7 @@ def _download_direct(url: str, tmp_path: str) -> bool:
     LIMIT = 10 * 1024 * 1024
     try:
         req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+            "User-Agent": _pick_ua(),
             "Range": f"bytes=0-{LIMIT-1}",
             "Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
         })
@@ -549,7 +564,17 @@ async def detect_url(request: Request, url: str = Body(..., embed=True), deep: b
 
         force_deep = deep or _is_platform_url(url)
         payload = await run_in_threadpool(run_full_analysis, tmp_path, force_deep)
-        payload.pop("_signals", None)
+        signals = payload.pop("_signals", {}) or {}
+
+        # TikTok (and others) are rolling out C2PA on downloaded content —
+        # log sightings so we know the moment the rollout reaches us (roadmap 5.2).
+        if signals.get("has_c2pa") and _is_platform_url(url):
+            print(_obs_json.dumps({
+                "evt": "platform_c2pa_seen",
+                "host": urllib.parse.urlparse(url).netloc,
+                "c2pa_is_ai": bool(signals.get("c2pa_is_ai")),
+            }))
+
         payload["url"] = url
         payload["aigc_page_label"] = aigc_from_page
         return payload
