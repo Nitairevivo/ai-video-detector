@@ -4,12 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       expo_token:
-        description: 'Expo personal access token'
-        required: true
+        description: 'Expo personal access token (only needed for mode=build)'
+        required: false
+      mode:
+        description: 'build=EAS cloud | localbuild=free APK on GitHub'
+        required: false
+        default: 'localbuild'
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK (EAS)
+    if: ${{ github.event.inputs.mode == 'build' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,3 +39,52 @@ jobs:
         working-directory: mobile
         env:
           EXPO_TOKEN: ${{ github.event.inputs.expo_token }}
+
+  localbuild:
+    name: Build release APK on GitHub (free)
+    if: ${{ github.event.inputs.mode == 'localbuild' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/video-ai-detection-readability-41mpza
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm install
+        working-directory: mobile
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+        env:
+          CI: "1"
+
+      - name: Use debug signing for release APK
+        working-directory: mobile/android
+        run: |
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+          grep -n "signingConfig " app/build.gradle || true
+
+      - name: Build release APK with Gradle
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon -x lint
+
+      - name: Collect APK
+        run: |
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk /tmp/verifai.apk
+          ls -la /tmp/verifai.apk
+
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: VerifAI latest APK
+          body: "Latest VerifAI release build (free GitHub build, no EAS)."
+          files: /tmp/verifai.apk
+          fail_on_unmatched_files: true
