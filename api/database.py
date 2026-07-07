@@ -126,6 +126,42 @@ def record_request(raw_key: str):
         """, (month, month, key_hash))
 
 
+def record_request_by_id(key_id: str):
+    """Like record_request but addressed by key_id (used when only the
+    validated ApiKey object is available, not the raw secret)."""
+    month = _billing_month()
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE api_keys SET
+                requests_total = requests_total + 1,
+                requests_this_month = CASE
+                    WHEN billing_month = ? THEN requests_this_month + 1
+                    ELSE 1
+                END,
+                billing_month = ?
+            WHERE key_id = ?
+        """, (month, month, key_id))
+
+
+def rotate_key(raw_key: str) -> Optional[str]:
+    """
+    Replace the key's secret in place — same account, tier, usage counters
+    and Stripe linkage; only the secret changes. Returns the new raw key,
+    or None if the presented key is invalid/inactive.
+    """
+    old_hash = _hash_key(raw_key)
+    new_raw = "aivd_" + secrets.token_urlsafe(32)
+    new_hash = _hash_key(new_raw)
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE api_keys SET key_hash = ? WHERE key_hash = ? AND active = 1",
+            (new_hash, old_hash),
+        )
+        if cur.rowcount == 0:
+            return None
+    return new_raw
+
+
 def upgrade_key(email: str, tier: str,
                 stripe_customer_id: str, stripe_subscription_id: str):
     """Called by Stripe webhook when payment succeeds."""

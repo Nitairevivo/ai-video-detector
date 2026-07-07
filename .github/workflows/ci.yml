@@ -20,8 +20,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest httpx
       - name: Run tests
+        env:
+          DB_PATH: ${{ runner.temp }}/aivd.db
         run: python -m pytest tests/ -q
       - name: Import smoke test (server + bots load)
+        env:
+          DB_PATH: ${{ runner.temp }}/aivd.db
         run: |
           python - <<'EOF'
           from api.server import app, run_full_analysis, download_video_from_url

@@ -431,7 +431,7 @@ export default function Home() {
       <section className="flex flex-col items-center text-center px-4 pt-20 pb-14">
         <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/25 rounded-full px-4 py-1.5 text-xs text-violet-300 mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-          Powered by Gemini Vision AI · Metadata forensics · Privacy safe
+          C2PA verification · Platform AI labels · Vision ensemble · Privacy safe
         </div>
 
         <div className="mb-6"><Logo size={72} /></div>
@@ -442,8 +442,9 @@ export default function Home() {
         </h1>
 
         <p className="text-gray-400 text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-          VerifAI detects AI-generated videos using metadata forensics and Gemini Vision AI —
-          even when TikTok and Instagram strip all metadata.
+          VerifAI reads the evidence platforms can&apos;t erase — cryptographic C2PA credentials,
+          the platforms&apos; own AI labels, and a calibrated vision ensemble — even after
+          TikTok and Instagram strip all file metadata.
         </p>
 
         {/* Three verdict pills */}
@@ -474,26 +475,30 @@ export default function Home() {
             <h2 className="text-4xl font-extrabold text-white">Three layers of detection</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
-            <Step n="1" icon="🔬" title="Metadata scan"
-              desc="Reads AI tool signatures, C2PA markers, and encoder tags embedded by Sora, Kling, Runway and others." />
-            <Step n="2" icon="👁️" title="Gemini Vision"
-              desc="When metadata is absent (TikTok strips it), Gemini Vision AI analyzes 6 video frames for AI artifacts." />
-            <Step n="3" icon="🧠" title="3 verdicts"
-              desc="AI Generated (created by AI), AI Edited (real footage with AI effects), or Authentic (real camera footage)." />
+            <Step n="1" icon="🔏" title="File forensics"
+              desc="Cryptographically verifies C2PA Content Credentials and reads AI-tool signatures, proprietary MP4 boxes and codec fingerprints from Sora, Kling, Runway, Veo and 30+ tools." />
+            <Step n="2" icon="🏷️" title="Platform intelligence"
+              desc="When platforms re-encode and strip the file, VerifAI reads their own AI-disclosure labels — TikTok AIGC, YouTube 'Altered or synthetic content', Meta 'AI info' — straight from the source." />
+            <Step n="3" icon="👁️" title="Vision ensemble"
+              desc="Gemini temporal-pair analysis fused with a frame model, frequency/motion analysis and audio fingerprinting — calibrated so a single layer can never cry wolf alone." />
           </div>
         </div>
       </section>
 
       {/* Stats */}
       <section className="py-12 px-4 border-y border-white/7" style={{ background: "rgba(255,255,255,0.02)" }}>
-        <div className="max-w-3xl mx-auto grid grid-cols-3 gap-4 text-center">
+        <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-4xl font-extrabold text-white">30+</p>
             <p className="text-xs text-gray-500 mt-1.5">AI tools detected</p>
           </div>
           <div>
-            <p className="text-4xl font-extrabold text-white">3</p>
-            <p className="text-xs text-gray-500 mt-1.5">verdict categories</p>
+            <p className="text-4xl font-extrabold text-white">6</p>
+            <p className="text-xs text-gray-500 mt-1.5">detection layers</p>
+          </div>
+          <div>
+            <p className="text-4xl font-extrabold text-white">0.975</p>
+            <p className="text-xs text-gray-500 mt-1.5">cross-validated AUC</p>
           </div>
           <div>
             <p className="text-4xl font-extrabold text-white">~5s</p>
@@ -637,7 +642,11 @@ export default function Home() {
             <span className="font-semibold text-gray-500">VerifAI</span>
             <span>· No videos stored · Privacy safe</span>
           </div>
-          <span>Powered by Gemini Vision AI</span>
+          <div className="flex items-center gap-4">
+            <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</a>
+            <a href="/dashboard" className="hover:text-gray-400 transition-colors">API</a>
+            <span>Powered by Gemini Vision AI</span>
+          </div>
         </div>
       </footer>
     </div>

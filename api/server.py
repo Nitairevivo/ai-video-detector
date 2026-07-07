@@ -15,7 +15,8 @@ from starlette.concurrency import run_in_threadpool
 
 from analyzer import extract_features
 from models.classifier import get_classifier
-from api.database import init_db, create_key, lookup_key, record_request, get_key_by_email, TIERS
+from api.database import (init_db, create_key, lookup_key, record_request,
+                          record_request_by_id, rotate_key, get_key_by_email, TIERS)
 from api.billing import create_checkout_session, handle_webhook
 
 # Init DB on startup
@@ -585,7 +586,7 @@ async def detect_batch(
     # Record all requests upfront
     if key:
         for _ in urls:
-            record_request(key.key_id)
+            record_request_by_id(key.key_id)
 
     def _analyze_batch_url(url: str, i: int) -> dict:
         """Full per-URL work (download + analyze) — runs on the threadpool."""
@@ -743,6 +744,23 @@ class RegisterRequest(BaseModel):
 class UpgradeRequest(BaseModel):
     email: str
     tier: str  # "pro" or "ultra"
+
+
+@app.post("/rotate-key", tags=["billing"])
+@limiter.limit("10/hour")
+def rotate(request: Request, x_api_key: Optional[str] = Header(None)):
+    """
+    Replace your API key's secret (e.g. after a leak). Same account, tier
+    and usage — only the secret changes. The old key stops working
+    immediately; the new key is returned once.
+    """
+    if not x_api_key:
+        raise HTTPException(401, "Present the current key in X-Api-Key to rotate it")
+    new_key = rotate_key(x_api_key)
+    if not new_key:
+        raise HTTPException(401, "Invalid or inactive API key")
+    return {"api_key": new_key,
+            "message": "Key rotated. Store the new key now — it is shown only once."}
 
 
 @app.post("/register", tags=["billing"])
