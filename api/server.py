@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request, Hea
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
+from starlette.concurrency import run_in_threadpool
 
 from analyzer import extract_features
 from models.classifier import get_classifier
@@ -59,6 +60,60 @@ app.add_middleware(
 # WhatsApp Business Cloud API webhook (active when WHATSAPP_* env vars are set)
 from api.whatsapp_bot import router as _whatsapp_router
 app.include_router(_whatsapp_router, tags=["whatsapp"])
+
+# ─── Observability ─────────────────────────────────────────────────────────────
+
+import json as _obs_json
+import time as _obs_time
+
+_SERVER_STARTED_AT = _obs_time.time()
+
+
+@app.middleware("http")
+async def _access_log(request: Request, call_next):
+    """One structured JSON log line per request — greppable in Railway logs."""
+    t0 = _obs_time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        # Health checks and docs would drown the log — skip them
+        if request.url.path not in ("/", "/health", "/docs", "/openapi.json"):
+            print(_obs_json.dumps({
+                "evt": "request",
+                "method": request.method,
+                "path": request.url.path,
+                "status": status,
+                "ms": round((_obs_time.perf_counter() - t0) * 1000),
+            }))
+
+
+@app.get("/health")
+def health():
+    """Liveness/readiness probe with component status — for uptime monitors."""
+    classifier = get_classifier()
+    meta = {}
+    try:
+        meta_path = Path(__file__).parent.parent / "models" / "trained_model_meta.json"
+        meta = _obs_json.loads(meta_path.read_text())
+    except Exception:
+        pass
+    return {
+        "status": "ok",
+        "uptime_s": round(_obs_time.time() - _SERVER_STARTED_AT),
+        "model": {
+            "trained": classifier.is_trained,
+            "samples": meta.get("samples"),
+            "cv_auc": meta.get("cv_auc_mean"),
+            "trained_at": meta.get("trained_at"),
+        },
+        "gemini_enabled": bool(os.environ.get("GEMINI_API_KEY")),
+        "telegram_bot": bool(os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()),
+        "whatsapp_bot": all(os.environ.get(k, "").strip() for k in
+                            ("WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN")),
+    }
 
 # ─── API Key auth ──────────────────────────────────────────────────────────────
 
@@ -136,7 +191,9 @@ async def detect(
         tmp.write(chunk)
 
     try:
-        payload = run_full_analysis(tmp_path, deep=deep)
+        # Analysis takes 10-60s of CPU/IO — run it off the event loop so one
+        # video doesn't freeze every other request on the server.
+        payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
         payload["filename"] = file.filename
         payload["signals"] = payload.pop("_signals", {})
         return payload
@@ -208,7 +265,7 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
         tmp.write(await file.read())
 
     try:
-        result = extract_features(tmp_path)
+        result = await run_in_threadpool(extract_features, tmp_path)
         classifier = get_classifier()
         classifier.add_sample(result.feature_vector, label=is_ai, source=file.filename)
         return {"message": "Sample added to training set", "label": "AI" if is_ai else "Real"}
@@ -235,7 +292,7 @@ async def detect_frame(file: UploadFile = File(...)):
     try:
         from analyzer.gemini_analyzer import analyze_image_with_gemini
         img_b64 = base64.standard_b64encode(raw).decode()
-        g = analyze_image_with_gemini(img_b64)
+        g = await run_in_threadpool(analyze_image_with_gemini, img_b64)
     except Exception:
         g = None
 
@@ -414,7 +471,8 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
     tmp_path = tempfile.mktemp(suffix=suffix)
 
     try:
-        ok, aigc_from_page, aigc_info = download_video_from_url(url, tmp_path)
+        # Download (up to ~60s of network IO) off the event loop
+        ok, aigc_from_page, aigc_info = await run_in_threadpool(download_video_from_url, url, tmp_path)
 
         # Platform label without a downloadable file — still definitive
         if aigc_from_page and not ok:
@@ -448,7 +506,7 @@ async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
             }
 
         force_deep = deep or _is_platform_url(url)
-        payload = run_full_analysis(tmp_path, deep=force_deep)
+        payload = await run_in_threadpool(run_full_analysis, tmp_path, force_deep)
         payload.pop("_signals", None)
         payload["url"] = url
         payload["aigc_page_label"] = aigc_from_page
@@ -479,7 +537,7 @@ async def detect_batch(
         ["https://tiktok.com/...", "https://instagram.com/...", ...]
     """
     from fastapi.responses import StreamingResponse
-    import asyncio, json as _json
+    import json as _json
 
     # Tier check
     tier_info = TIERS.get(key.tier if key else "free", TIERS["free"])
@@ -504,57 +562,60 @@ async def detect_batch(
         for _ in urls:
             record_request(key.key_id)
 
+    def _analyze_batch_url(url: str, i: int) -> dict:
+        """Full per-URL work (download + analyze) — runs on the threadpool."""
+        tmp_path = tempfile.mktemp(suffix=".mp4")
+        result_dict = {"url": url, "index": i}
+        try:
+            ok = _download_with_ytdlp(url, tmp_path)
+            if not ok:
+                ok = _download_direct(url, tmp_path)
+            if not ok:
+                result_dict.update({"error": "Download failed", "verdict": "unknown"})
+            else:
+                result = extract_features(tmp_path)
+                classifier = get_classifier()
+                ml_prob, _ = classifier.predict(result.feature_vector)
+                conf = result.confidence
+                verdict = result.verdict
+                method = result.method
+                has_camera = bool(result.signals.get("camera_origin_detected"))
+                if ml_prob and not has_camera and conf < 0.1 and ml_prob >= 0.88:
+                    conf = min(0.75, ml_prob); verdict = "ai_generated"
+                if conf < 0.5 and not has_camera:
+                    try:
+                        from analyzer.visual_detector import detect_visual_with_motion as detect_visual
+                        vis = detect_visual(tmp_path)
+                        if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
+                            conf = max(conf, vis.confidence * 0.80)
+                            method = vis.method
+                            if conf >= 0.5: verdict = "ai_generated"
+                    except Exception:
+                        pass
+                result_dict.update({
+                    "verdict": verdict,
+                    "is_ai_generated": verdict == "ai_generated",
+                    "confidence": round(conf, 4),
+                    "confidence_pct": f"{conf*100:.1f}%",
+                    "ai_tool_detected": result.ai_tool,
+                    "edit_tool_detected": result.edit_tool,
+                    "detection_method": method,
+                })
+        except Exception as e:
+            result_dict.update({"error": str(e), "verdict": "unknown"})
+        finally:
+            if os.path.exists(tmp_path):
+                try: os.unlink(tmp_path)
+                except: pass
+        return result_dict
+
     async def stream_results():
         yield "[\n"
         for i, url in enumerate(urls):
-            suffix = ".mp4"
-            tmp_path = tempfile.mktemp(suffix=suffix)
-            result_dict = {"url": url, "index": i}
-            try:
-                ok = _download_with_ytdlp(url, tmp_path)
-                if not ok:
-                    ok = _download_direct(url, tmp_path)
-                if not ok:
-                    result_dict.update({"error": "Download failed", "verdict": "unknown"})
-                else:
-                    result = extract_features(tmp_path)
-                    classifier = get_classifier()
-                    ml_prob, _ = classifier.predict(result.feature_vector)
-                    conf = result.confidence
-                    verdict = result.verdict
-                    method = result.method
-                    has_camera = bool(result.signals.get("camera_origin_detected"))
-                    if ml_prob and not has_camera and conf < 0.1 and ml_prob >= 0.88:
-                        conf = min(0.75, ml_prob); verdict = "ai_generated"
-                    if conf < 0.5 and not has_camera:
-                        try:
-                            from analyzer.visual_detector import detect_visual_with_motion as detect_visual
-                            vis = detect_visual(tmp_path)
-                            if vis.verdict == "ai_generated" and vis.confidence >= 0.62:
-                                conf = max(conf, vis.confidence * 0.80)
-                                method = vis.method
-                                if conf >= 0.5: verdict = "ai_generated"
-                        except Exception:
-                            pass
-                    result_dict.update({
-                        "verdict": verdict,
-                        "is_ai_generated": verdict == "ai_generated",
-                        "confidence": round(conf, 4),
-                        "confidence_pct": f"{conf*100:.1f}%",
-                        "ai_tool_detected": result.ai_tool,
-                        "edit_tool_detected": result.edit_tool,
-                        "detection_method": method,
-                    })
-            except Exception as e:
-                result_dict.update({"error": str(e), "verdict": "unknown"})
-            finally:
-                if os.path.exists(tmp_path):
-                    try: os.unlink(tmp_path)
-                    except: pass
-
+            # Off the event loop — a 1000-URL batch must not freeze the API
+            result_dict = await run_in_threadpool(_analyze_batch_url, url, i)
             sep = "," if i < len(urls) - 1 else ""
             yield f"  {_json.dumps(result_dict)}{sep}\n"
-            await asyncio.sleep(0)  # yield control
 
         yield "]\n"
 
@@ -634,7 +695,7 @@ async def calibrate(
         tmp.write(await file.read(FAST_READ_BYTES))
 
     try:
-        result = extract_features(tmp_path, deep=True)
+        result = await run_in_threadpool(extract_features, tmp_path, True)
         return {
             "filename": file.filename,
             "ground_truth": "ai_generated" if is_ai else "real",
