@@ -509,10 +509,10 @@ export default function Home() {
             <p className="text-4xl font-extrabold text-white">6</p>
             <p className="text-xs text-gray-500 mt-1.5">detection layers</p>
           </div>
-          <div>
-            <p className="text-4xl font-extrabold text-white">0.975</p>
-            <p className="text-xs text-gray-500 mt-1.5">cross-validated AUC</p>
-          </div>
+          <a href="/accuracy" className="group">
+            <p className="text-4xl font-extrabold text-white group-hover:text-violet-300 transition-colors">0.975</p>
+            <p className="text-xs text-gray-500 mt-1.5 group-hover:text-violet-400 transition-colors">cross-validated AUC ↗</p>
+          </a>
           <div>
             <p className="text-4xl font-extrabold text-white">~5s</p>
             <p className="text-xs text-gray-500 mt-1.5">avg detection time</p>
@@ -656,6 +656,7 @@ export default function Home() {
             <span>· No videos stored · Privacy safe</span>
           </div>
           <div className="flex items-center gap-4">
+            <a href="/accuracy" className="hover:text-gray-400 transition-colors">Accuracy</a>
             <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</a>
             <a href="/dashboard" className="hover:text-gray-400 transition-colors">API</a>
             <span>Powered by Gemini Vision AI</span>
