@@ -61,6 +61,27 @@ app.add_middleware(
 from api.whatsapp_bot import router as _whatsapp_router
 app.include_router(_whatsapp_router, tags=["whatsapp"])
 
+# ─── Rate limiting ─────────────────────────────────────────────────────────────
+# Per-IP limits on the expensive endpoints. Quotas already cap keyed usage;
+# this stops anonymous floods (the web-app referer bypass is spoofable, so
+# unauthenticated traffic must be bounded too).
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+
+def _client_ip(request: Request) -> str:
+    # Railway/Vercel sit behind proxies — the real client is in X-Forwarded-For
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+limiter = Limiter(key_func=_client_ip)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # ─── Observability ─────────────────────────────────────────────────────────────
 
 import json as _obs_json
@@ -171,7 +192,9 @@ def root():
 
 
 @app.post("/detect")
+@limiter.limit("30/minute")
 async def detect(
+    request: Request,
     file: UploadFile = File(...),
     deep: bool = False,
 ):
@@ -274,7 +297,8 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
 
 
 @app.post("/detect-frame")
-async def detect_frame(file: UploadFile = File(...)):
+@limiter.limit("60/minute")
+async def detect_frame(request: Request, file: UploadFile = File(...)):
     """
     Last-resort detection from a SINGLE screen-captured frame (MediaProjection
     fallback on mobile, used when no video URL/file can be obtained).
@@ -454,7 +478,8 @@ def download_video_from_url(url: str, tmp_path: str):
 
 
 @app.post("/detect-url")
-async def detect_url(url: str = Body(..., embed=True), deep: bool = False):
+@limiter.limit("30/minute")
+async def detect_url(request: Request, url: str = Body(..., embed=True), deep: bool = False):
     """
     Detect AI from any video URL: TikTok, YouTube, Instagram, Telegram, direct MP4, etc.
     Uses yt-dlp for platform URLs, direct HTTP for CDN links.
@@ -721,7 +746,8 @@ class UpgradeRequest(BaseModel):
 
 
 @app.post("/register", tags=["billing"])
-def register(body: RegisterRequest):
+@limiter.limit("10/hour")
+def register(request: Request, body: RegisterRequest):
     """
     Get a free API key (100 requests/month).
     If the email already has a key, returns existing key info instead.
