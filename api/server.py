@@ -187,7 +187,9 @@ def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
             detail=f"Monthly limit reached ({key.monthly_limit} requests). Upgrade at https://web-zeta-ecru-80.vercel.app/dashboard",
         )
 
-    record_request(x_api_key)
+    # Account endpoints don't consume quota — checking your usage isn't usage
+    if request.url.path not in ("/me", "/rotate-key"):
+        record_request(x_api_key)
     return key
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
@@ -848,9 +850,10 @@ async def stripe_webhook(request: Request):
 
 @app.get("/me", tags=["billing"])
 def me(key=Depends(get_api_key)):
-    """Returns usage stats for the authenticated API key."""
+    """Returns usage stats for the authenticated API key, incl. 30-day history."""
     if not key:
         raise HTTPException(401, "API key required")
+    from api.database import usage_history
     return {
         "email": key.email,
         "tier": key.tier,
@@ -858,4 +861,5 @@ def me(key=Depends(get_api_key)):
         "monthly_limit": key.monthly_limit,
         "remaining": key.remaining,
         "requests_total": key.requests_total,
+        "usage_history": usage_history(key.key_id, days=30),
     }

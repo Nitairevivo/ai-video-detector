@@ -51,3 +51,22 @@ def test_record_request_by_id_increments_quota():
     db.record_request_by_id(key.key_id)
     db.record_request_by_id(key.key_id)
     assert db.lookup_key(raw).requests_this_month == 2
+
+
+def test_usage_history_counts_today_and_fills_gaps():
+    raw = db.create_key("d@test.com")
+    key = db.lookup_key(raw)
+    db.record_request(raw)
+    db.record_request_by_id(key.key_id)
+
+    hist = db.usage_history(key.key_id, days=30)
+    assert len(hist) == 30
+    assert hist[-1]["count"] == 2          # both paths logged today
+    assert all(h["count"] == 0 for h in hist[:-1])  # gaps filled with zeros
+    assert hist[0]["day"] < hist[-1]["day"]         # oldest first
+
+
+def test_usage_history_empty_key():
+    hist = db.usage_history("nonexistent-key-id", days=7)
+    assert len(hist) == 7
+    assert all(h["count"] == 0 for h in hist)

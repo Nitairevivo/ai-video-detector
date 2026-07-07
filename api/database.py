@@ -73,6 +73,14 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_key_hash ON api_keys(key_hash);
             CREATE INDEX IF NOT EXISTS idx_email    ON api_keys(email);
+
+            -- Daily usage counts per key — powers the dashboard usage graph
+            CREATE TABLE IF NOT EXISTS usage_log (
+                key_id  TEXT NOT NULL,
+                day     TEXT NOT NULL,           -- YYYY-MM-DD (UTC)
+                count   INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (key_id, day)
+            );
         """)
 
 
@@ -109,6 +117,16 @@ def lookup_key(raw_key: str) -> Optional[ApiKey]:
     return _row_to_key(row)
 
 
+def _log_daily_usage(conn, key_id: Optional[str]):
+    if not key_id:
+        return
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn.execute("""
+        INSERT INTO usage_log (key_id, day, count) VALUES (?, ?, 1)
+        ON CONFLICT(key_id, day) DO UPDATE SET count = count + 1
+    """, (key_id, day))
+
+
 def record_request(raw_key: str):
     """Increment usage counters; reset if new billing month."""
     key_hash = _hash_key(raw_key)
@@ -124,6 +142,27 @@ def record_request(raw_key: str):
                 billing_month = ?
             WHERE key_hash = ?
         """, (month, month, key_hash))
+        row = conn.execute(
+            "SELECT key_id FROM api_keys WHERE key_hash = ?", (key_hash,)
+        ).fetchone()
+        _log_daily_usage(conn, row["key_id"] if row else None)
+
+
+def usage_history(key_id: str, days: int = 30) -> list:
+    """Last `days` of daily usage as [{day, count}], oldest first, gaps = 0."""
+    from datetime import timedelta
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT day, count FROM usage_log
+            WHERE key_id = ? ORDER BY day DESC LIMIT ?
+        """, (key_id, days)).fetchall()
+    counts = {r["day"]: r["count"] for r in rows}
+    today = datetime.now(timezone.utc).date()
+    return [
+        {"day": (today - timedelta(days=d)).isoformat(),
+         "count": counts.get((today - timedelta(days=d)).isoformat(), 0)}
+        for d in range(days - 1, -1, -1)
+    ]
 
 
 def record_request_by_id(key_id: str):
@@ -141,6 +180,7 @@ def record_request_by_id(key_id: str):
                 billing_month = ?
             WHERE key_id = ?
         """, (month, month, key_id))
+        _log_daily_usage(conn, key_id)
 
 
 def rotate_key(raw_key: str) -> Optional[str]:

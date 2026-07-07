@@ -102,6 +102,27 @@ export default function Dashboard() {
   const [rotateError, setRotateError] = useState("");
   const [rotating, setRotating]       = useState(false);
 
+  const [usageKey, setUsageKey]       = useState("");
+  const [usageData, setUsageData]     = useState<any>(null);
+  const [usageError, setUsageError]   = useState("");
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  async function checkUsage() {
+    setUsageLoading(true);
+    setUsageError("");
+    setUsageData(null);
+    try {
+      const res = await fetch(`${API}/me`, { headers: { "X-Api-Key": usageKey.trim() } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Lookup failed");
+      setUsageData(data);
+    } catch (e: any) {
+      setUsageError(e.message);
+    } finally {
+      setUsageLoading(false);
+    }
+  }
+
   async function rotate() {
     setRotating(true);
     setRotateError("");
@@ -255,6 +276,60 @@ export default function Dashboard() {
                 Already have your key? Use it with the <code className="text-violet-400">X-Api-Key</code> header.
               </p>
             </>
+          )}
+        </div>
+
+        {/* Usage: 30-day history */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 p-5 space-y-3">
+          <h2 className="text-white font-bold text-sm">📊 Check your usage</h2>
+          <p className="text-gray-500 text-xs">Paste your key to see this month&apos;s quota and the last 30 days. This check doesn&apos;t count against your quota.</p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={usageKey}
+              onChange={e => { setUsageKey(e.target.value); setUsageError(""); }}
+              placeholder="aivd_..."
+              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none focus:border-violet-500/50"
+            />
+            <button
+              onClick={checkUsage}
+              disabled={usageLoading || !usageKey.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              {usageLoading ? "Loading…" : "Show"}
+            </button>
+          </div>
+          {usageError && <p className="text-red-400 text-xs">{usageError}</p>}
+          {usageData && (
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Plan</span>
+                <span className="text-white font-semibold capitalize">{usageData.tier}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">This month</span>
+                <span className="text-white">{usageData.requests_this_month} / {usageData.monthly_limit}</span>
+              </div>
+              <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-600"
+                  style={{ width: `${Math.min(100, (usageData.requests_this_month / usageData.monthly_limit) * 100)}%` }} />
+              </div>
+              {Array.isArray(usageData.usage_history) && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1.5">Last 30 days</p>
+                  <div className="flex items-end gap-[2px] h-12">
+                    {usageData.usage_history.map((d: { day: string; count: number }) => {
+                      const max = Math.max(1, ...usageData.usage_history.map((x: any) => x.count));
+                      return (
+                        <div key={d.day} title={`${d.day}: ${d.count}`}
+                          className="flex-1 rounded-t bg-violet-500/70 hover:bg-violet-400 transition-colors"
+                          style={{ height: `${Math.max(4, (d.count / max) * 100)}%`, opacity: d.count === 0 ? 0.18 : 1 }} />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
