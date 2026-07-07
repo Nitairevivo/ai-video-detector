@@ -97,6 +97,31 @@ export default function Dashboard() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const [rotateInput, setRotateInput] = useState("");
+  const [rotatedKey, setRotatedKey]   = useState("");
+  const [rotateError, setRotateError] = useState("");
+  const [rotating, setRotating]       = useState(false);
+
+  async function rotate() {
+    setRotating(true);
+    setRotateError("");
+    setRotatedKey("");
+    try {
+      const res = await fetch(`${API}/rotate-key`, {
+        method: "POST",
+        headers: { "X-Api-Key": rotateInput.trim() },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Rotation failed");
+      setRotatedKey(data.api_key);
+      setRotateInput("");
+    } catch (e: any) {
+      setRotateError(e.message);
+    } finally {
+      setRotating(false);
+    }
+  }
+
   return (
     <main className="min-h-screen px-4 py-14"
       style={{ background: "radial-gradient(ellipse at 50% 0%, #0d0d2b 0%, #07070f 60%)" }}>
@@ -230,6 +255,41 @@ export default function Dashboard() {
                 Already have your key? Use it with the <code className="text-violet-400">X-Api-Key</code> header.
               </p>
             </>
+          )}
+        </div>
+
+        {/* Security: rotate a leaked key */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 p-5 space-y-3">
+          <h2 className="text-white font-bold text-sm">🔐 Rotate your API key</h2>
+          <p className="text-gray-500 text-xs">
+            Leaked a key? Paste it here to replace the secret. Same plan and usage — the old key stops working immediately.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={rotateInput}
+              onChange={e => { setRotateInput(e.target.value); setRotateError(""); }}
+              placeholder="aivd_..."
+              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none focus:border-violet-500/50"
+            />
+            <button
+              onClick={rotate}
+              disabled={rotating || !rotateInput.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              {rotating ? "Rotating…" : "Rotate"}
+            </button>
+          </div>
+          {rotateError && <p className="text-red-400 text-xs">{rotateError}</p>}
+          {rotatedKey && (
+            <div className="space-y-2">
+              <div className="bg-black/40 border border-green-500/25 rounded-xl px-4 py-3 font-mono text-sm text-green-300 break-all">
+                {rotatedKey}
+              </div>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-amber-300 text-xs">
+                ⚠️ Save the new key now — it won&apos;t be shown again. The old key is dead.
+              </div>
+            </div>
           )}
         </div>
 
