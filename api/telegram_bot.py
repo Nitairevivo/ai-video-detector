@@ -31,12 +31,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-API = f"https://api.telegram.org/bot{TOKEN}"
-FILE_API = f"https://api.telegram.org/file/bot{TOKEN}"
+# Point TELEGRAM_API_BASE at a self-hosted Bot API server
+# (github.com/tdlib/telegram-bot-api) to lift the 20MB getFile limit to 2GB.
+API_BASE = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+API = f"{API_BASE}/bot{TOKEN}"
+FILE_API = f"{API_BASE}/file/bot{TOKEN}"
 
-# Telegram Bot API getFile serves files up to 20 MB. Bigger needs a local Bot
-# API server; we detect and explain instead of failing silently.
-TG_MAX_BYTES = 20 * 1024 * 1024
+# The hosted Bot API serves files up to 20 MB; a self-hosted server goes to 2GB.
+_SELF_HOSTED = API_BASE != "https://api.telegram.org"
+TG_MAX_BYTES = (2000 if _SELF_HOSTED else 20) * 1024 * 1024
+TG_MAX_LABEL = "2GB" if _SELF_HOSTED else "20MB"
 
 URL_RE = re.compile(r"https?://[^\s]+")
 VIDEO_URL_HINT = re.compile(
@@ -238,7 +242,7 @@ def handle_update(update: dict):
             size = int(video.get("file_size", 0) or 0)
             if size and size > TG_MAX_BYTES:
                 send_message(chat_id,
-                             "⚠️ הסרטון גדול מ-20MB — טלגרם לא נותן לבוט להוריד קבצים כאלה.\n"
+                             f"⚠️ הסרטון גדול מ-{TG_MAX_LABEL} — טלגרם לא נותן לבוט להוריד קבצים כאלה.\n"
                              "שלח קליפ קצר יותר, או שלח לי קישור לסרטון.", msg_id)
                 return
             send_typing(chat_id)
