@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        run: python -m pytest tests/ -q
+      - name: Import smoke test (server + bots load)
+        run: |
+          python - <<'EOF'
+          from api.server import app, run_full_analysis, download_video_from_url
+          from api import telegram_bot
+          from models.classifier import get_classifier
+          c = get_classifier()
+          assert c.is_trained, "committed model fails its own quality gate"
+          print("imports + model quality gate OK")
+          EOF
