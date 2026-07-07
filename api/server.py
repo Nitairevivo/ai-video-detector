@@ -158,6 +158,7 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
 
     ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True)
 
+    signals = result.signals or {}
     return {
         "is_ai_generated": ens.verdict == "ai_generated",
         "verdict": ens.verdict,
@@ -166,10 +167,29 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
         "ai_tool_detected": result.ai_tool,
         "edit_tool_detected": result.edit_tool,
         "detection_method": ens.method,
-        "deep_analysis_ran": bool(result.signals.get("freq_analyzed") or result.signals.get("visual_analyzed")),
+        "deep_analysis_ran": bool(signals.get("freq_analyzed") or signals.get("visual_analyzed")),
         "ensemble_layers": ens.layers,
         "gemini_reason": ens.gemini_reason,
-        "_signals": result.signals,
+        # Audit-grade breakdown of how the verdict was reached — what
+        # enterprise integrations log next to the verdict (roadmap 4.5).
+        "explanation": {
+            "deciding_layer": ens.method,
+            "layer_scores": ens.layers,
+            "ml_probability": round(ml_prob, 4) if ml_prob is not None else None,
+            "provenance": {
+                "c2pa_present": bool(signals.get("has_c2pa")),
+                "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "metadata_stripped": bool(signals.get("metadata_is_stripped")),
+                "platform_reencoded": bool(signals.get("platform_reencoded")),
+                "ai_tool": result.ai_tool,
+                "edit_tool": result.edit_tool,
+            },
+            "caveats": [c for c in (
+                "video shorter than 2s — low reliability" if signals.get("too_short_for_analysis") else None,
+                "re-encoded by a platform — original file metadata lost" if signals.get("platform_reencoded") else None,
+            ) if c],
+        },
+        "_signals": signals,
     }
 
 
