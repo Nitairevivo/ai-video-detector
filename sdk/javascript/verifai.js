@@ -29,6 +29,9 @@ class DetectionResult {
     this.detectionMethod = data.detection_method || '';
     this.url = url || data.url || null;
     this.filename = data.filename || null;
+    // Audit-grade breakdown: deciding layer, per-layer scores, provenance
+    // flags (C2PA, metadata stripped, platform re-encode) and caveats.
+    this.explanation = data.explanation || null;
   }
 
   toString() {
