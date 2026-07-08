@@ -85,6 +85,18 @@ def test_feedback_agreement_math():
     assert 0.0 <= stats["agreement_rate"] <= 1.0
 
 
+def test_detection_log_and_recent():
+    raw = db.create_key("e@test.com")
+    key = db.lookup_key(raw)
+    db.log_detection(key.key_id, "ai_generated", 0.97, source="tiktok.com")
+    db.log_detection(key.key_id, "real", 0.05, source="clip.mp4")
+    recent = db.recent_detections(key.key_id, limit=10)
+    assert len(recent) == 2
+    assert recent[0]["verdict"] == "real"          # newest first
+    assert recent[1]["source"] == "tiktok.com"
+    assert db.recent_detections("no-such-key") == []
+
+
 def test_feedback_signals_truncated_not_crashing():
     huge = "x" * 100_000
     db.add_feedback("ai_generated", 0.9, True, signals_json=huge)

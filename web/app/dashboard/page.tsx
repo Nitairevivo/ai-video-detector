@@ -329,6 +329,25 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+              {Array.isArray(usageData.recent_checks) && usageData.recent_checks.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1.5">Recent checks (keyed requests)</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {usageData.recent_checks.map((c: any, i: number) => {
+                      const color = c.verdict === "ai_generated" ? "#ef4444" : c.verdict === "ai_edited" ? "#a855f7" : "#22c55e";
+                      const label = c.verdict === "ai_generated" ? "AI" : c.verdict === "ai_edited" ? "Edited" : "Real";
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-xs bg-black/25 rounded-lg px-3 py-1.5">
+                          <span className="font-bold w-12" style={{ color }}>{label}</span>
+                          <span className="text-gray-400 w-10">{Math.round(c.confidence * 100)}%</span>
+                          <span className="text-gray-500 flex-1 truncate">{c.source}</span>
+                          <span className="text-gray-600 text-[10px]">{(c.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
