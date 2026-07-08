@@ -117,6 +117,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.aivd-result-prov {
+  font-size: 10px;
+  color: #b8a04a;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .aivd-result-method {
   font-size: 10px;
   color: #666;

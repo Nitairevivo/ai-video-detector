@@ -141,6 +141,11 @@ function showResult(container, result) {
   const style = getVerdictStyle(result);
   const pct = Math.round(result.confidence * 100);
 
+  const prov = (result.explanation && result.explanation.provenance) || {};
+  const provLine = prov.c2pa_claims_ai ? "\ud83d\udd0f C2PA: AI-generated (signed)"
+    : prov.c2pa_present ? "\ud83d\udd0f Content Credentials found"
+    : (prov.metadata_stripped || prov.platform_reencoded) ? "\u267b Platform re-encoded \u2014 metadata stripped" : "";
+
   const el = document.createElement("div");
   el.className = "aivd-result";
   el.style.cssText = `background:${style.bg};border-color:${style.border};`;
@@ -150,6 +155,7 @@ function showResult(container, result) {
       <div class="aivd-result-badge" style="color:${style.color};background:${style.color}22">${style.icon} ${style.label}</div>
       <div class="aivd-result-title">${style.title}</div>
       <div class="aivd-result-method">${(result.detection_method || "").slice(0, 60)}</div>
+      ${provLine ? `<div class="aivd-result-prov">${provLine}</div>` : ""}
     </div>
     <div class="aivd-result-pct" style="color:${style.color}">${pct}%</div>
     <button class="aivd-result-close">✕</button>

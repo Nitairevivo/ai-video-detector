@@ -1,0 +1,11 @@
+{
+  "name": "verifai-sdk",
+  "version": "0.2.0",
+  "description": "Detect AI-generated videos (Sora, Veo, Kling, Runway...) with a single API call",
+  "main": "verifai.js",
+  "types": "verifai.d.ts",
+  "license": "MIT",
+  "keywords": ["ai-detection", "deepfake", "video", "c2pa", "content-credentials"],
+  "homepage": "https://web-zeta-ecru-80.vercel.app",
+  "engines": { "node": ">=18" }
+}

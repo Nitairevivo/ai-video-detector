@@ -214,7 +214,7 @@ def resolve_tiktok(share_url: str) -> Tuple[Optional[str], bool, str]:
     return cdn_url, is_aigc, aigc_info
 
 
-def download_tiktok_video(share_url: str, output_path: str, max_mb: int = 30) -> Tuple[bool, bool, str]:
+def download_tiktok_video(share_url: str, output_path: str, max_mb: int = 60) -> Tuple[bool, bool, str]:
     """
     Download a TikTok video to output_path.
     Returns (success, is_aigc, aigc_info).

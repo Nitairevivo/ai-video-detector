@@ -252,6 +252,7 @@ class MetadataResult:
     platform_reencoded: bool = False        # detected platform re-encode (TikTok/IG/etc.)
     platform_name: Optional[str] = None    # which platform re-encoded it
     too_short_for_analysis: bool = False    # duration < 2s — unreliable stats
+    probe_failed: bool = False              # ffprobe itself failed — emptiness is NOT evidence
 
 
 # Platform re-encoders: these services strip original metadata and re-encode
@@ -308,10 +309,19 @@ def _read_ffprobe(file_path: str, result: MetadataResult):
         "-show_format", "-show_streams",
         file_path
     ]
-    try:
-        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=8)
-        data = json.loads(output)
-    except Exception:
+    # A transient ffprobe failure must not silently turn a tagged AI video
+    # into "metadata stripped" (which reads as REAL) — retry once, and mark
+    # the failure explicitly so downstream can distrust the emptiness.
+    data = None
+    for attempt in (1, 2):
+        try:
+            output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=8 * attempt)
+            data = json.loads(output)
+            break
+        except Exception:
+            continue
+    if data is None:
+        result.probe_failed = True
         return
 
     fmt = data.get("format", {})
@@ -399,7 +409,8 @@ def _detect_stripped_metadata(result: MetadataResult):
         result.creation_date or
         result.all_tags
     )
-    if not has_any_tag and not result.platform_reencoded:
+    if not has_any_tag and not result.platform_reencoded and not result.probe_failed:
+        # probe_failed means we couldn't LOOK — absence of tags is then not evidence
         result.metadata_is_stripped = True
 
 

@@ -12,9 +12,6 @@ Calibrated on synthetic data; thresholds tuned to minimize false positives.
 """
 import subprocess
 import shutil
-import tempfile
-import os
-import math
 from dataclasses import dataclass
 from typing import Optional
 

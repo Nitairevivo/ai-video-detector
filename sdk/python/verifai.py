@@ -36,6 +36,9 @@ class DetectionResult:
     detection_method: str
     url: Optional[str] = None
     filename: Optional[str] = None
+    # Audit-grade breakdown: deciding layer, per-layer scores, provenance
+    # flags (C2PA, metadata stripped, platform re-encode) and caveats.
+    explanation: Optional[dict] = None
 
     @property
     def is_real(self) -> bool:
@@ -98,6 +101,7 @@ class VerifAI:
             edit_tool_detected=data.get("edit_tool_detected"),
             detection_method=data.get("detection_method", ""),
             url=url,
+            explanation=data.get("explanation"),
         )
 
     def detect_file(self, file_path: str) -> DetectionResult:
@@ -131,6 +135,7 @@ class VerifAI:
             edit_tool_detected=data.get("edit_tool_detected"),
             detection_method=data.get("detection_method", ""),
             filename=path.name,
+            explanation=data.get("explanation"),
         )
 
     def detect_batch(self, urls: List[str]) -> List[DetectionResult]:

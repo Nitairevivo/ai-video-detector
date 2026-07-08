@@ -24,8 +24,18 @@ from analyzer import extract_features
 from models.classifier import get_classifier
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
+# Dataset location is configurable so the loop can run anywhere (cloud worker,
+# CI, any machine) — not just on one laptop. Order of preference:
+#   1. VERIFAI_DATASET_DIR env var
+#   2. the original local dev path, if it exists on this machine
+#   3. ./dataset_cache next to the repo
+_default_root = Path("/Users/nitai/Desktop/dataset")
+DATASET_ROOT = Path(
+    os.environ.get("VERIFAI_DATASET_DIR", "").strip()
+    or (_default_root if _default_root.exists() else Path(__file__).parent / "dataset_cache")
+)
+AI_DIR   = DATASET_ROOT / "AI_Videos"
+REAL_DIR = DATASET_ROOT / "Real_Videos"
 TRAINING_DATA_PATH = Path(__file__).parent / "data" / "training_samples.json"
 SEEN_PATH          = Path(__file__).parent / "data" / "seen_video_ids.json"
 
@@ -331,7 +341,14 @@ def retrain(classifier):
 
 
 def push_model():
-    """Commit and push updated model to trigger production deploy."""
+    """
+    Commit and push updated model to trigger production deploy.
+    Only runs when VERIFAI_AUTOPUSH=1 — in CI/cloud runs the workflow decides
+    what to commit and where; a script silently pushing to master is a footgun.
+    """
+    if os.environ.get("VERIFAI_AUTOPUSH", "") != "1":
+        print("  (autopush disabled — set VERIFAI_AUTOPUSH=1 to push from here)")
+        return
     repo = Path(__file__).parent
     try:
         subprocess.run(
@@ -354,7 +371,7 @@ def push_model():
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
-def run(batch: int, max_samples: int, once: bool):
+def run(batch: int, max_samples: int, once: bool, rounds: int = 0):
     pexels_key = os.environ.get("PEXELS_API_KEY", "")
     classifier = get_classifier()
     seen = load_seen()
@@ -463,6 +480,9 @@ def run(batch: int, max_samples: int, once: bool):
         if once:
             print("\nDone (--once mode).")
             break
+        if rounds and round_num >= rounds:
+            print(f"\nDone ({rounds} rounds).")
+            break
 
         # Cool-down between rounds to avoid rate limiting
         wait = random.randint(30, 60)
@@ -475,19 +495,21 @@ if __name__ == "__main__":
     parser.add_argument("--batch",  type=int, default=30,   help="Videos per class per round")
     parser.add_argument("--max",    type=int, default=0,    help="Stop after N total samples (0=forever)")
     parser.add_argument("--once",   action="store_true",    help="Run one round only")
+    parser.add_argument("--rounds", type=int, default=0,    help="Stop after N rounds (0=forever)")
     args = parser.parse_args()
 
     try:
-        run(batch=args.batch, max_samples=args.max, once=args.once)
+        run(batch=args.batch, max_samples=args.max, once=args.once, rounds=args.rounds)
     except KeyboardInterrupt:
         print("\n\nStopped by user.")
         ai, real = dataset_stats()
         print(f"Final dataset: {ai} AI + {real} Real ({ai+real} total)")
     except Exception as e:
-        # macOS notification on unexpected crash so launchd restart is visible
-        import subprocess as _sp
-        _sp.run([
-            "osascript", "-e",
-            f'display notification "train_forever crashed: {str(e)[:80]}" with title "AI Video Detector" subtitle "Training pipeline restarting…"'
-        ], capture_output=True)
+        if sys.platform == "darwin":
+            # macOS notification on unexpected crash so launchd restart is visible
+            import subprocess as _sp
+            _sp.run([
+                "osascript", "-e",
+                f'display notification "train_forever crashed: {str(e)[:80]}" with title "AI Video Detector" subtitle "Training pipeline restarting…"'
+            ], capture_output=True)
         raise

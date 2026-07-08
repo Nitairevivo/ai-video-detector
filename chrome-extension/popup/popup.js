@@ -127,12 +127,17 @@ function showResult(data) {
   const pct   = Math.round(data.confidence * 100);
   const tool  = data.ai_tool_detected;
   const deep  = data.deep_analysis_ran;
+  const prov  = (data.explanation && data.explanation.provenance) || {};
+  const provLine = prov.c2pa_claims_ai ? "\ud83d\udd0f C2PA: AI-generated (signed)"
+    : prov.c2pa_present ? "\ud83d\udd0f Content Credentials found"
+    : (prov.metadata_stripped || prov.platform_reencoded) ? "\u267b Platform re-encoded \u2014 metadata stripped" : "";
 
   resultEl.className = `result ${isAI ? "ai" : "real"}`;
   resultEl.innerHTML = `
     <span class="verdict">${isAI ? "🤖 AI Generated" : "✅ Authentic Footage"} · ${pct}%</span>
     ${tool ? `<span class="detail">Tool: <span class="tool">${tool}</span></span>` : ""}
     <span class="detail">${data.detection_method}</span>
+    ${provLine ? `<span class="detail" style="color:#b8a04a;font-size:10px">${provLine}</span>` : ""}
     ${deep ? `<span class="detail" style="color:#a78bfa;font-size:10px">Deep analysis included</span>` : ""}
     <div class="conf-bar"><div class="conf-fill" style="width:${pct}%"></div></div>
   `;

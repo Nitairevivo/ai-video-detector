@@ -1,0 +1,106 @@
+name: Cloud Training
+
+# Runs the continuous-training loop in the cloud (roadmap 1.1b) so the
+# dataset grows without depending on one laptop.
+#
+# Results are committed to the dedicated `auto-train` branch and uploaded as
+# artifacts — never pushed to master directly. Review the metrics in the job
+# summary, then merge auto-train when happy.
+#
+# Secrets used (optional but recommended):
+#   PEXELS_API_KEY — real-footage supplement source
+#
+# Note: YouTube sometimes blocks datacenter IPs / requires sign-in on GitHub
+# runners; on those rounds yt-dlp yields fewer files and Pexels fills the
+# real class. The loop tolerates empty rounds by design.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: "Training rounds to run"
+        default: "10"
+      batch:
+        description: "Videos per class per round"
+        default: "15"
+  schedule:
+    - cron: "0 3 * * 1,4"   # Mon+Thu 03:00 UTC
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloud-training
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg + deps
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          pip install -r requirements.txt
+
+      - name: Run training rounds
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          VERIFAI_DATASET_DIR: ${{ runner.temp }}/dataset
+        run: |
+          python train_forever.py \
+            --rounds "${{ github.event.inputs.rounds || '10' }}" \
+            --batch  "${{ github.event.inputs.batch  || '15' }}"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Training results"
+            python - <<'EOF'
+          import json
+          meta = json.load(open("models/trained_model_meta.json"))
+          print(f"- Samples: **{meta['samples']}** ({meta['ai_samples']} AI / {meta['real_samples']} real)")
+          for k in ("cv_auc_mean","cv_precision","cv_recall","cv_fpr","cv_brier"):
+              if meta.get(k) is not None:
+                  print(f"- {k}: **{meta[k]:.4f}**")
+          print(f"- trained_at: {meta.get('trained_at','—')}")
+          EOF
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload model + dataset artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model-${{ github.run_number }}
+          path: |
+            models/trained_model.joblib
+            models/trained_model_meta.json
+            data/training_samples.json
+            data/seen_video_ids.json
+          retention-days: 30
+
+      - name: Commit results to auto-train branch
+        run: |
+          git config user.name "verifai-auto-train"
+          git config user.email "auto-train@users.noreply.github.com"
+          git checkout -B auto-train
+          git add models/trained_model.joblib models/trained_model_meta.json \
+                  data/training_samples.json data/seen_video_ids.json
+          if git diff --cached --quiet; then
+            echo "No new samples this run — nothing to commit."
+          else
+            SAMPLES=$(python -c "import json;print(json.load(open('models/trained_model_meta.json'))['samples'])")
+            git commit -m "Auto-train: ${SAMPLES} samples (run ${{ github.run_number }})"
+            git push -f origin auto-train
+          fi
