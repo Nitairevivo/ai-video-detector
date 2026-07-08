@@ -24,8 +24,11 @@ from analyzer import extract_features
 from models.classifier import get_classifier
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
+# Project-local download dirs — NOT under ~/Desktop: macOS TCC blocks the
+# LaunchAgent's ffmpeg/yt-dlp from writing there (EPERM), starving the pipeline.
+# The original labeled corpus remains at ~/Desktop/dataset (read by evaluate.py).
+AI_DIR   = Path("/Users/nitai/ai-video-detector/data/videos/AI_Videos")
+REAL_DIR = Path("/Users/nitai/ai-video-detector/data/videos/Real_Videos")
 TRAINING_DATA_PATH = Path(__file__).parent / "data" / "training_samples.json"
 SEEN_PATH          = Path(__file__).parent / "data" / "seen_video_ids.json"
 
@@ -194,15 +197,54 @@ def dataset_stats() -> tuple[int, int]:
     return ai, real
 
 
+QUERY_MUTATORS = ["", "2026", "new", "latest", "#shorts", "demo", "4k", "compilation"]
+
+
 def download_yt(query: str, out_dir: Path, n: int, seen: set) -> list[Path]:
-    """Download up to n videos from a yt-dlp search query. Returns new files."""
+    """Download up to n videos from a yt-dlp search query. Returns new files.
+
+    Anti-starvation: plain ytsearch always returns the same top-N, so once the
+    archive knows them every round yields 0 files. Each call therefore (a) slides
+    a per-query window deeper into the results via --playlist-items, (b) uses
+    date-sorted search (ytsearchdate) on alternate calls so fresh uploads keep
+    appearing, and (c) appends a rotating mutator word to vary the result set.
+    """
     ids_before = {f.stem for f in out_dir.glob("*.mp4")}
     # Only use archive if it exists (cleared periodically to allow new queries)
     archive_file = out_dir / ".yt_archive"
 
+    # Per-query depth state (persisted next to the archive)
+    depth_file = out_dir / ".yt_depth.json"
+    try:
+        depth_state = json.loads(depth_file.read_text())
+    except (OSError, ValueError):
+        depth_state = {}
+    depth = depth_state.get(query, 0)
+
+    mutator = QUERY_MUTATORS[depth % len(QUERY_MUTATORS)]
+    q = f"{query} {mutator}".strip()
+    # Scan a window 4x wider than needed — most items are lost to the duration
+    # filter and the archive — and stop after n actual downloads.
+    window = 4 * n
+    start = depth * window + 1
+    end = start + window - 1
+
+    depth_state[query] = (depth + 1) % 8  # up to 8 windows deep, then wrap
+    depth_file.write_text(json.dumps(depth_state))
+
+    if depth % 2:
+        # Date-sorted search (sp=CAI%3D) — fresh uploads keep the pipeline fed.
+        # (this yt-dlp build has no ytsearchdate prefix)
+        import urllib.parse
+        target = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(q)}&sp=CAI%3D"
+    else:
+        target = f"ytsearch{end}:{q}"
+
     cmd = [
         "yt-dlp",
-        f"ytsearch{n}:{query}",
+        target,
+        "--playlist-items", f"{start}:{end}",
+        "--max-downloads", str(n),
         "--no-playlist",
         "--max-filesize", "60M",
         # Accept videos up to 10 min — AI demos & comparison videos are often long
@@ -217,8 +259,13 @@ def download_yt(query: str, out_dir: Path, n: int, seen: set) -> list[Path]:
         "--embed-metadata",
         "-o", str(out_dir / "%(id)s.%(ext)s"),
     ]
+    # Strip PYTHONPATH: the LaunchAgent injects the py3.9 venv's site-packages,
+    # which shadows homebrew yt-dlp's own package with a stale copy that
+    # YouTube rejects (SABR errors → 0 downloads).
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    result = None
     try:
-        subprocess.run(cmd, timeout=180, capture_output=True)
+        result = subprocess.run(cmd, timeout=240, capture_output=True, text=True, env=env)
     except subprocess.TimeoutExpired:
         pass
 
@@ -227,6 +274,8 @@ def download_yt(query: str, out_dir: Path, n: int, seen: set) -> list[Path]:
         f for f in out_dir.glob("*.mp4")
         if f.stem not in ids_before and f.stem not in seen and f.stat().st_size > 5000
     ]
+    if not new_files and result is not None and result.stderr:
+        print(f"       [yt-dlp stderr] {result.stderr.strip()[-300:]}")
     return new_files
 
 
@@ -408,8 +457,15 @@ def run(batch: int, max_samples: int, once: bool):
         if round_num % 8 == 0:
             for d in [AI_DIR, REAL_DIR]:
                 arch = d / ".yt_archive"
-                if arch.exists():
-                    arch.unlink()
+                try:
+                    if arch.exists():
+                        arch.unlink()
+                except OSError as e:
+                    # macOS TCC can EPERM dotfile deletion on Desktop — truncate instead
+                    try:
+                        arch.write_text("")
+                    except OSError:
+                        print(f"  [archive clear failed: {e}]")
             print("  [archive cleared — queries refreshed]")
 
         # ── Download AI ───────────────────────────────────────────────────────
