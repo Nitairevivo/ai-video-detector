@@ -70,3 +70,23 @@ def test_usage_history_empty_key():
     hist = db.usage_history("nonexistent-key-id", days=7)
     assert len(hist) == 7
     assert all(h["count"] == 0 for h in hist)
+
+
+def test_feedback_agreement_math():
+    # user confirms an AI verdict → agrees
+    db.add_feedback("ai_generated", 0.95, user_says_ai=True, source="test")
+    # user disputes a real verdict, says it's AI → disagrees
+    total = db.add_feedback("real", 0.10, user_says_ai=True, source="test")
+    assert total >= 2
+
+    stats = db.feedback_stats()
+    assert stats["total"] >= 2
+    assert stats["reported_ai"] >= 2
+    assert 0.0 <= stats["agreement_rate"] <= 1.0
+
+
+def test_feedback_signals_truncated_not_crashing():
+    huge = "x" * 100_000
+    db.add_feedback("ai_generated", 0.9, True, signals_json=huge)
+    stats = db.feedback_stats()
+    assert stats["total"] >= 1

@@ -119,7 +119,27 @@ function ConfidenceMeter({ value, color }: { value: number; color: string }) {
 // ── Result card ───────────────────────────────────────────────────────────────
 function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: () => void; onRetry?: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const r = item.result;
+
+  async function sendFeedback(userSaysAi: boolean) {
+    if (!r || feedbackSent) return;
+    setFeedbackSent(true);
+    try {
+      await fetch(`${API}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verdict: r.verdict,
+          confidence: r.confidence,
+          user_says_ai: userSaysAi,
+          method: r.detection_method?.slice(0, 200) || "",
+          source: "web",
+          signals: r.signals || null,
+        }),
+      });
+    } catch { /* best-effort */ }
+  }
 
   if (item.status === "analyzing") {
     return (
@@ -189,6 +209,17 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
               }} className="text-xs text-gray-600 hover:text-violet-400 transition-colors">
                 Copy result
               </button>
+            )}
+            {feedbackSent ? (
+              <span className="text-xs text-green-500/80">✓ Thanks!</span>
+            ) : (
+              <span className="text-xs text-gray-700 flex items-center gap-1.5">
+                Right?
+                <button onClick={() => sendFeedback(r.verdict === "ai_generated" || r.verdict === "ai_edited")}
+                  className="hover:text-green-400 transition-colors" title="The verdict is correct">👍</button>
+                <button onClick={() => sendFeedback(!(r.verdict === "ai_generated" || r.verdict === "ai_edited"))}
+                  className="hover:text-red-400 transition-colors" title="The verdict is wrong">👎</button>
+              </span>
             )}
           </div>
         </div>

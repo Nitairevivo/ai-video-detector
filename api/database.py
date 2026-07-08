@@ -81,6 +81,20 @@ def init_db():
                 count   INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (key_id, day)
             );
+
+            -- User verdict feedback — the raw material of the learning loop.
+            -- Stores only verdict metadata + numeric signals, never the video.
+            CREATE TABLE IF NOT EXISTS feedback (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   TEXT NOT NULL,
+                verdict      TEXT NOT NULL,       -- what we said
+                confidence   REAL NOT NULL,
+                user_says_ai INTEGER NOT NULL,    -- what the user says the truth is
+                agrees       INTEGER NOT NULL,    -- user confirms our verdict
+                method       TEXT,
+                source       TEXT,                -- web / telegram / mobile / extension
+                signals_json TEXT                 -- numeric feature signals (no media)
+            );
         """)
 
 
@@ -225,6 +239,40 @@ def downgrade_to_free(stripe_subscription_id: str):
             UPDATE api_keys SET tier = 'free', stripe_subscription_id = NULL
             WHERE stripe_subscription_id = ?
         """, (stripe_subscription_id,))
+
+
+def add_feedback(verdict: str, confidence: float, user_says_ai: bool,
+                 method: str = "", source: str = "web",
+                 signals_json: str = "") -> int:
+    """Store a user's report on a verdict. Returns total feedback rows."""
+    agrees = int((verdict == "ai_generated") == bool(user_says_ai))
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO feedback
+              (created_at, verdict, confidence, user_says_ai, agrees,
+               method, source, signals_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (now, verdict, float(confidence), int(bool(user_says_ai)), agrees,
+              (method or "")[:200], (source or "web")[:40], signals_json[:20000]))
+        return conn.execute("SELECT COUNT(*) c FROM feedback").fetchone()["c"]
+
+
+def feedback_stats() -> dict:
+    """Aggregate agreement stats — a live health signal for the model."""
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(agrees), 0) AS agree,
+                   COALESCE(SUM(CASE WHEN user_says_ai = 1 THEN 1 ELSE 0 END), 0) AS says_ai
+            FROM feedback
+        """).fetchone()
+    total = row["total"]
+    return {
+        "total": total,
+        "agreement_rate": round(row["agree"] / total, 4) if total else None,
+        "reported_ai": row["says_ai"],
+    }
 
 
 def get_key_by_email(email: str) -> Optional[ApiKey]:

@@ -789,6 +789,44 @@ class UpgradeRequest(BaseModel):
     tier: str  # "pro" or "ultra"
 
 
+class FeedbackRequest(BaseModel):
+    verdict: str                      # the verdict VerifAI gave
+    confidence: float
+    user_says_ai: bool                # the user's ground truth
+    method: str = ""
+    source: str = "web"
+    signals: Optional[dict] = None    # numeric signals only — never media
+
+
+@app.post("/feedback")
+@limiter.limit("20/hour")
+def submit_feedback(request: Request, body: FeedbackRequest):
+    """
+    Report whether a verdict was right (the learning-loop's raw material).
+    Stores verdict metadata + numeric signals only — never the video itself.
+    """
+    from api.database import add_feedback
+    import json as _json
+    if body.verdict not in ("ai_generated", "ai_edited", "real", "unknown"):
+        raise HTTPException(400, "Invalid verdict")
+    total = add_feedback(
+        verdict=body.verdict,
+        confidence=max(0.0, min(1.0, body.confidence)),
+        user_says_ai=body.user_says_ai,
+        method=body.method,
+        source=body.source,
+        signals_json=_json.dumps(body.signals or {}),
+    )
+    return {"message": "Thanks — feedback recorded", "total_feedback": total}
+
+
+@app.get("/feedback/stats")
+def get_feedback_stats():
+    """Live agreement stats between users and the model."""
+    from api.database import feedback_stats
+    return feedback_stats()
+
+
 @app.post("/rotate-key", tags=["billing"])
 @limiter.limit("10/hour")
 def rotate(request: Request, x_api_key: Optional[str] = Header(None)):
