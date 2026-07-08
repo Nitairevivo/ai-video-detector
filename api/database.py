@@ -73,6 +73,40 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_key_hash ON api_keys(key_hash);
             CREATE INDEX IF NOT EXISTS idx_email    ON api_keys(email);
+
+            -- Daily usage counts per key — powers the dashboard usage graph
+            CREATE TABLE IF NOT EXISTS usage_log (
+                key_id  TEXT NOT NULL,
+                day     TEXT NOT NULL,           -- YYYY-MM-DD (UTC)
+                count   INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (key_id, day)
+            );
+
+            -- Per-key detection history — the B2B dashboard's audit trail.
+            -- Stores verdict metadata only, never the video.
+            CREATE TABLE IF NOT EXISTS detections_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_id      TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                verdict     TEXT NOT NULL,
+                confidence  REAL NOT NULL,
+                source      TEXT                -- filename or URL host (truncated)
+            );
+            CREATE INDEX IF NOT EXISTS idx_detections_key ON detections_log(key_id, id DESC);
+
+            -- User verdict feedback — the raw material of the learning loop.
+            -- Stores only verdict metadata + numeric signals, never the video.
+            CREATE TABLE IF NOT EXISTS feedback (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   TEXT NOT NULL,
+                verdict      TEXT NOT NULL,       -- what we said
+                confidence   REAL NOT NULL,
+                user_says_ai INTEGER NOT NULL,    -- what the user says the truth is
+                agrees       INTEGER NOT NULL,    -- user confirms our verdict
+                method       TEXT,
+                source       TEXT,                -- web / telegram / mobile / extension
+                signals_json TEXT                 -- numeric feature signals (no media)
+            );
         """)
 
 
@@ -109,6 +143,16 @@ def lookup_key(raw_key: str) -> Optional[ApiKey]:
     return _row_to_key(row)
 
 
+def _log_daily_usage(conn, key_id: Optional[str]):
+    if not key_id:
+        return
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn.execute("""
+        INSERT INTO usage_log (key_id, day, count) VALUES (?, ?, 1)
+        ON CONFLICT(key_id, day) DO UPDATE SET count = count + 1
+    """, (key_id, day))
+
+
 def record_request(raw_key: str):
     """Increment usage counters; reset if new billing month."""
     key_hash = _hash_key(raw_key)
@@ -124,6 +168,64 @@ def record_request(raw_key: str):
                 billing_month = ?
             WHERE key_hash = ?
         """, (month, month, key_hash))
+        row = conn.execute(
+            "SELECT key_id FROM api_keys WHERE key_hash = ?", (key_hash,)
+        ).fetchone()
+        _log_daily_usage(conn, row["key_id"] if row else None)
+
+
+def usage_history(key_id: str, days: int = 30) -> list:
+    """Last `days` of daily usage as [{day, count}], oldest first, gaps = 0."""
+    from datetime import timedelta
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT day, count FROM usage_log
+            WHERE key_id = ? ORDER BY day DESC LIMIT ?
+        """, (key_id, days)).fetchall()
+    counts = {r["day"]: r["count"] for r in rows}
+    today = datetime.now(timezone.utc).date()
+    return [
+        {"day": (today - timedelta(days=d)).isoformat(),
+         "count": counts.get((today - timedelta(days=d)).isoformat(), 0)}
+        for d in range(days - 1, -1, -1)
+    ]
+
+
+def record_request_by_id(key_id: str):
+    """Like record_request but addressed by key_id (used when only the
+    validated ApiKey object is available, not the raw secret)."""
+    month = _billing_month()
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE api_keys SET
+                requests_total = requests_total + 1,
+                requests_this_month = CASE
+                    WHEN billing_month = ? THEN requests_this_month + 1
+                    ELSE 1
+                END,
+                billing_month = ?
+            WHERE key_id = ?
+        """, (month, month, key_id))
+        _log_daily_usage(conn, key_id)
+
+
+def rotate_key(raw_key: str) -> Optional[str]:
+    """
+    Replace the key's secret in place — same account, tier, usage counters
+    and Stripe linkage; only the secret changes. Returns the new raw key,
+    or None if the presented key is invalid/inactive.
+    """
+    old_hash = _hash_key(raw_key)
+    new_raw = "aivd_" + secrets.token_urlsafe(32)
+    new_hash = _hash_key(new_raw)
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE api_keys SET key_hash = ? WHERE key_hash = ? AND active = 1",
+            (new_hash, old_hash),
+        )
+        if cur.rowcount == 0:
+            return None
+    return new_raw
 
 
 def upgrade_key(email: str, tier: str,
@@ -149,6 +251,61 @@ def downgrade_to_free(stripe_subscription_id: str):
             UPDATE api_keys SET tier = 'free', stripe_subscription_id = NULL
             WHERE stripe_subscription_id = ?
         """, (stripe_subscription_id,))
+
+
+def log_detection(key_id: str, verdict: str, confidence: float, source: str = ""):
+    """Append one detection to the key's audit trail (verdict metadata only)."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO detections_log (key_id, created_at, verdict, confidence, source)
+            VALUES (?, ?, ?, ?, ?)
+        """, (key_id, now, verdict, float(confidence), (source or "")[:200]))
+
+
+def recent_detections(key_id: str, limit: int = 20) -> list:
+    """Latest detections for a key, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT created_at, verdict, confidence, source
+            FROM detections_log WHERE key_id = ?
+            ORDER BY id DESC LIMIT ?
+        """, (key_id, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_feedback(verdict: str, confidence: float, user_says_ai: bool,
+                 method: str = "", source: str = "web",
+                 signals_json: str = "") -> int:
+    """Store a user's report on a verdict. Returns total feedback rows."""
+    agrees = int((verdict == "ai_generated") == bool(user_says_ai))
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO feedback
+              (created_at, verdict, confidence, user_says_ai, agrees,
+               method, source, signals_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (now, verdict, float(confidence), int(bool(user_says_ai)), agrees,
+              (method or "")[:200], (source or "web")[:40], signals_json[:20000]))
+        return conn.execute("SELECT COUNT(*) c FROM feedback").fetchone()["c"]
+
+
+def feedback_stats() -> dict:
+    """Aggregate agreement stats — a live health signal for the model."""
+    with get_conn() as conn:
+        row = conn.execute("""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(agrees), 0) AS agree,
+                   COALESCE(SUM(CASE WHEN user_says_ai = 1 THEN 1 ELSE 0 END), 0) AS says_ai
+            FROM feedback
+        """).fetchone()
+    total = row["total"]
+    return {
+        "total": total,
+        "agreement_rate": round(row["agree"] / total, 4) if total else None,
+        "reported_ai": row["says_ai"],
+    }
 
 
 def get_key_by_email(email: str) -> Optional[ApiKey]:

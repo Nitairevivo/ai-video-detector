@@ -7,6 +7,22 @@ const MAX_HISTORY = 50;
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ai-video-detector-production-a305.up.railway.app";
 
+type Explanation = {
+  deciding_layer?: string;
+  layer_scores?: Record<string, number>;
+  ml_probability?: number | null;
+  provenance?: {
+    c2pa_present?: boolean;
+    c2pa_claims_ai?: boolean;
+    metadata_stripped?: boolean;
+    platform_reencoded?: boolean;
+    ai_tool?: string | null;
+    edit_tool?: string | null;
+  };
+  visual_artifacts?: string[];
+  caveats?: string[];
+};
+
 type DetectionResult = {
   filename?: string;
   url?: string;
@@ -16,7 +32,18 @@ type DetectionResult = {
   ai_tool_detected: string | null;
   edit_tool_detected: string | null;
   detection_method: string;
+  gemini_reason?: string;
+  explanation?: Explanation;
   signals?: Record<string, number>;
+};
+
+const LAYER_LABELS: Record<string, string> = {
+  gemini: "AI Vision (Gemini)",
+  metadata: "File metadata",
+  frame_ml: "Frame model",
+  visual: "Visual analysis",
+  audio: "Audio fingerprint",
+  ml: "Signature model",
 };
 
 type VideoItem = {
@@ -92,7 +119,27 @@ function ConfidenceMeter({ value, color }: { value: number; color: string }) {
 // ── Result card ───────────────────────────────────────────────────────────────
 function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: () => void; onRetry?: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const r = item.result;
+
+  async function sendFeedback(userSaysAi: boolean) {
+    if (!r || feedbackSent) return;
+    setFeedbackSent(true);
+    try {
+      await fetch(`${API}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verdict: r.verdict,
+          confidence: r.confidence,
+          user_says_ai: userSaysAi,
+          method: r.detection_method?.slice(0, 200) || "",
+          source: "web",
+          signals: r.signals || null,
+        }),
+      });
+    } catch { /* best-effort */ }
+  }
 
   if (item.status === "analyzing") {
     return (
@@ -149,9 +196,9 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
           <p className="text-gray-500 text-xs mt-0.5 truncate">{item.label}</p>
           <p className="text-gray-600 text-xs mt-1 truncate">{r.detection_method}</p>
           <div className="flex items-center gap-3 mt-2">
-            {r.signals && (
+            {(r.signals || r.explanation) && (
               <button onClick={() => setExpanded(v => !v)} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-                {expanded ? "Hide details ↑" : "Show details ↓"}
+                {expanded ? "Hide forensics ↑" : "Show forensics ↓"}
               </button>
             )}
             {item.url && (
@@ -163,21 +210,108 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                 Copy result
               </button>
             )}
+            {feedbackSent ? (
+              <span className="text-xs text-green-500/80">✓ Thanks!</span>
+            ) : (
+              <span className="text-xs text-gray-700 flex items-center gap-1.5">
+                Right?
+                <button onClick={() => sendFeedback(r.verdict === "ai_generated" || r.verdict === "ai_edited")}
+                  className="hover:text-green-400 transition-colors" title="The verdict is correct">👍</button>
+                <button onClick={() => sendFeedback(!(r.verdict === "ai_generated" || r.verdict === "ai_edited"))}
+                  className="hover:text-red-400 transition-colors" title="The verdict is wrong">👎</button>
+              </span>
+            )}
           </div>
         </div>
         <button onClick={onRemove} className="text-gray-700 hover:text-gray-400 text-sm px-1 flex-shrink-0">✕</button>
       </div>
 
-      {expanded && r.signals && (
-        <div className="px-5 pb-5 border-t border-white/5 pt-4 space-y-1.5">
-          {Object.entries(r.signals).filter(([,v]) => typeof v === "number").slice(0, 12).map(([key, val]) => (
-            <div key={key} className="flex justify-between items-center text-xs">
-              <span className="text-gray-500">{key.replace(/_/g, " ")}</span>
-              <span className="font-mono font-semibold text-gray-400">
-                {val === 1 ? "✓ YES" : val === 0 ? "— NO" : (val as number).toFixed(3)}
-              </span>
+      {expanded && (
+        <div className="px-5 pb-5 border-t border-white/5 pt-4 space-y-4">
+          {/* Forensics breakdown — how each detection layer voted */}
+          {r.explanation?.layer_scores && Object.keys(r.explanation.layer_scores).length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Detection layers</p>
+              <div className="space-y-2">
+                {Object.entries(r.explanation.layer_scores).map(([key, val]) => {
+                  const pct = Math.round((val as number) * 100);
+                  const barColor = pct >= 60 ? "#ef4444" : pct <= 40 ? "#22c55e" : "#eab308";
+                  return (
+                    <div key={key} className="flex items-center gap-3 text-xs">
+                      <span className="text-gray-400 w-36 flex-shrink-0 truncate">{LAYER_LABELS[key] ?? key.replace(/_/g, " ")}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor, transition: "width .6s ease" }} />
+                      </div>
+                      <span className="font-mono font-semibold w-10 text-right" style={{ color: barColor }}>{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* Provenance — what the file's own "code" says */}
+          {r.explanation?.provenance && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Provenance</p>
+              <div className="flex flex-wrap gap-1.5">
+                {r.explanation.provenance.c2pa_claims_ai && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 border border-red-500/25">🔏 C2PA: AI-generated (signed)</span>
+                )}
+                {r.explanation.provenance.c2pa_present && !r.explanation.provenance.c2pa_claims_ai && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-300 border border-white/15">🔏 C2PA credentials present</span>
+                )}
+                {r.explanation.provenance.ai_tool && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 border border-red-500/25">🛠 {r.explanation.provenance.ai_tool}</span>
+                )}
+                {r.explanation.provenance.metadata_stripped && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">⚠ Metadata stripped</span>
+                )}
+                {r.explanation.provenance.platform_reencoded && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">♻ Platform re-encoded</span>
+                )}
+                {!r.explanation.provenance.c2pa_present && !r.explanation.provenance.ai_tool &&
+                 !r.explanation.provenance.metadata_stripped && !r.explanation.provenance.platform_reencoded && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-400 border border-white/15">No provenance markers</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Visual artifacts spotted by the vision layer */}
+          {r.explanation?.visual_artifacts && r.explanation.visual_artifacts.length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Visual artifacts spotted</p>
+              <div className="flex flex-wrap gap-1.5">
+                {r.explanation.visual_artifacts.map((a) => (
+                  <span key={a} className="px-2 py-0.5 rounded-full text-[11px] bg-orange-500/10 text-orange-300 border border-orange-500/25">👁 {a}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {r.explanation?.caveats && r.explanation.caveats.length > 0 && (
+            <div className="text-[11px] text-yellow-400/80 space-y-0.5">
+              {r.explanation.caveats.map((c) => <p key={c}>⚠ {c}</p>)}
+            </div>
+          )}
+
+          {/* Raw signals */}
+          {r.signals && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Raw signals</p>
+              <div className="space-y-1.5">
+                {Object.entries(r.signals).filter(([,v]) => typeof v === "number").slice(0, 12).map(([key, val]) => (
+                  <div key={key} className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">{key.replace(/_/g, " ")}</span>
+                    <span className="font-mono font-semibold text-gray-400">
+                      {val === 1 ? "✓ YES" : val === 0 ? "— NO" : (val as number).toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -341,7 +475,7 @@ export default function Home() {
       <section className="flex flex-col items-center text-center px-4 pt-20 pb-14">
         <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/25 rounded-full px-4 py-1.5 text-xs text-violet-300 mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-          Powered by Gemini Vision AI · Metadata forensics · Privacy safe
+          C2PA verification · Platform AI labels · Vision ensemble · Privacy safe
         </div>
 
         <div className="mb-6"><Logo size={72} /></div>
@@ -352,8 +486,9 @@ export default function Home() {
         </h1>
 
         <p className="text-gray-400 text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-          VerifAI detects AI-generated videos using metadata forensics and Gemini Vision AI —
-          even when TikTok and Instagram strip all metadata.
+          VerifAI reads the evidence platforms can&apos;t erase — cryptographic C2PA credentials,
+          the platforms&apos; own AI labels, and a calibrated vision ensemble — even after
+          TikTok and Instagram strip all file metadata.
         </p>
 
         {/* Three verdict pills */}
@@ -384,27 +519,31 @@ export default function Home() {
             <h2 className="text-4xl font-extrabold text-white">Three layers of detection</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
-            <Step n="1" icon="🔬" title="Metadata scan"
-              desc="Reads AI tool signatures, C2PA markers, and encoder tags embedded by Sora, Kling, Runway and others." />
-            <Step n="2" icon="👁️" title="Gemini Vision"
-              desc="When metadata is absent (TikTok strips it), Gemini Vision AI analyzes 6 video frames for AI artifacts." />
-            <Step n="3" icon="🧠" title="3 verdicts"
-              desc="AI Generated (created by AI), AI Edited (real footage with AI effects), or Authentic (real camera footage)." />
+            <Step n="1" icon="🔏" title="File forensics"
+              desc="Cryptographically verifies C2PA Content Credentials and reads AI-tool signatures, proprietary MP4 boxes and codec fingerprints from Sora, Kling, Runway, Veo and 30+ tools." />
+            <Step n="2" icon="🏷️" title="Platform intelligence"
+              desc="When platforms re-encode and strip the file, VerifAI reads their own AI-disclosure labels — TikTok AIGC, YouTube 'Altered or synthetic content', Meta 'AI info' — straight from the source." />
+            <Step n="3" icon="👁️" title="Vision ensemble"
+              desc="Gemini temporal-pair analysis fused with a frame model, frequency/motion analysis and audio fingerprinting — calibrated so a single layer can never cry wolf alone." />
           </div>
         </div>
       </section>
 
       {/* Stats */}
       <section className="py-12 px-4 border-y border-white/7" style={{ background: "rgba(255,255,255,0.02)" }}>
-        <div className="max-w-3xl mx-auto grid grid-cols-3 gap-4 text-center">
+        <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-4xl font-extrabold text-white">30+</p>
             <p className="text-xs text-gray-500 mt-1.5">AI tools detected</p>
           </div>
           <div>
-            <p className="text-4xl font-extrabold text-white">3</p>
-            <p className="text-xs text-gray-500 mt-1.5">verdict categories</p>
+            <p className="text-4xl font-extrabold text-white">6</p>
+            <p className="text-xs text-gray-500 mt-1.5">detection layers</p>
           </div>
+          <a href="/accuracy" className="group">
+            <p className="text-4xl font-extrabold text-white group-hover:text-violet-300 transition-colors">0.975</p>
+            <p className="text-xs text-gray-500 mt-1.5 group-hover:text-violet-400 transition-colors">cross-validated AUC ↗</p>
+          </a>
           <div>
             <p className="text-4xl font-extrabold text-white">~5s</p>
             <p className="text-xs text-gray-500 mt-1.5">avg detection time</p>
@@ -547,7 +686,12 @@ export default function Home() {
             <span className="font-semibold text-gray-500">VerifAI</span>
             <span>· No videos stored · Privacy safe</span>
           </div>
-          <span>Powered by Gemini Vision AI</span>
+          <div className="flex items-center gap-4">
+            <a href="/accuracy" className="hover:text-gray-400 transition-colors">Accuracy</a>
+            <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</a>
+            <a href="/dashboard" className="hover:text-gray-400 transition-colors">API</a>
+            <span>Powered by Gemini Vision AI</span>
+          </div>
         </div>
       </footer>
     </div>

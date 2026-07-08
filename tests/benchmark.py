@@ -1,4 +1,9 @@
 """
+DEPRECATED: server-side downloads are blocked by platform CDNs, so this
+benchmark always skips/fails. Use tests/real_benchmark.py on locally
+collected files instead (see tests/COLLECTION_PLAN.md). Kept for its
+curated URL lists.
+
 Benchmark VerifAI detector on 100 videos (50 AI-generated, 50 real).
 Downloads via yt-dlp and runs through the detector.
 Usage: python tests/benchmark.py

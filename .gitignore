@@ -13,3 +13,4 @@ mobile/node_modules/
 *.log
 .vercel
 data/videos/
+dataset_cache/

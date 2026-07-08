@@ -12,8 +12,6 @@ Works on H.264 video after platform re-encoding.
 """
 import subprocess
 import shutil
-import tempfile
-import os
 import math
 from typing import Optional, Tuple
 from dataclasses import dataclass

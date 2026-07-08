@@ -1,4 +1,9 @@
 """
+DEPRECATED: server-side downloads are blocked by platform CDNs, so this
+benchmark always skips/fails. Use tests/real_benchmark.py on locally
+collected files instead (see tests/COLLECTION_PLAN.md). Kept for its
+curated URL lists.
+
 VerifAI Benchmark v2 — downloads from TikTok (works without cookies)
 Tests known AI-generated TikTok videos vs real TikTok videos.
 """

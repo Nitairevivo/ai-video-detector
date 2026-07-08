@@ -31,12 +31,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-API = f"https://api.telegram.org/bot{TOKEN}"
-FILE_API = f"https://api.telegram.org/file/bot{TOKEN}"
+# Point TELEGRAM_API_BASE at a self-hosted Bot API server
+# (github.com/tdlib/telegram-bot-api) to lift the 20MB getFile limit to 2GB.
+API_BASE = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+API = f"{API_BASE}/bot{TOKEN}"
+FILE_API = f"{API_BASE}/file/bot{TOKEN}"
 
-# Telegram Bot API getFile serves files up to 20 MB. Bigger needs a local Bot
-# API server; we detect and explain instead of failing silently.
-TG_MAX_BYTES = 20 * 1024 * 1024
+# The hosted Bot API serves files up to 20 MB; a self-hosted server goes to 2GB.
+_SELF_HOSTED = API_BASE != "https://api.telegram.org"
+TG_MAX_BYTES = (2000 if _SELF_HOSTED else 20) * 1024 * 1024
+TG_MAX_LABEL = "2GB" if _SELF_HOSTED else "20MB"
 
 URL_RE = re.compile(r"https?://[^\s]+")
 VIDEO_URL_HINT = re.compile(
@@ -103,7 +107,7 @@ def download_file(file_id: str, dest: str) -> bool:
 
 # ─── Result formatting (Hebrew) ───────────────────────────────────────────────
 
-def format_result(res: dict) -> str:
+def format_result(res: dict, as_document: bool = True) -> str:
     verdict = res.get("verdict", "real")
     pct = round(float(res.get("confidence", 0)) * 100)
     method = res.get("detection_method", "")
@@ -130,12 +134,24 @@ def format_result(res: dict) -> str:
     if layers:
         pretty = ", ".join(f"{k}={round(float(v)*100)}%" for k, v in layers.items())
         lines.append(f"<i>שכבות: {pretty}</i>")
+
+    # Provenance notes — what the file's own "code" (metadata) tells us
+    signals = res.get("_signals") or {}
+    if signals.get("c2pa_is_ai"):
+        lines.append("🔏 הקובץ נושא חתימת Content Credentials (C2PA) שמעידה על יצירת AI — הוכחה קריפטוגרפית")
+    elif signals.get("has_c2pa"):
+        lines.append("🔏 נמצאו Content Credentials (C2PA) בקובץ")
+    if signals.get("metadata_is_stripped") or signals.get("platform_reencoded"):
+        note = "⚠️ המטא-דאטה המקורי של הקובץ נמחק (כנראה עבר דרך פלטפורמה/דחיסה)"
+        if not as_document:
+            note += "\n💡 <b>טיפ:</b> שלח את הסרטון <b>כקובץ</b> (📎 ← קובץ/File, בלי דחיסה) — כך כל המטא-דאטה המקורי נשמר והבדיקה מדויקת יותר"
+        lines.append(note)
     return "\n".join(lines)
 
 
 # ─── Core processing ──────────────────────────────────────────────────────────
 
-def _analyze_file(chat_id, msg_id, file_id, filename):
+def _analyze_file(chat_id, msg_id, file_id, filename, as_document=False):
     from api.server import run_full_analysis
     suffix = Path(filename or "video.mp4").suffix.lower() or ".mp4"
     if suffix not in (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"):
@@ -146,7 +162,7 @@ def _analyze_file(chat_id, msg_id, file_id, filename):
             send_message(chat_id, "❌ לא הצלחתי להוריד את הסרטון. נסה לשלוח שוב.", msg_id)
             return
         res = run_full_analysis(tmp, deep=True)
-        send_message(chat_id, format_result(res), msg_id)
+        send_message(chat_id, format_result(res, as_document=as_document), msg_id)
     except Exception as e:
         traceback.print_exc()
         send_message(chat_id, f"❌ שגיאה בניתוח: {str(e)[:120]}", msg_id)
@@ -189,8 +205,10 @@ def _analyze_url(chat_id, msg_id, url):
 WELCOME = (
     "👋 <b>ברוך הבא ל-VerifAI</b>\n\n"
     "אני בודק אם סרטון נוצר על ידי AI (Sora, Veo, Kling, Runway…) או אמיתי.\n\n"
-    "<b>הכי מדויק:</b> שלח לי את <b>קובץ הסרטון עצמו</b> — כאן בטלגרם אני מקבל את "
-    "הקובץ המלא ומנתח אותו הכי טוב שאפשר.\n"
+    "<b>הכי מדויק:</b> שלח לי את הסרטון <b>כקובץ</b> (📎 ← קובץ/File, בלי דחיסה) — "
+    "כך אני מקבל את הבייטים המקוריים עם כל המטא-דאטה וחתימות ה-C2PA, "
+    "והבדיקה הכי מדויקת שיש.\n"
+    "שליחה כסרטון רגיל עובדת גם, אבל טלגרם דוחס ומוחק חלק מהמידע.\n"
     "אפשר גם לשלוח <b>קישור</b> (TikTok / YouTube / Instagram…), ואני אוריד ואנתח.\n\n"
     "פשוט שלח סרטון או קישור ותקבל תשובה 👇"
 )
@@ -210,21 +228,26 @@ def handle_update(update: dict):
             return
 
         # 1) Actual video file (best path)
+        # A video sent as a DOCUMENT (📎 → File) keeps the original bytes and
+        # metadata intact; sent as a regular "video" Telegram's client
+        # compresses/re-encodes it and the original metadata is lost.
         video = msg.get("video") or msg.get("video_note")
         doc = msg.get("document")
+        as_document = False
         if not video and doc and str(doc.get("mime_type", "")).startswith("video/"):
             video = doc
+            as_document = True
 
         if video:
             size = int(video.get("file_size", 0) or 0)
             if size and size > TG_MAX_BYTES:
                 send_message(chat_id,
-                             "⚠️ הסרטון גדול מ-20MB — טלגרם לא נותן לבוט להוריד קבצים כאלה.\n"
+                             f"⚠️ הסרטון גדול מ-{TG_MAX_LABEL} — טלגרם לא נותן לבוט להוריד קבצים כאלה.\n"
                              "שלח קליפ קצר יותר, או שלח לי קישור לסרטון.", msg_id)
                 return
             send_typing(chat_id)
             fname = video.get("file_name") or "video.mp4"
-            _executor.submit(_analyze_file, chat_id, msg_id, video["file_id"], fname)
+            _executor.submit(_analyze_file, chat_id, msg_id, video["file_id"], fname, as_document)
             return
 
         # 2) URL in the text

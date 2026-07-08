@@ -44,26 +44,28 @@ def detect(
         console.print(f"[red]Path not found: {path}[/red]")
         raise typer.Exit(1)
 
+    import os as _os
+    use_gemini = bool(_os.environ.get("GEMINI_API_KEY"))
+
     for f in files:
         console.print(f"\n[bold]Analyzing:[/bold] {f.name}")
         status_msg = "Running deep analysis (visual + frequency)..." if deep else "Reading file signatures..."
         with console.status(status_msg):
             result = extract_features(str(f), deep=deep)
+            ml_prob, _ = classifier.predict(result.feature_vector)
+            # Same fusion as the production server — CLI and API must agree
+            from analyzer.ensemble import analyze_ensemble
+            ens = analyze_ensemble(str(f), result, ml_prob, use_gemini=use_gemini)
 
-        ml_prob, _ = classifier.predict(result.feature_vector)
-        if ml_prob is not None:
-            confidence = result.confidence * 0.4 + ml_prob * 0.6
-            if result.method == "No AI markers detected":
-                method = f"ML model ({ml_prob*100:.0f}%) + signal analysis"
-            else:
-                method = result.method
+        confidence = ens.confidence
+        method = ens.method
+        is_ai = ens.verdict == "ai_generated"
+        if is_ai:
+            color, verdict = "red", "AI GENERATED"
+        elif ens.verdict == "ai_edited":
+            color, verdict = "magenta", "REAL, AI-EDITED"
         else:
-            confidence = result.confidence
-            method = result.method
-
-        is_ai = confidence >= 0.5
-        color = "red" if is_ai else "green"
-        verdict = "AI GENERATED" if is_ai else "REAL / AUTHENTIC"
+            color, verdict = "green", "REAL / AUTHENTIC"
 
         panel_content = (
             f"[bold {color}]{verdict}[/bold {color}]\n"
@@ -72,17 +74,18 @@ def detect(
         )
         if result.ai_tool:
             panel_content += f"Tool: [bold]{result.ai_tool}[/bold]\n"
+        if not use_gemini:
+            panel_content += "[dim]Gemini layer off (set GEMINI_API_KEY to enable)[/dim]\n"
 
-        # Surface important warnings
-        from analyzer.metadata_reader import read_metadata as _rm
-        _m = _rm(str(f))
-        if deep and not _m.too_short_for_analysis:
+        # Surface important warnings (signals already computed — no second ffprobe run)
+        sig = result.signals or {}
+        if deep and not sig.get("too_short_for_analysis"):
             panel_content += "\n[dim]Deep analysis: visual + frequency signals included[/dim]"
-        if _m.too_short_for_analysis:
+        if sig.get("too_short_for_analysis"):
             panel_content += "\n[yellow]Warning: video too short (<2s) — results unreliable[/yellow]"
-        if _m.platform_reencoded:
-            panel_content += f"\n[yellow]Note: re-encoded by {_m.platform_name} — some signals lost[/yellow]"
-        if _m.metadata_is_stripped:
+        if sig.get("platform_reencoded"):
+            panel_content += "\n[yellow]Note: re-encoded by a platform — some signals lost[/yellow]"
+        if sig.get("metadata_is_stripped"):
             panel_content += "\n[yellow]Note: all metadata stripped — possible re-mux to hide origin[/yellow]"
 
         if ml_prob is None:

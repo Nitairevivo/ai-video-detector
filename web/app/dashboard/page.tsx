@@ -97,6 +97,52 @@ export default function Dashboard() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const [rotateInput, setRotateInput] = useState("");
+  const [rotatedKey, setRotatedKey]   = useState("");
+  const [rotateError, setRotateError] = useState("");
+  const [rotating, setRotating]       = useState(false);
+
+  const [usageKey, setUsageKey]       = useState("");
+  const [usageData, setUsageData]     = useState<any>(null);
+  const [usageError, setUsageError]   = useState("");
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  async function checkUsage() {
+    setUsageLoading(true);
+    setUsageError("");
+    setUsageData(null);
+    try {
+      const res = await fetch(`${API}/me`, { headers: { "X-Api-Key": usageKey.trim() } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Lookup failed");
+      setUsageData(data);
+    } catch (e: any) {
+      setUsageError(e.message);
+    } finally {
+      setUsageLoading(false);
+    }
+  }
+
+  async function rotate() {
+    setRotating(true);
+    setRotateError("");
+    setRotatedKey("");
+    try {
+      const res = await fetch(`${API}/rotate-key`, {
+        method: "POST",
+        headers: { "X-Api-Key": rotateInput.trim() },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Rotation failed");
+      setRotatedKey(data.api_key);
+      setRotateInput("");
+    } catch (e: any) {
+      setRotateError(e.message);
+    } finally {
+      setRotating(false);
+    }
+  }
+
   return (
     <main className="min-h-screen px-4 py-14"
       style={{ background: "radial-gradient(ellipse at 50% 0%, #0d0d2b 0%, #07070f 60%)" }}>
@@ -230,6 +276,114 @@ export default function Dashboard() {
                 Already have your key? Use it with the <code className="text-violet-400">X-Api-Key</code> header.
               </p>
             </>
+          )}
+        </div>
+
+        {/* Usage: 30-day history */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 p-5 space-y-3">
+          <h2 className="text-white font-bold text-sm">📊 Check your usage</h2>
+          <p className="text-gray-500 text-xs">Paste your key to see this month&apos;s quota and the last 30 days. This check doesn&apos;t count against your quota.</p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={usageKey}
+              onChange={e => { setUsageKey(e.target.value); setUsageError(""); }}
+              placeholder="aivd_..."
+              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none focus:border-violet-500/50"
+            />
+            <button
+              onClick={checkUsage}
+              disabled={usageLoading || !usageKey.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              {usageLoading ? "Loading…" : "Show"}
+            </button>
+          </div>
+          {usageError && <p className="text-red-400 text-xs">{usageError}</p>}
+          {usageData && (
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Plan</span>
+                <span className="text-white font-semibold capitalize">{usageData.tier}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">This month</span>
+                <span className="text-white">{usageData.requests_this_month} / {usageData.monthly_limit}</span>
+              </div>
+              <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-600"
+                  style={{ width: `${Math.min(100, (usageData.requests_this_month / usageData.monthly_limit) * 100)}%` }} />
+              </div>
+              {Array.isArray(usageData.usage_history) && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1.5">Last 30 days</p>
+                  <div className="flex items-end gap-[2px] h-12">
+                    {usageData.usage_history.map((d: { day: string; count: number }) => {
+                      const max = Math.max(1, ...usageData.usage_history.map((x: any) => x.count));
+                      return (
+                        <div key={d.day} title={`${d.day}: ${d.count}`}
+                          className="flex-1 rounded-t bg-violet-500/70 hover:bg-violet-400 transition-colors"
+                          style={{ height: `${Math.max(4, (d.count / max) * 100)}%`, opacity: d.count === 0 ? 0.18 : 1 }} />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(usageData.recent_checks) && usageData.recent_checks.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1.5">Recent checks (keyed requests)</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {usageData.recent_checks.map((c: any, i: number) => {
+                      const color = c.verdict === "ai_generated" ? "#ef4444" : c.verdict === "ai_edited" ? "#a855f7" : "#22c55e";
+                      const label = c.verdict === "ai_generated" ? "AI" : c.verdict === "ai_edited" ? "Edited" : "Real";
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-xs bg-black/25 rounded-lg px-3 py-1.5">
+                          <span className="font-bold w-12" style={{ color }}>{label}</span>
+                          <span className="text-gray-400 w-10">{Math.round(c.confidence * 100)}%</span>
+                          <span className="text-gray-500 flex-1 truncate">{c.source}</span>
+                          <span className="text-gray-600 text-[10px]">{(c.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Security: rotate a leaked key */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 p-5 space-y-3">
+          <h2 className="text-white font-bold text-sm">🔐 Rotate your API key</h2>
+          <p className="text-gray-500 text-xs">
+            Leaked a key? Paste it here to replace the secret. Same plan and usage — the old key stops working immediately.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={rotateInput}
+              onChange={e => { setRotateInput(e.target.value); setRotateError(""); }}
+              placeholder="aivd_..."
+              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none focus:border-violet-500/50"
+            />
+            <button
+              onClick={rotate}
+              disabled={rotating || !rotateInput.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              {rotating ? "Rotating…" : "Rotate"}
+            </button>
+          </div>
+          {rotateError && <p className="text-red-400 text-xs">{rotateError}</p>}
+          {rotatedKey && (
+            <div className="space-y-2">
+              <div className="bg-black/40 border border-green-500/25 rounded-xl px-4 py-3 font-mono text-sm text-green-300 break-all">
+                {rotatedKey}
+              </div>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-amber-300 text-xs">
+                ⚠️ Save the new key now — it won&apos;t be shown again. The old key is dead.
+              </div>
+            </div>
           )}
         </div>
 
