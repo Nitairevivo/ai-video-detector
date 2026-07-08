@@ -1,0 +1,96 @@
+name: Real-World Benchmark
+
+# Collects a labeled video set on the runner (Pexels real + yt-dlp AI),
+# runs the full detection pipeline, and publishes precision/recall/FPR.
+# This is roadmap phase 0.3 — a real accuracy number, produced automatically.
+
+on:
+  workflow_dispatch:
+    inputs:
+      per_query:
+        description: "Videos per search query (higher = bigger, slower set)"
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg + deps
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          pip install -r requirements.txt
+
+      - name: Collect labeled videos
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          python tests/collect_cloud_benchmark.py \
+            --out "${{ runner.temp }}/bench" \
+            --per-query "${{ github.event.inputs.per_query || '3' }}"
+
+      - name: Run benchmark
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python tests/real_benchmark.py \
+            "${{ runner.temp }}/bench/videos" \
+            --manifest "${{ runner.temp }}/bench/manifest.csv" \
+            --out "${{ runner.temp }}/bench/report" || true
+
+      - name: Publish to job summary
+        if: always()
+        run: |
+          if [ -f "${{ runner.temp }}/bench/report/real_benchmark_report.md" ]; then
+            cat "${{ runner.temp }}/bench/report/real_benchmark_report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report produced — collection may have failed (check logs)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report + manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/bench/report/real_benchmark_report.md
+            ${{ runner.temp }}/bench/report/real_benchmark_results.json
+            ${{ runner.temp }}/bench/manifest.csv
+          retention-days: 30
+
+      - name: Commit report to benchmark-results branch
+        if: always()
+        run: |
+          REPORT="${{ runner.temp }}/bench/report/real_benchmark_report.md"
+          [ -f "$REPORT" ] || exit 0
+          git config user.name "verifai-benchmark"
+          git config user.email "benchmark@users.noreply.github.com"
+          git checkout -B benchmark-results
+          mkdir -p benchmark
+          cp "$REPORT" benchmark/latest_report.md
+          cp "${{ runner.temp }}/bench/report/real_benchmark_results.json" benchmark/latest_results.json
+          cp "${{ runner.temp }}/bench/manifest.csv" benchmark/latest_manifest.csv
+          git add benchmark/
+          if git diff --cached --quiet; then
+            echo "No change to commit."
+          else
+            git commit -m "Benchmark run ${{ github.run_number }}"
+            git push -f origin benchmark-results
+          fi
