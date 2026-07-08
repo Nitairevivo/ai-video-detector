@@ -14,8 +14,16 @@ parser.add_argument("--quick", action="store_true", help="Download ~50 per class
 parser.add_argument("--target", type=int, default=150, help="Target videos per class")
 args = parser.parse_args()
 
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
+import os as _os
+from pathlib import Path as _Path
+
+# Dataset root: VERIFAI_DATASET_DIR env, else the original dev path, else ./dataset_cache
+_default = _Path("/Users/nitai/Desktop/dataset")
+_ROOT = _Path(_os.environ.get("VERIFAI_DATASET_DIR", "").strip() or
+              (_default if _default.exists() else _Path(__file__).parent / "dataset_cache"))
+
+AI_DIR   = _ROOT / "AI_Videos"
+REAL_DIR = _ROOT / "Real_Videos"
 AI_DIR.mkdir(parents=True, exist_ok=True)
 REAL_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -22,8 +22,16 @@ parser.add_argument("--skip-existing", action="store_true", default=True, help="
 args = parser.parse_args()
 
 EXTENSIONS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v'}
-AI_DIR   = Path("/Users/nitai/Desktop/dataset/AI_Videos")
-REAL_DIR = Path("/Users/nitai/Desktop/dataset/Real_Videos")
+import os as _os
+from pathlib import Path as _Path
+
+# Dataset root: VERIFAI_DATASET_DIR env, else the original dev path, else ./dataset_cache
+_default = _Path("/Users/nitai/Desktop/dataset")
+_ROOT = _Path(_os.environ.get("VERIFAI_DATASET_DIR", "").strip() or
+              (_default if _default.exists() else _Path(__file__).parent / "dataset_cache"))
+
+AI_DIR   = _ROOT / "AI_Videos"
+REAL_DIR = _ROOT / "Real_Videos"
 TRAINING_DATA_PATH = Path(__file__).parent / "data" / "training_samples.json"
 
 # Optionally reset

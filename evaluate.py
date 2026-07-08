@@ -31,6 +31,14 @@ from models.classifier import get_classifier
 EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 
 
+import os as _os
+from pathlib import Path as _Path
+
+# Dataset root: VERIFAI_DATASET_DIR env, else the original dev path, else ./dataset_cache
+_default = _Path("/Users/nitai/Desktop/dataset")
+_ROOT = _Path(_os.environ.get("VERIFAI_DATASET_DIR", "").strip() or
+              (_default if _default.exists() else _Path(__file__).parent / "dataset_cache"))
+
 def list_videos(d: Path, limit: int, seed: int):
     files = [f for f in d.glob("*") if f.suffix.lower() in EXTS and f.stat().st_size > 10000]
     random.Random(seed).shuffle(files)
@@ -125,8 +133,8 @@ def run(ai_dir, real_dir, limit, use_gemini, threshold, seed):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--ai-dir", default="/Users/nitai/Desktop/dataset/AI_Videos")
-    p.add_argument("--real-dir", default="/Users/nitai/Desktop/dataset/Real_Videos")
+    p.add_argument("--ai-dir", default=str(_ROOT / "AI_Videos"))
+    p.add_argument("--real-dir", default=str(_ROOT / "Real_Videos"))
     p.add_argument("--limit", type=int, default=40, help="videos per class")
     p.add_argument("--threshold", type=float, default=0.5)
     p.add_argument("--no-gemini", action="store_true")
