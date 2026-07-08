@@ -155,22 +155,59 @@ def _pct(x):
 
 def render_markdown(metrics, by_platform, by_category, by_method, errors, skipped, args_desc) -> str:
     c = metrics["confusion"]
-    lines = [
-        "# VerifAI Real-World Benchmark Report",
-        "",
-        f"*Run config: {args_desc}*",
-        "",
-        "## Headline numbers",
-        "",
-        f"| Metric | Value |",
-        f"|---|---|",
-        f"| Videos tested | {metrics['total']} |",
-        f"| **Accuracy** | **{_pct(metrics['accuracy'])}** |",
-        f"| **Precision** (flagged AI → really AI) | **{_pct(metrics['precision'])}** |",
-        f"| **Recall** (AI videos caught) | **{_pct(metrics['recall'])}** |",
-        f"| **False-positive rate** (real flagged as AI) | **{_pct(metrics['fpr'])}** |",
-        f"| False-negative rate | {_pct(metrics['fnr'])} |",
-        "",
+    n_real = c["fp"] + c["tn"]
+    n_ai = c["tp"] + c["fn"]
+    lines = ["# VerifAI Real-World Benchmark Report", "", f"*Run config: {args_desc}*", ""]
+
+    # Single-class runs are common (e.g. AI collection blocked from CI datacenter
+    # IPs) — frame them around the metric that IS meaningful instead of a
+    # misleading "accuracy 0%".
+    if n_ai == 0 and n_real > 0:
+        spec = None if n_real == 0 else c["tn"] / n_real
+        lines += [
+            "## Real-footage run (false-positive test)",
+            "",
+            "No AI videos in this set — AI collection was unavailable (datacenter IPs "
+            "are blocked by video platforms; AI recall requires phone-collected samples). "
+            "The meaningful number here is how often **real footage is wrongly flagged as AI**:",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+            f"| Real videos tested | {n_real} |",
+            f"| **False-positive rate** (real → wrongly AI) | **{_pct(metrics['fpr'])}** |",
+            f"| **Specificity** (real correctly kept real) | **{_pct(spec)}** |",
+            f"| Wrongly flagged | {c['fp']} of {n_real} |",
+            "",
+        ]
+    elif n_real == 0 and n_ai > 0:
+        lines += [
+            "## AI-footage run (recall test)",
+            "",
+            "No real videos in this set — the meaningful number is **recall** "
+            "(share of AI videos caught):",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+            f"| AI videos tested | {n_ai} |",
+            f"| **Recall** (AI caught) | **{_pct(metrics['recall'])}** |",
+            f"| Missed (AI → wrongly real) | {c['fn']} of {n_ai} |",
+            "",
+        ]
+    else:
+        lines += [
+            "## Headline numbers",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+            f"| Videos tested | {metrics['total']} |",
+            f"| **Accuracy** | **{_pct(metrics['accuracy'])}** |",
+            f"| **Precision** (flagged AI → really AI) | **{_pct(metrics['precision'])}** |",
+            f"| **Recall** (AI videos caught) | **{_pct(metrics['recall'])}** |",
+            f"| **False-positive rate** (real flagged as AI) | **{_pct(metrics['fpr'])}** |",
+            f"| False-negative rate | {_pct(metrics['fnr'])} |",
+            "",
+        ]
+    lines += [
         f"Confusion: TP={c['tp']}  FP={c['fp']}  FN={c['fn']}  TN={c['tn']}"
         + (f"  |  skipped (unreadable/missing): {skipped}" if skipped else ""),
         "",
@@ -293,9 +330,19 @@ def main():
                                 errors, skipped, args_desc)
     (out / "real_benchmark_report.md").write_text(report_md)
 
+    c = metrics["confusion"]
+    n_ai = c["tp"] + c["fn"]
+    n_real = c["fp"] + c["tn"]
     print("\n" + "=" * 72)
-    print(f"  Accuracy:  {_pct(metrics['accuracy'])}    Precision: {_pct(metrics['precision'])}")
-    print(f"  Recall:    {_pct(metrics['recall'])}    FPR:       {_pct(metrics['fpr'])}")
+    if n_ai == 0 and n_real > 0:
+        spec = c["tn"] / n_real if n_real else None
+        print(f"  Real-footage run: FPR {_pct(metrics['fpr'])}  |  Specificity {_pct(spec)}")
+        print(f"  {c['fp']} of {n_real} real videos wrongly flagged as AI")
+    elif n_real == 0 and n_ai > 0:
+        print(f"  AI-footage run: Recall {_pct(metrics['recall'])}  ({c['tp']}/{n_ai} caught)")
+    else:
+        print(f"  Accuracy:  {_pct(metrics['accuracy'])}    Precision: {_pct(metrics['precision'])}")
+        print(f"  Recall:    {_pct(metrics['recall'])}    FPR:       {_pct(metrics['fpr'])}")
     print(f"  Misclassified: {len(errors)}   Skipped: {skipped}")
     print(f"\n  Full report: {out / 'real_benchmark_report.md'}")
     print("=" * 72)

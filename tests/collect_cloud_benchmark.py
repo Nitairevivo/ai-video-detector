@@ -82,6 +82,64 @@ def collect_pexels(out_dir: Path, per_query: int, api_key: str) -> list:
     return rows
 
 
+def collect_wikimedia(out_dir: Path, per_query: int) -> list:
+    """
+    Real footage from Wikimedia Commons — freely licensed, NO API key, and not
+    IP-blocked from datacenter runners. The no-key fallback for the real side.
+    """
+    rows = []
+    api = "https://commons.wikimedia.org/w/api.php"
+    searches = [
+        ("nature landscape", "nature"), ("people walking city", "people"),
+        ("ocean waves", "nature"), ("cooking", "people"),
+        ("water splash", "chaotic"), ("traffic street", "street"),
+        ("bird flying", "nature"), ("train railway", "aerial"),
+    ]
+    for term, category in searches:
+        params = urllib.parse.urlencode({
+            "action": "query", "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:video {term}",
+            "gsrnamespace": "6", "gsrlimit": str(per_query),
+            "prop": "imageinfo", "iiprop": "url|size|mediatype",
+        })
+        try:
+            req = urllib.request.Request(f"{api}?{params}",
+                                         headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read())
+        except Exception as e:
+            print(f"  [wikimedia] {term}: {e}")
+            continue
+
+        pages = (data.get("query", {}) or {}).get("pages", {}) or {}
+        for page in pages.values():
+            info = (page.get("imageinfo") or [{}])[0]
+            url = info.get("url", "")
+            if info.get("mediatype") != "VIDEO" or not url:
+                continue
+            if (info.get("size") or 0) > 50 * 1024 * 1024:
+                continue
+            ext = os.path.splitext(url)[1].lower() or ".webm"
+            if ext not in (".webm", ".ogv", ".mp4", ".mov"):
+                continue
+            fname = f"wiki_{abs(hash(url)) % 10**8}{ext}"
+            dest = out_dir / fname
+            if dest.exists():
+                continue
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
+                with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
+                    f.write(r.read(50 * 1024 * 1024))
+                if dest.stat().st_size > 10000:
+                    rows.append({"filename": fname, "label": "real",
+                                 "platform": "wikimedia", "category": category})
+                    print(f"  [real] {fname} ({category})")
+            except Exception as e:
+                print(f"  [wikimedia] download: {e}")
+    return rows
+
+
 def collect_ai(out_dir: Path, per_query: int) -> list:
     rows = []
     for query, category in AI_QUERIES:
@@ -123,11 +181,13 @@ def main():
     api_key = os.environ.get("PEXELS_API_KEY", "").strip()
     rows = []
 
-    print("Collecting REAL footage from Pexels…")
+    print("Collecting REAL footage…")
     if api_key:
         rows += collect_pexels(vids, args.per_query, api_key)
     else:
-        print("  PEXELS_API_KEY not set — skipping real side")
+        print("  PEXELS_API_KEY not set — using Wikimedia Commons (no key needed)")
+    # Always add Wikimedia too — more real samples, and the sole source with no key
+    rows += collect_wikimedia(vids, args.per_query)
 
     print("Collecting AI footage via yt-dlp…")
     rows += collect_ai(vids, args.per_query)
