@@ -82,6 +82,18 @@ def init_db():
                 PRIMARY KEY (key_id, day)
             );
 
+            -- Per-key detection history — the B2B dashboard's audit trail.
+            -- Stores verdict metadata only, never the video.
+            CREATE TABLE IF NOT EXISTS detections_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_id      TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                verdict     TEXT NOT NULL,
+                confidence  REAL NOT NULL,
+                source      TEXT                -- filename or URL host (truncated)
+            );
+            CREATE INDEX IF NOT EXISTS idx_detections_key ON detections_log(key_id, id DESC);
+
             -- User verdict feedback — the raw material of the learning loop.
             -- Stores only verdict metadata + numeric signals, never the video.
             CREATE TABLE IF NOT EXISTS feedback (
@@ -239,6 +251,27 @@ def downgrade_to_free(stripe_subscription_id: str):
             UPDATE api_keys SET tier = 'free', stripe_subscription_id = NULL
             WHERE stripe_subscription_id = ?
         """, (stripe_subscription_id,))
+
+
+def log_detection(key_id: str, verdict: str, confidence: float, source: str = ""):
+    """Append one detection to the key's audit trail (verdict metadata only)."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO detections_log (key_id, created_at, verdict, confidence, source)
+            VALUES (?, ?, ?, ?, ?)
+        """, (key_id, now, verdict, float(confidence), (source or "")[:200]))
+
+
+def recent_detections(key_id: str, limit: int = 20) -> list:
+    """Latest detections for a key, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT created_at, verdict, confidence, source
+            FROM detections_log WHERE key_id = ?
+            ORDER BY id DESC LIMIT ?
+        """, (key_id, limit)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def add_feedback(verdict: str, confidence: float, user_says_ai: bool,

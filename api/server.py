@@ -192,6 +192,27 @@ def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
         record_request(x_api_key)
     return key
 
+
+def get_optional_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
+    """
+    Key-optional auth for the core detect endpoints: anonymous callers stay
+    allowed (public demo path, IP rate-limited), but when a key IS presented
+    it must be valid, quota is enforced and usage is recorded — so paid API
+    traffic is actually billed and lands in the customer's audit trail.
+    """
+    if not x_api_key:
+        return None
+    key = lookup_key(x_api_key)
+    if not key:
+        raise HTTPException(status_code=401, detail="Invalid or inactive API key")
+    if key.over_limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Monthly limit reached ({key.monthly_limit} requests). Upgrade at https://web-zeta-ecru-80.vercel.app/dashboard",
+        )
+    record_request(x_api_key)
+    return key
+
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
 # Upload cap: enough for any social-video file, small enough not to fill the
 # container's disk. Deep analysis (Gemini frame pairs, visual, audio) needs the
@@ -231,6 +252,7 @@ async def detect(
     request: Request,
     file: UploadFile = File(...),
     deep: bool = False,
+    key=Depends(get_optional_api_key),
 ):
     """
     Analyze a video file for AI generation.
@@ -257,6 +279,10 @@ async def detect(
         payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
         payload["filename"] = file.filename
         payload["signals"] = payload.pop("_signals", {})
+        if key:
+            from api.database import log_detection
+            log_detection(key.key_id, payload["verdict"], payload["confidence"],
+                          source=file.filename or "upload")
         return payload
     finally:
         os.unlink(tmp_path)
@@ -535,7 +561,8 @@ def download_video_from_url(url: str, tmp_path: str):
 
 @app.post("/detect-url")
 @limiter.limit("30/minute")
-async def detect_url(request: Request, url: str = Body(..., embed=True), deep: bool = False):
+async def detect_url(request: Request, url: str = Body(..., embed=True), deep: bool = False,
+                     key=Depends(get_optional_api_key)):
     """
     Detect AI from any video URL: TikTok, YouTube, Instagram, Telegram, direct MP4, etc.
     Uses yt-dlp for platform URLs, direct HTTP for CDN links.
@@ -601,6 +628,10 @@ async def detect_url(request: Request, url: str = Body(..., embed=True), deep: b
 
         payload["url"] = url
         payload["aigc_page_label"] = aigc_from_page
+        if key:
+            from api.database import log_detection
+            log_detection(key.key_id, payload["verdict"], payload["confidence"],
+                          source=urllib.parse.urlparse(url).netloc or url[:60])
         return payload
     finally:
         if os.path.exists(tmp_path):
@@ -913,7 +944,7 @@ def me(key=Depends(get_api_key)):
     """Returns usage stats for the authenticated API key, incl. 30-day history."""
     if not key:
         raise HTTPException(401, "API key required")
-    from api.database import usage_history
+    from api.database import usage_history, recent_detections
     return {
         "email": key.email,
         "tier": key.tier,
@@ -922,4 +953,5 @@ def me(key=Depends(get_api_key)):
         "remaining": key.remaining,
         "requests_total": key.requests_total,
         "usage_history": usage_history(key.key_id, days=30),
+        "recent_checks": recent_detections(key.key_id, limit=20),
     }
