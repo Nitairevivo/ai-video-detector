@@ -193,10 +193,25 @@ def get_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
     return key
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
-MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
-# We only need the first 10MB for metadata + container analysis.
-# Codec frame analysis (ffprobe) reads directly from disk and is already limited to 120 frames.
-FAST_READ_BYTES = 10 * 1024 * 1024  # 10MB
+# Upload cap: enough for any social-video file, small enough not to fill the
+# container's disk. Deep analysis (Gemini frame pairs, visual, audio) needs the
+# WHOLE file — MP4s often keep the moov index at the end, so a truncated file
+# can lose all frames, not just the tail.
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500MB
+
+
+async def _save_upload(file: UploadFile, tmp, limit: int = MAX_UPLOAD_BYTES) -> int:
+    """Stream an upload to disk in chunks (bounded memory). Returns bytes written."""
+    total = 0
+    while True:
+        chunk = await file.read(1 << 20)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(400, f"File too large (max {limit // (1024*1024)}MB)")
+        tmp.write(chunk)
+    return total
 
 
 @app.get("/")
@@ -227,10 +242,14 @@ async def detect(
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        chunk = await file.read(FAST_READ_BYTES)
-        if not chunk:
+        try:
+            written = await _save_upload(file, tmp)
+        except HTTPException:
+            os.unlink(tmp_path)
+            raise
+        if written == 0:
+            os.unlink(tmp_path)
             raise HTTPException(400, "Empty file")
-        tmp.write(chunk)
 
     try:
         # Analysis takes 10-60s of CPU/IO — run it off the event loop so one
@@ -305,7 +324,7 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        tmp.write(await file.read())
+        await _save_upload(file, tmp)
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path)
@@ -761,7 +780,7 @@ async def calibrate(
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        tmp.write(await file.read(FAST_READ_BYTES))
+        await _save_upload(file, tmp)
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path, True)
