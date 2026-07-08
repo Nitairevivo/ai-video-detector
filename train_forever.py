@@ -395,8 +395,12 @@ def push_model():
              f"Auto-train: {dataset_stats()[0]+dataset_stats()[1]} samples"],
             cwd=repo, capture_output=True
         )
-        subprocess.run(["git", "push", "origin", "master"], cwd=repo, capture_output=True)
-        print("  ✓ pushed to production")
+        r = subprocess.run(["git", "push", "origin", "master"], cwd=repo,
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            print("  ✓ pushed to production")
+        else:
+            print(f"  ✗ git push failed (rc={r.returncode}): {(r.stderr or '').strip()[-160:]}")
     except Exception as e:
         print(f"  ✗ push failed: {e}")
 
