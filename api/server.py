@@ -458,8 +458,11 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
 
 
 def _download_direct(url: str, tmp_path: str) -> bool:
-    """Direct HTTP download with Range request — only first 10MB needed."""
-    LIMIT = 10 * 1024 * 1024
+    """
+    Direct HTTP download, capped at 60MB. The cap matters: deep analysis
+    needs the whole file, and social videos are almost always well under it.
+    """
+    LIMIT = 60 * 1024 * 1024
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": _pick_ua(),

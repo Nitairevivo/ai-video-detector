@@ -15,8 +15,6 @@ spatial-temporal structure of the video, not in the metadata.
 """
 import subprocess
 import shutil
-import tempfile
-import os
 from dataclasses import dataclass
 from typing import Optional
 

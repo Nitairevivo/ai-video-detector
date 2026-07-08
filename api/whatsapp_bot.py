@@ -101,7 +101,9 @@ def download_media(media_id: str, dest: str) -> bool:
                     break
                 total += len(chunk)
                 if total > MAX_MEDIA_BYTES:
-                    break
+                    # Don't analyze a truncated video — deep layers would run on
+                    # a cut file (and possibly lose all frames if moov is last).
+                    return False
                 f.write(chunk)
         return os.path.getsize(dest) > 1000
     except Exception:
