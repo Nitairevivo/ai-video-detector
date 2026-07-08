@@ -1,1 +1,1 @@
-{"samples": 986, "ai_samples": 449, "real_samples": 537, "cv_auc_mean": 0.9588861988454204, "cv_auc_std": 0.013329905028302079}
+{"samples": 993, "ai_samples": 453, "real_samples": 540, "cv_auc_mean": 0.9599111382444715, "cv_auc_std": 0.01355047785112022}
