@@ -5,6 +5,13 @@ Run:
   python label_all.py --deep    # include visual+frequency analysis (slower, better)
   python label_all.py --reset   # clear existing training data and start fresh
 """
+
+# Script, not a module — top-level code downloads/labels/trains on import.
+# Importing it by accident once retrained the model; fail fast instead.
+if __name__ != "__main__":
+    raise ImportError(__file__ + " is a command-line script; run it with python, do not import it")
+
+
 import sys
 import argparse
 import json

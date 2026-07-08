@@ -4,6 +4,13 @@ Run: python download_dataset.py
      python download_dataset.py --quick   # only 50 videos, fast
      python download_dataset.py --target 300  # aim for 300 per class
 """
+
+# Script, not a module — top-level code downloads/labels/trains on import.
+# Importing it by accident once retrained the model; fail fast instead.
+if __name__ != "__main__":
+    raise ImportError(__file__ + " is a command-line script; run it with python, do not import it")
+
+
 import subprocess
 import sys
 import argparse
