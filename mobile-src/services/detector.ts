@@ -21,6 +21,7 @@ export type DetectionResult = {
       ai_tool?: string | null;
     };
     layer_scores?: Record<string, number>;
+    frame_timeline?: number[];  // per-frame suspicion 0=natural … 1=AI-like
     caveats?: string[];
   } | null;
 };
