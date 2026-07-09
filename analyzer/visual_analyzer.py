@@ -189,6 +189,18 @@ def analyze_visual(video_path: str) -> VisualResult:
             bright_uniformity_score * 0.20
         )
 
+        # ── Per-frame suspicion timeline (0 = natural … 1 = AI-like) ────────
+        # Real cameras carry per-frame sensor noise; AI frames are unnaturally
+        # clean, so the noise floor is the most honest per-frame signal. A frame
+        # whose sharpness also sits right on the clip's uniform average reads
+        # even more synthetic, so that nudges the score up.
+        frame_timeline = []
+        for nf, sh in zip(noise_floors, sharpnesses):
+            noise_susp = max(0.0, 1.0 - nf / 3.0)
+            sharp_dev = abs(sh - avg_sharp) / (avg_sharp + 1e-6)
+            fs = noise_susp * 0.7 + max(0.0, 1.0 - sharp_dev * 2) * 0.3
+            frame_timeline.append(round(min(1.0, fs), 3))
+
         signals = {
             "avg_noise_floor": round(avg_noise, 3),
             "noise_ai_score": round(noise_score, 3),
@@ -198,6 +210,7 @@ def analyze_visual(video_path: str) -> VisualResult:
             "brightness_uniformity_score": round(bright_uniformity_score, 3),
             "combined_visual_score": round(ai_score, 3),
             "frames_analyzed": len(noise_floors),
+            "frame_timeline": frame_timeline,
         }
 
         # ── Decision thresholds ────────────────────────────────────────────

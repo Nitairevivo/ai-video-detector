@@ -177,6 +177,9 @@ def _collect_signals(
         "visual_brightness_cv": visual.signals.get("brightness_cv", 0.0) if visual else 0.0,
         "visual_ai_score": visual.confidence if visual else 0.0,
         "visual_analyzed": int(visual is not None),
+        # Per-frame suspicion timeline for the web forensics report (list, so
+        # it is excluded from the ML feature vector — see _build_vector).
+        "visual_frame_timeline": visual.signals.get("frame_timeline", []) if visual else [],
 
         # File-level
         "file_size_mb": meta.file_size_bytes / (1024 * 1024),

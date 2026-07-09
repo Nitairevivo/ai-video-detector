@@ -396,6 +396,9 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
                 "edit_tool": result.edit_tool,
             },
             "visual_artifacts": list(getattr(ens, "gemini_artifacts", []) or []),
+            # Per-frame suspicion (0=natural … 1=AI-like) when the visual layer
+            # ran — drives the timeline in the web forensics report.
+            "frame_timeline": list(signals.get("visual_frame_timeline", []) or []),
             "caveats": [c for c in (
                 "video shorter than 2s — low reliability" if signals.get("too_short_for_analysis") else None,
                 "re-encoded by a platform — original file metadata lost" if signals.get("platform_reencoded") else None,
