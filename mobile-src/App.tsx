@@ -291,6 +291,27 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
               ? <Text style={styles.bannerLayers} numberOfLines={1}>{t.layers}: {parts.join(" · ")}</Text>
               : null;
           })()}
+          {(() => {
+            const tl = result.explanation?.frame_timeline;
+            if (!tl || tl.length < 2) return null;
+            // Compact per-frame suspicion sparkline (green=natural, red=AI-like),
+            // the same forensic signal the web report shows.
+            return (
+              <View style={styles.bannerTimeline}>
+                {tl.map((v, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: Math.max(2, Math.round(v * 18)),
+                      backgroundColor: v >= 0.6 ? "#ef4444" : v <= 0.4 ? "#22c55e" : "#eab308",
+                      borderRadius: 1,
+                    }}
+                  />
+                ))}
+              </View>
+            );
+          })()}
           {result.explanation?.caveats?.length ? (
             <Text style={styles.bannerCaveat} numberOfLines={2}>⚠ {result.explanation.caveats[0]}</Text>
           ) : null}
@@ -842,6 +863,7 @@ const styles = StyleSheet.create({
   bannerLayers: { color: "#556", fontSize: 9, marginTop: 2 },
   bannerCaveat: { color: "#b58a4a", fontSize: 9, marginTop: 2 },
   bannerFast: { color: "#6ee7b7", fontSize: 9, marginTop: 2, fontWeight: "600" },
+  bannerTimeline: { flexDirection: "row", alignItems: "flex-end", gap: 1.5, height: 18, marginTop: 4, width: 120 },
   bannerCircle: { width: 66, height: 66, borderRadius: 33, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },
