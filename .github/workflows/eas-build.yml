@@ -1,20 +1,20 @@
 name: EAS App Build (store-ready)
 
 # Builds the VerifAI mobile app on Expo's servers (EAS).
-# - profile "production" (default) → Android .aab / iOS release, the artifacts
-#   you upload to Google Play / App Store.
-# - profile "preview" → an installable Android .apk for side-loading/testing.
+# - profile "preview" (default) → an installable Android .apk for testing on
+#   your own phone (no store needed).
+# - profile "production" → Android .aab / iOS release for the stores.
 #
-# You need an Expo access token (https://expo.dev/settings/access-tokens),
-# passed as the `expo_token` input. Run it from the Actions tab →
-# "EAS App Build (store-ready)" → Run workflow.
+# Auth: uses the repo secret EXPO_TOKEN if it exists; otherwise pass the
+# expo_token input manually. Get a token at expo.dev → Settings → Access tokens.
 
 on:
   workflow_dispatch:
     inputs:
       expo_token:
-        description: 'Expo personal access token (expo.dev → Settings → Access tokens)'
-        required: true
+        description: 'Expo token (leave blank to use the saved EXPO_TOKEN secret)'
+        required: false
+        default: ''
       platform:
         description: 'Which platform to build'
         type: choice
@@ -23,14 +23,25 @@ on:
       profile:
         description: 'EAS build profile'
         type: choice
-        default: production
-        options: [production, preview]
+        default: preview
+        options: [preview, production]
 
 jobs:
   build:
     name: Build ${{ github.event.inputs.platform }} (${{ github.event.inputs.profile }})
     runs-on: ubuntu-latest
+    env:
+      # manual input wins; otherwise fall back to the saved secret
+      EXPO_TOKEN: ${{ github.event.inputs.expo_token != '' && github.event.inputs.expo_token || secrets.EXPO_TOKEN }}
     steps:
+      - name: Check a token is available
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::No Expo token. Add a repo secret named EXPO_TOKEN, or pass the expo_token input."
+            exit 1
+          fi
+          echo "Expo token present ✓"
+
       - uses: actions/checkout@v4
         # build the latest merged code, not a stale branch
         with:
@@ -52,5 +63,3 @@ jobs:
       - name: Build
         run: eas build --profile "${{ github.event.inputs.profile }}" --platform "${{ github.event.inputs.platform }}" --non-interactive --no-wait
         working-directory: mobile
-        env:
-          EXPO_TOKEN: ${{ github.event.inputs.expo_token }}
