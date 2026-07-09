@@ -81,6 +81,28 @@ def test_fast_flags_iptc_digital_source_type(iptc_video):
     assert prov["iptc_digital_source_type"] == "trainedAlgorithmicMedia"
 
 
+@pytest.fixture(scope="module")
+def capture_video(clean_video, tmp_path_factory):
+    d = tmp_path_factory.mktemp("fast_cap")
+    p = d / "capture.mp4"
+    subprocess.run([FFMPEG, "-y", "-i", clean_video, "-c", "copy", "-metadata",
+                    "comment=Iptc4xmpExt:DigitalSourceType "
+                    "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+                    str(p)], check=True, capture_output=True)
+    return str(p)
+
+
+def test_fast_camera_capture_marker_reads_real(capture_video):
+    """IPTC 'digitalCapture' is an explicit real-camera declaration — the
+    code-first path must treat it as camera provenance and not flag it AI."""
+    from api.server import run_fast_analysis
+    res = run_fast_analysis(capture_video)
+    assert res["verdict"] != "ai_generated"
+    prov = res["explanation"]["provenance"]
+    assert prov["camera_provenance"] is True
+    assert prov["synthetic_media_marker"] is False
+
+
 def test_fast_flags_sora_from_metadata(sora_video):
     from api.server import run_fast_analysis
     res = run_fast_analysis(sora_video)

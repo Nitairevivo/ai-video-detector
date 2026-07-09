@@ -54,6 +54,7 @@ const T = {
     confidence: "ביטחון",
     provC2paAi: "🔏 חתימת C2PA: נוצר ב-AI (מאומת)",
     provIptc: "🏷 תקן IPTC מצהיר: מדיה שנוצרה ב-AI",
+    provCamera: "📷 תקן IPTC מצהיר: צולם במצלמה",
     provC2pa: "🔏 נמצאו Content Credentials",
     provStripped: "⚠️ מטא-דאטה מקורי נמחק ע\u05f4י הפלטפורמה",
     layers: "שכבות",
@@ -108,6 +109,7 @@ const T = {
     confidence: "confidence",
     provC2paAi: "🔏 C2PA signature: AI-generated (verified)",
     provIptc: "🏷 IPTC standard declares: AI-generated media",
+    provCamera: "📷 IPTC standard declares: camera capture",
     provC2pa: "🔏 Content Credentials found",
     provStripped: "⚠️ Original metadata stripped by platform",
     layers: "Layers",
@@ -280,6 +282,7 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
             const prov = result.explanation?.provenance;
             const line = prov?.c2pa_claims_ai ? t.provC2paAi
               : prov?.synthetic_media_marker ? t.provIptc
+              : prov?.camera_provenance ? t.provCamera
               : prov?.c2pa_present ? t.provC2pa
               : (prov?.metadata_stripped || prov?.platform_reencoded) ? t.provStripped
               : null;

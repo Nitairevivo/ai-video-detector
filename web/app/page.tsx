@@ -16,6 +16,7 @@ type Explanation = {
     c2pa_claims_ai?: boolean;
     synthetic_media_marker?: boolean;
     iptc_digital_source_type?: string | null;
+    camera_provenance?: boolean;
     metadata_stripped?: boolean;
     platform_reencoded?: boolean;
     ai_tool?: string | null;
@@ -272,6 +273,9 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                 {r.explanation.provenance.ai_tool && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 border border-red-500/25">🛠 {r.explanation.provenance.ai_tool}</span>
                 )}
+                {r.explanation.provenance.camera_provenance && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-green-500/15 text-green-300 border border-green-500/25">📷 Camera capture (IPTC)</span>
+                )}
                 {r.explanation.provenance.metadata_stripped && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">⚠ Metadata stripped</span>
                 )}
@@ -279,7 +283,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">♻ Platform re-encoded</span>
                 )}
                 {!r.explanation.provenance.c2pa_present && !r.explanation.provenance.ai_tool &&
-                 !r.explanation.provenance.synthetic_media_marker &&
+                 !r.explanation.provenance.synthetic_media_marker && !r.explanation.provenance.camera_provenance &&
                  !r.explanation.provenance.metadata_stripped && !r.explanation.provenance.platform_reencoded && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-400 border border-white/15">No provenance markers</span>
                 )}

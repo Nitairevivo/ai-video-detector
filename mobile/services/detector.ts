@@ -17,6 +17,7 @@ export type DetectionResult = {
       c2pa_claims_ai?: boolean;
       synthetic_media_marker?: boolean;
       iptc_digital_source_type?: string | null;
+      camera_provenance?: boolean;
       metadata_stripped?: boolean;
       platform_reencoded?: boolean;
       platform_ai_label?: boolean;

@@ -238,6 +238,7 @@ class MetadataResult:
     # platforms and many AI tools) — detected by byte scan, no dependency.
     iptc_digital_source_type: Optional[str] = None   # e.g. "trainedAlgorithmicMedia"
     synthetic_media_marker: bool = False             # IPTC marker declares AI/synthetic
+    capture_origin_marker: bool = False              # IPTC marker declares real capture (digitalCapture)
 
     # Resolution fingerprint (survives re-encoding)
     resolution_ai_tool: Optional[str] = None
@@ -521,11 +522,16 @@ def _check_c2pa(file_path: str, result: MetadataResult):
         (b'algorithmicMedia',                     "algorithmicMedia"),
         (b'compositeSynthetic',                   "compositeSynthetic"),
     ]
+    # The symmetric real-origin leaves — an explicit "this was captured by a
+    # camera" declaration. Reinforces a REAL verdict and lowers false positives.
+    IPTC_CAPTURE_TOKENS: list[bytes] = [
+        b'digitalCapture', b'negativeFilm', b'positiveFilm',
+    ]
 
     # Overlap successive chunks by the longest signature so a marker split across
     # a 64KB boundary is still found.
     longest = max((len(s) for s, _ in BINARY_SIGS + IPTC_AI_TOKENS), default=0)
-    longest = max(longest, len(C2PA_UUID))
+    longest = max([longest, len(C2PA_UUID)] + [len(s) for s in IPTC_CAPTURE_TOKENS])
     try:
         scanned = 0
         tail = b""
@@ -553,6 +559,11 @@ def _check_c2pa(file_path: str, result: MetadataResult):
                         if token in chunk:
                             result.synthetic_media_marker = True
                             result.iptc_digital_source_type = name
+                            break
+                if not result.capture_origin_marker:
+                    for token in IPTC_CAPTURE_TOKENS:
+                        if token in chunk:
+                            result.capture_origin_marker = True
                             break
 
                 tail = chunk[-longest:] if longest else b""
