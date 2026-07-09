@@ -20,6 +20,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -82,6 +84,25 @@ def collect_pexels(out_dir: Path, per_query: int, api_key: str) -> list:
     return rows
 
 
+WIKI_UA = ("VerifAI-Benchmark/1.0 "
+           "(https://github.com/Nitairevivo/ai-video-detector; nitaizx123@gmail.com) "
+           "python-urllib")
+
+
+def _wiki_get(url: str, timeout: int = 90):
+    """GET with Wikimedia's robot policy in mind: real UA + 429 backoff."""
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": WIKI_UA})
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:
+                time.sleep(20)
+                continue
+            raise
+    raise RuntimeError("unreachable")
+
+
 def collect_wikimedia(out_dir: Path, per_query: int) -> list:
     """
     Real footage from Wikimedia Commons — freely licensed, NO API key, and not
@@ -108,7 +129,7 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
         })
         try:
             req = urllib.request.Request(f"{api}?{params}",
-                                         headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
+                                         headers={"User-Agent": WIKI_UA})
             with urllib.request.urlopen(req, timeout=20) as resp:
                 data = json.loads(resp.read())
         except Exception as e:
@@ -144,9 +165,9 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
             if dest.exists():
                 continue
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
-                with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+                with _wiki_get(url) as r, open(dest, "wb") as f:
                     f.write(r.read(40 * 1024 * 1024))
+                time.sleep(3)  # robot policy: throttle sequential downloads
                 if dest.stat().st_size > 10000:
                     rows.append({"filename": fname, "label": "real",
                                  "platform": "wikimedia", "category": category})
