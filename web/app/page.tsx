@@ -455,15 +455,19 @@ export default function Home() {
   const analyzingCount = items.filter(i => i.status === "analyzing").length;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "radial-gradient(ellipse at 50% -10%, #1a0a3d 0%, #06060f 55%)" }}>
+    <div className="min-h-screen flex flex-col relative" style={{ background: "radial-gradient(ellipse at 50% -10%, #1a0a3d 0%, #06060f 55%)" }}>
+      <div className="aurora" aria-hidden />
+      <div className="fixed inset-0 z-0 grid-texture pointer-events-none" aria-hidden />
+      <div className="relative z-10 flex flex-col min-h-screen">
 
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/6 backdrop-blur-sm sticky top-0 z-50 bg-[#06060f]/80">
+      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/6 backdrop-blur-md sticky top-0 z-50 bg-[#06060f]/70">
         <div className="flex items-center gap-2.5">
           <Logo size={32} />
           <span className="font-bold text-lg tracking-tight">Verif<span className="text-violet-400">AI</span></span>
         </div>
         <div className="flex items-center gap-4 text-sm">
+          <a href="/accuracy" className="text-gray-500 hover:text-white transition-colors hidden sm:block">Accuracy</a>
           <a href="#how" className="text-gray-500 hover:text-white transition-colors hidden sm:block">How it works</a>
           <a href="#upload" className="px-4 py-1.5 rounded-full border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 transition-colors text-sm">
             Detect video
@@ -504,11 +508,17 @@ export default function Home() {
           </div>
         </div>
 
-        <a href="#upload"
-          className="px-8 py-3.5 rounded-2xl font-semibold text-white text-sm transition-all duration-200 hover:scale-105"
-          style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
-          Detect a video →
-        </a>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <a href="#upload"
+            className="cta-glow px-8 py-3.5 rounded-2xl font-semibold text-white text-sm"
+            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+            Detect a video →
+          </a>
+          <a href="/accuracy"
+            className="px-6 py-3.5 rounded-2xl font-medium text-violet-200 text-sm border border-violet-500/30 hover:bg-violet-500/10 transition-colors">
+            0% false positives on real footage
+          </a>
+        </div>
       </section>
 
       {/* How it works */}
@@ -517,6 +527,7 @@ export default function Home() {
           <div className="text-center mb-12">
             <p className="text-xs text-violet-400 font-bold tracking-widest uppercase mb-3">How it works</p>
             <h2 className="text-4xl font-extrabold text-white">Three layers of detection</h2>
+            <p className="text-gray-500 text-sm mt-3 max-w-md mx-auto">Hard evidence decides in milliseconds; the vision ensemble is the fallback, not the first resort.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
             <Step n="1" icon="🔏" title="File forensics"
@@ -694,6 +705,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
+      </div>{/* end z-10 wrapper */}
     </div>
   );
 }
