@@ -116,6 +116,8 @@ def _collect_signals(
         "has_ai_exclusive_encoder": int(meta.has_ai_exclusive_encoder),
         "has_c2pa": int(meta.has_c2pa),
         "c2pa_is_ai": int(meta.c2pa_is_ai),
+        "synthetic_media_marker": int(getattr(meta, "synthetic_media_marker", False)),
+        "iptc_digital_source_type": getattr(meta, "iptc_digital_source_type", None),
         "software_tag_present": int(meta.software_tag is not None),
         "camera_origin_detected": int(_has_camera_origin(meta)),
 
@@ -262,6 +264,18 @@ def _rule_based_decision(
 
     if meta.has_ai_exclusive_encoder:
         return 0.95, "AI-exclusive encoder signature detected", ai_tool
+
+    # IPTC DigitalSourceType — an open, cross-industry provenance standard. A
+    # "trainedAlgorithmicMedia" leaf is an explicit declaration that the media
+    # was AI-generated; composite leaves declare partial AI. Self-declared (so
+    # below cryptographic C2PA), but a strong, standards-based positive signal.
+    if getattr(meta, "synthetic_media_marker", False):
+        leaf = meta.iptc_digital_source_type or "synthetic"
+        composite = "composite" in leaf.lower()
+        tool = ai_tool or f"IPTC:{leaf}"
+        if composite:
+            return 0.80, f"IPTC DigitalSourceType declares partial AI: '{leaf}'", tool
+        return 0.94, f"IPTC DigitalSourceType declares AI generation: '{leaf}'", tool
 
     if container.ai_tool_from_box and "C2PA" not in container.ai_tool_from_box:
         return 0.93, f"AI tool signature in container: {container.ai_tool_from_box}", ai_tool

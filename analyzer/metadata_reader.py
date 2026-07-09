@@ -234,6 +234,10 @@ class MetadataResult:
     c2pa_claim_generator: Optional[str] = None
     ai_tool_detected: Optional[str] = None
     has_ai_exclusive_encoder: bool = False
+    # IPTC DigitalSourceType (open provenance standard, written into XMP by Adobe,
+    # platforms and many AI tools) — detected by byte scan, no dependency.
+    iptc_digital_source_type: Optional[str] = None   # e.g. "trainedAlgorithmicMedia"
+    synthetic_media_marker: bool = False             # IPTC marker declares AI/synthetic
 
     # Resolution fingerprint (survives re-encoding)
     resolution_ai_tool: Optional[str] = None
@@ -507,13 +511,31 @@ def _check_c2pa(file_path: str, result: MetadataResult):
         (b'ai.generated',      None),
     ]
 
+    # IPTC DigitalSourceType — the open, standardized way to declare how media
+    # was produced (http://cv.iptc.org/newscodes/digitalsourcetype/...). Adobe,
+    # LinkedIn, Microsoft, TikTok and many AI tools write these tokens into XMP.
+    # AI-declaring tokens (case-sensitive URI leaf names):
+    IPTC_AI_TOKENS: list[tuple[bytes, str]] = [
+        (b'trainedAlgorithmicMedia',              "trainedAlgorithmicMedia"),
+        (b'compositeWithTrainedAlgorithmicMedia', "compositeWithTrainedAlgorithmicMedia"),
+        (b'algorithmicMedia',                     "algorithmicMedia"),
+        (b'compositeSynthetic',                   "compositeSynthetic"),
+    ]
+
+    # Overlap successive chunks by the longest signature so a marker split across
+    # a 64KB boundary is still found.
+    longest = max((len(s) for s, _ in BINARY_SIGS + IPTC_AI_TOKENS), default=0)
+    longest = max(longest, len(C2PA_UUID))
     try:
         scanned = 0
+        tail = b""
         with open(file_path, "rb") as f:
             while scanned < MAX_SCAN:
-                chunk = f.read(CHUNK)
-                if not chunk:
+                block = f.read(CHUNK)
+                if not block:
                     break
+                scanned += len(block)
+                chunk = tail + block
 
                 if C2PA_UUID in chunk:
                     result.has_c2pa = True
@@ -526,7 +548,14 @@ def _check_c2pa(file_path: str, result: MetadataResult):
                     if sig in chunk and not result.ai_tool_detected:
                         result.ai_tool_detected = tool_name
 
-                scanned += len(chunk)
+                if not result.synthetic_media_marker:
+                    for token, name in IPTC_AI_TOKENS:
+                        if token in chunk:
+                            result.synthetic_media_marker = True
+                            result.iptc_digital_source_type = name
+                            break
+
+                tail = chunk[-longest:] if longest else b""
     except Exception:
         pass
 

@@ -14,6 +14,8 @@ type Explanation = {
   provenance?: {
     c2pa_present?: boolean;
     c2pa_claims_ai?: boolean;
+    synthetic_media_marker?: boolean;
+    iptc_digital_source_type?: string | null;
     metadata_stripped?: boolean;
     platform_reencoded?: boolean;
     ai_tool?: string | null;
@@ -262,6 +264,11 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                 {r.explanation.provenance.c2pa_present && !r.explanation.provenance.c2pa_claims_ai && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-300 border border-white/15">🔏 C2PA credentials present</span>
                 )}
+                {r.explanation.provenance.synthetic_media_marker && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 border border-red-500/25">
+                    🏷 IPTC: {r.explanation.provenance.iptc_digital_source_type || "synthetic media"}
+                  </span>
+                )}
                 {r.explanation.provenance.ai_tool && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 border border-red-500/25">🛠 {r.explanation.provenance.ai_tool}</span>
                 )}
@@ -272,6 +279,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25">♻ Platform re-encoded</span>
                 )}
                 {!r.explanation.provenance.c2pa_present && !r.explanation.provenance.ai_tool &&
+                 !r.explanation.provenance.synthetic_media_marker &&
                  !r.explanation.provenance.metadata_stripped && !r.explanation.provenance.platform_reencoded && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/8 text-gray-400 border border-white/15">No provenance markers</span>
                 )}
