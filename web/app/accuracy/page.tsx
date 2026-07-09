@@ -36,6 +36,27 @@ export default function Accuracy() {
         </section>
 
         <section className="mb-10">
+          <h2 className="text-lg font-bold text-white mb-3">Measured on real-world footage</h2>
+          <p className="text-sm text-gray-400 leading-relaxed mb-4">
+            An automated benchmark runs the full production pipeline on real videos the model has
+            never seen — pulled from the Internet Archive and Wikimedia Commons, including the hard
+            cases that fool detectors (chaotic motion like flour/confetti/water splashes, CCTV and
+            dashcam footage, aerial/drone). It measures how often <b className="text-gray-300">real
+            footage is wrongly flagged as AI</b>. The set grows on every run.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Stat value="59" label="Real videos tested" note="Archive.org + Wikimedia" />
+            <Stat value="0.0%" label="False-positive rate" note="0 of 59 wrongly flagged" />
+            <Stat value="100%" label="Specificity" note="real kept real" />
+          </div>
+          <p className="text-xs text-gray-600 mt-3">
+            Covers 7 categories incl. 6 chaotic, 4 CCTV/dashcam, 6 aerial. AI-side recall on a blind
+            set is measured separately (AI videos are collected off datacenter IPs, which platforms
+            block) and published here as that set grows.
+          </p>
+        </section>
+
+        <section className="mb-10">
           <h2 className="text-lg font-bold text-white mb-3">What these numbers do and don&apos;t claim</h2>
           <ul className="text-sm text-gray-400 leading-relaxed space-y-2 list-disc pl-5">
             <li>

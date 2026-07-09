@@ -152,7 +152,7 @@ def format_result(res: dict, as_document: bool = True) -> str:
 # ─── Core processing ──────────────────────────────────────────────────────────
 
 def _analyze_file(chat_id, msg_id, file_id, filename, as_document=False):
-    from api.server import run_full_analysis
+    from api.server import run_fast_analysis, run_full_analysis
     suffix = Path(filename or "video.mp4").suffix.lower() or ".mp4"
     if suffix not in (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"):
         suffix = ".mp4"
@@ -161,7 +161,13 @@ def _analyze_file(chat_id, msg_id, file_id, filename, as_document=False):
         if not download_file(file_id, tmp):
             send_message(chat_id, "❌ לא הצלחתי להוריד את הסרטון. נסה לשלוח שוב.", msg_id)
             return
-        res = run_full_analysis(tmp, deep=True)
+        # Telegram gives us the ORIGINAL file — its metadata/C2PA is intact, so
+        # the fast code-first path is both instant and definitive here. Only if
+        # it finds no hard code evidence do we escalate to the slower visual
+        # analysis (a re-compressed video the user forwarded, say).
+        res = run_fast_analysis(tmp)
+        if res["verdict"] == "real" and res["confidence"] < 0.5:
+            res = run_full_analysis(tmp, deep=True)
         send_message(chat_id, format_result(res, as_document=as_document), msg_id)
     except Exception as e:
         traceback.print_exc()

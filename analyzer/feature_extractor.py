@@ -28,11 +28,18 @@ class DetectionResult:
     edit_tool: Optional[str] = None  # editing tool if AI-edited
 
 
-def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
+def extract_features(file_path: str, deep: bool = False, code_only: bool = False) -> DetectionResult:
     """
     Extract all features from a video file.
     deep=True runs visual + frequency analysis (slower, ~5-15s extra).
     When metadata is stripped or platform re-encoded, deep analysis runs automatically.
+
+    code_only=True is the FAST path: read only the "code" layers — file
+    metadata, C2PA credentials, container structure, codec fingerprints — and
+    never decode frames. Returns in ~1s. Definitive when hard evidence exists
+    (C2PA / AI-tool tag / proprietary box); otherwise reports low confidence
+    rather than spending seconds on visual analysis. Ideal for Telegram, where
+    the original un-re-encoded file carries intact metadata.
     """
     meta = read_metadata(file_path)
     codec = analyze_codec(file_path)
@@ -41,7 +48,8 @@ def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
 
     # Run deep analysis when we need it: stripped metadata, platform re-encode,
     # or explicitly requested. Skip for very short clips (not enough frames).
-    run_deep = (
+    # code_only forces the fast path — never decode frames.
+    run_deep = (not code_only) and (
         deep or
         meta.metadata_is_stripped or
         meta.platform_reencoded

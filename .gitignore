@@ -13,3 +13,8 @@ mobile/node_modules/
 *.log
 .vercel
 dataset_cache/
+
+# Local benchmark outputs
+tests/real_benchmark_report.md
+tests/real_benchmark_results.json
+tests/benchmark_data/
