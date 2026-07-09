@@ -101,7 +101,10 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
             "generator": "search",
             "gsrsearch": f"filetype:video {term}",
             "gsrnamespace": "6", "gsrlimit": str(per_query),
-            "prop": "imageinfo", "iiprop": "url|size|mediatype",
+            # videoinfo derivatives = pre-transcoded low-res versions; the
+            # originals on Commons are often 100MB+ documentaries and get
+            # rejected on size, which starved earlier runs down to ~2 files.
+            "prop": "videoinfo", "viprop": "url|size|mediatype|derivatives",
         })
         try:
             req = urllib.request.Request(f"{api}?{params}",
@@ -114,13 +117,26 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
 
         pages = (data.get("query", {}) or {}).get("pages", {}) or {}
         for page in pages.values():
-            info = (page.get("imageinfo") or [{}])[0]
-            url = info.get("url", "")
-            if info.get("mediatype") != "VIDEO" or not url:
+            info = (page.get("videoinfo") or [{}])[0]
+            if info.get("mediatype") != "VIDEO":
                 continue
-            if (info.get("size") or 0) > 50 * 1024 * 1024:
+            # Pick the smallest usable derivative (prefer ~240-480p transcodes)
+            candidates = []
+            for d in info.get("derivatives", []) or []:
+                src = d.get("src", "")
+                if not src.startswith("http"):
+                    continue
+                height = int(d.get("height") or 0)
+                if 120 <= height <= 640:
+                    candidates.append((height, src))
+            if not candidates and info.get("url") and (info.get("size") or 0) <= 40 * 1024 * 1024:
+                candidates = [(0, info["url"])]
+            if not candidates:
+                print(f"  [wikimedia] skip (no small derivative): {page.get('title','?')[:50]}")
                 continue
-            ext = os.path.splitext(url)[1].lower() or ".webm"
+            candidates.sort()
+            url = candidates[0][1]
+            ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower() or ".webm"
             if ext not in (".webm", ".ogv", ".mp4", ".mov"):
                 continue
             fname = f"wiki_{abs(hash(url)) % 10**8}{ext}"
@@ -129,12 +145,14 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
                 continue
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
-                with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
-                    f.write(r.read(50 * 1024 * 1024))
+                with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+                    f.write(r.read(40 * 1024 * 1024))
                 if dest.stat().st_size > 10000:
                     rows.append({"filename": fname, "label": "real",
                                  "platform": "wikimedia", "category": category})
                     print(f"  [real] {fname} ({category})")
+                else:
+                    dest.unlink(missing_ok=True)
             except Exception as e:
                 print(f"  [wikimedia] download: {e}")
     return rows
