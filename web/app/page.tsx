@@ -20,6 +20,7 @@ type Explanation = {
     edit_tool?: string | null;
   };
   visual_artifacts?: string[];
+  frame_timeline?: number[];
   caveats?: string[];
 };
 
@@ -286,6 +287,30 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                 {r.explanation.visual_artifacts.map((a) => (
                   <span key={a} className="px-2 py-0.5 rounded-full text-[11px] bg-orange-500/10 text-orange-300 border border-orange-500/25">👁 {a}</span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suspicious-frame timeline — where in the clip the vision layer saw
+              the most AI-like frames (0 = natural sensor noise … 1 = synthetic) */}
+          {r.explanation?.frame_timeline && r.explanation.frame_timeline.length > 1 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">Frame timeline</p>
+              <div className="flex items-end gap-[3px] h-16">
+                {r.explanation.frame_timeline.map((v, i) => {
+                  const pct = Math.max(4, Math.round(v * 100));
+                  const c = v >= 0.6 ? "#ef4444" : v <= 0.4 ? "#22c55e" : "#eab308";
+                  return (
+                    <div key={i} className="flex-1 flex flex-col justify-end group relative" title={`Frame ${i + 1}: ${Math.round(v * 100)}% AI-like`}>
+                      <div className="w-full rounded-sm" style={{ height: `${pct}%`, background: c, transition: "height .6s ease" }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                <span>start</span>
+                <span>sampled frames · red = most AI-like</span>
+                <span>end</span>
               </div>
             </div>
           )}
