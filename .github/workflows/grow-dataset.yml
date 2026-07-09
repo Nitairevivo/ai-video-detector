@@ -1,0 +1,126 @@
+name: Grow dataset + retrain (autonomous)
+
+# Runs every day, accumulating the training set toward a large, diverse corpus
+# and retraining the model — no laptop, no manual step. Only FEATURE VECTORS are
+# stored (data/training_samples.json), so the set can grow to tens of thousands
+# of samples without terabytes of disk.
+#
+# Sources (all reachable from CI):
+#   • real: Pexels (needs PEXELS_API_KEY secret) + archive.org + Wikimedia
+#   • AI + real: Hugging Face video datasets — set repo variables
+#       HF_AI_REPOS   = comma-separated dataset ids of GENERATED videos
+#       HF_REAL_REPOS = comma-separated dataset ids of REAL videos
+#     (Settings → Secrets and variables → Actions → Variables). yt-dlp is NOT
+#     used here — it is blocked on datacenter IPs. AI videos from your phone go
+#     in via the app / benchmark_local.py on a residential IP.
+#
+# The accumulated dataset + model live on the `auto-train` branch. Review the
+# metrics in the job summary, then merge auto-train into master when happy.
+
+on:
+  schedule:
+    - cron: "0 2 * * *"    # every day 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      per_repo_limit:
+        description: "Max videos to pull per HF repo this run"
+        default: "400"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grow-dataset
+  cancel-in-progress: false
+
+jobs:
+  grow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Restore accumulated dataset from auto-train
+        run: |
+          git config user.name "verifai-trainer"
+          git config user.email "trainer@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin auto-train >/dev/null 2>&1; then
+            git fetch origin auto-train
+            # bring over the growing dataset + model, keep master's code
+            git checkout origin/auto-train -- data/training_samples.json models/ 2>/dev/null || true
+            echo "Restored dataset from auto-train."
+          else
+            echo "No auto-train yet — starting from master's dataset."
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg + deps
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          pip install -r requirements.txt
+
+      - name: Collect from Hugging Face video datasets
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          LIMIT: ${{ github.event.inputs.per_repo_limit || '400' }}
+        run: |
+          IFS=',' read -ra AI <<< "${{ vars.HF_AI_REPOS }}"
+          for r in "${AI[@]}"; do
+            r=$(echo "$r" | xargs)
+            [ -z "$r" ] && continue
+            echo "::group::AI repo $r"
+            python training/collect_hf.py --repo "$r" --label ai --limit "$LIMIT" || true
+            echo "::endgroup::"
+          done
+          IFS=',' read -ra RE <<< "${{ vars.HF_REAL_REPOS }}"
+          for r in "${RE[@]}"; do
+            r=$(echo "$r" | xargs)
+            [ -z "$r" ] && continue
+            echo "::group::real repo $r"
+            python training/collect_hf.py --repo "$r" --label real --limit "$LIMIT" || true
+            echo "::endgroup::"
+          done
+
+      - name: Supplement real class from free stock sources + retrain
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          VERIFAI_DATASET_DIR: ${{ runner.temp }}/dataset
+        run: |
+          python train_forever.py --rounds 6 --batch 20 || true
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Dataset growth"
+            python - <<'EOF'
+          import json, os
+          try:
+              meta = json.load(open("models/trained_model_meta.json"))
+              print(f"- Samples: **{meta.get('samples','?')}** ({meta.get('ai_samples','?')} AI / {meta.get('real_samples','?')} real)")
+              for k in ("cv_auc_mean","cv_precision","cv_recall","cv_fpr","cv_brier"):
+                  if meta.get(k) is not None:
+                      print(f"- {k}: **{meta[k]:.4f}**")
+          except Exception as e:
+              print(f"- (no metrics: {e})")
+          EOF
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit accumulated dataset + model to auto-train
+        if: always()
+        run: |
+          git checkout -B auto-train
+          git add data/training_samples.json models/ || true
+          if git diff --cached --quiet; then
+            echo "No change to commit."
+          else
+            git commit -m "Grow dataset + retrain ($(date -u +%Y-%m-%d))"
+            git push -f origin auto-train
+          fi
