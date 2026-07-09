@@ -118,6 +118,7 @@ def _collect_signals(
         "c2pa_is_ai": int(meta.c2pa_is_ai),
         "synthetic_media_marker": int(getattr(meta, "synthetic_media_marker", False)),
         "iptc_digital_source_type": getattr(meta, "iptc_digital_source_type", None),
+        "capture_origin_marker": int(getattr(meta, "capture_origin_marker", False)),
         "software_tag_present": int(meta.software_tag is not None),
         "camera_origin_detected": int(_has_camera_origin(meta)),
 
@@ -364,6 +365,12 @@ def _has_camera_origin(meta: MetadataResult) -> bool:
         "apple videotoolbox", "mediacodec", "qualcomm",  # hardware encoders (cameras/phones)
         "com.apple.avfoundation",
     }
+
+    # IPTC DigitalSourceType "digitalCapture" — an explicit, standards-based
+    # declaration that this was captured by a camera. Symmetric to the AI
+    # marker; a strong real-origin signal.
+    if getattr(meta, "capture_origin_marker", False):
+        return True
 
     sw = (meta.software_tag or "").lower()
     enc = (meta.encoder_tag or "").lower()
