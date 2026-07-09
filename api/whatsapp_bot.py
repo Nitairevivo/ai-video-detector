@@ -156,7 +156,7 @@ WELCOME = (
 # ─── Core processing (runs on the executor) ───────────────────────────────────
 
 def _analyze_media(to: str, media_id: str, filename: str, as_document: bool):
-    from api.server import run_full_analysis
+    from api.server import run_fast_analysis, run_full_analysis
     suffix = Path(filename or "video.mp4").suffix.lower() or ".mp4"
     if suffix not in (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".3gp"):
         suffix = ".mp4"
@@ -165,7 +165,11 @@ def _analyze_media(to: str, media_id: str, filename: str, as_document: bool):
         if not download_media(media_id, tmp):
             send_text(to, "❌ לא הצלחתי להוריד את הסרטון. נסה לשלוח שוב.")
             return
-        res = run_full_analysis(tmp, deep=True)
+        # Original file → intact metadata → fast code-first path is instant and
+        # definitive; escalate to full visual analysis only if no code evidence.
+        res = run_fast_analysis(tmp)
+        if res["verdict"] == "real" and res["confidence"] < 0.5:
+            res = run_full_analysis(tmp, deep=True)
         send_text(to, format_result(res, as_document=as_document))
     except Exception as e:
         traceback.print_exc()
