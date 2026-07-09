@@ -88,6 +88,10 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Grow REAL class from key-free CI sources (archive.org + Wikimedia)
+        run: |
+          python training/collect_freesources.py --per-query 12 || true
+
       - name: Supplement real class from free stock sources + retrain
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
