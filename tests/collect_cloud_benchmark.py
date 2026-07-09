@@ -20,6 +20,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -82,6 +84,25 @@ def collect_pexels(out_dir: Path, per_query: int, api_key: str) -> list:
     return rows
 
 
+WIKI_UA = ("VerifAI-Benchmark/1.0 "
+           "(https://github.com/Nitairevivo/ai-video-detector; nitaizx123@gmail.com) "
+           "python-urllib")
+
+
+def _wiki_get(url: str, timeout: int = 90):
+    """GET with Wikimedia's robot policy in mind: real UA + 429 backoff."""
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": WIKI_UA})
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:
+                time.sleep(20)
+                continue
+            raise
+    raise RuntimeError("unreachable")
+
+
 def collect_wikimedia(out_dir: Path, per_query: int) -> list:
     """
     Real footage from Wikimedia Commons — freely licensed, NO API key, and not
@@ -108,7 +129,7 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
         })
         try:
             req = urllib.request.Request(f"{api}?{params}",
-                                         headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
+                                         headers={"User-Agent": WIKI_UA})
             with urllib.request.urlopen(req, timeout=20) as resp:
                 data = json.loads(resp.read())
         except Exception as e:
@@ -144,9 +165,9 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
             if dest.exists():
                 continue
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "VerifAI-Benchmark/1.0 (research)"})
-                with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+                with _wiki_get(url) as r, open(dest, "wb") as f:
                     f.write(r.read(40 * 1024 * 1024))
+                time.sleep(3)  # robot policy: throttle sequential downloads
                 if dest.stat().st_size > 10000:
                     rows.append({"filename": fname, "label": "real",
                                  "platform": "wikimedia", "category": category})
@@ -155,6 +176,71 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
                     dest.unlink(missing_ok=True)
             except Exception as e:
                 print(f"  [wikimedia] download: {e}")
+    return rows
+
+
+def collect_archive_org(out_dir: Path, per_query: int) -> list:
+    """
+    Real footage from the Internet Archive — freely licensed, NO API key, and
+    far more tolerant of automated access than Wikimedia. Second real source
+    so one host rate-limiting doesn't starve the whole run.
+    """
+    rows = []
+    searches = [
+        ("nature documentary", "nature"), ("home movies people", "people"),
+        ("street scene city", "street"), ("news footage", "news"),
+        ("dashcam", "cctv"), ("cooking demonstration", "people"),
+    ]
+    for term, category in searches:
+        q = urllib.parse.urlencode({
+            "q": f'({term}) AND mediatype:movies AND format:"h.264"',
+            "fl[]": "identifier", "rows": str(per_query), "output": "json",
+        })
+        try:
+            req = urllib.request.Request(
+                f"https://archive.org/advancedsearch.php?{q}",
+                headers={"User-Agent": WIKI_UA})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                docs = json.loads(resp.read()).get("response", {}).get("docs", [])
+        except Exception as e:
+            print(f"  [archive] {term}: {e}")
+            continue
+
+        for doc in docs:
+            ident = doc.get("identifier")
+            if not ident:
+                continue
+            try:
+                meta_req = urllib.request.Request(
+                    f"https://archive.org/metadata/{ident}",
+                    headers={"User-Agent": WIKI_UA})
+                with urllib.request.urlopen(meta_req, timeout=20) as r:
+                    meta = json.loads(r.read())
+            except Exception:
+                continue
+            files = meta.get("files", [])
+            mp4 = next((f for f in files
+                        if str(f.get("name", "")).lower().endswith(".mp4")
+                        and 0 < int(f.get("size") or 0) < 40 * 1024 * 1024), None)
+            if not mp4:
+                continue
+            fname = f"archive_{ident[:20]}.mp4".replace("/", "_")
+            dest = out_dir / fname
+            if dest.exists():
+                continue
+            try:
+                url = f"https://archive.org/download/{ident}/{urllib.parse.quote(mp4['name'])}"
+                req = urllib.request.Request(url, headers={"User-Agent": WIKI_UA})
+                with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+                    f.write(r.read(40 * 1024 * 1024))
+                if dest.stat().st_size > 10000:
+                    rows.append({"filename": fname, "label": "real",
+                                 "platform": "archive_org", "category": category})
+                    print(f"  [real] {fname} ({category})")
+                else:
+                    dest.unlink(missing_ok=True)
+            except Exception as e:
+                print(f"  [archive] download: {e}")
     return rows
 
 
@@ -204,7 +290,8 @@ def main():
         rows += collect_pexels(vids, args.per_query, api_key)
     else:
         print("  PEXELS_API_KEY not set — using Wikimedia Commons (no key needed)")
-    # Always add Wikimedia too — more real samples, and the sole source with no key
+    # No-key real sources — archive.org (tolerant) first, then Wikimedia.
+    rows += collect_archive_org(vids, args.per_query)
     rows += collect_wikimedia(vids, args.per_query)
 
     print("Collecting AI footage via yt-dlp…")
