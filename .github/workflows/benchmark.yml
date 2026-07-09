@@ -5,6 +5,10 @@ name: Real-World Benchmark
 # This is roadmap phase 0.3 — a real accuracy number, produced automatically.
 
 on:
+  # Runs itself automatically — a fresh accuracy number every week with no
+  # manual trigger. Still dispatchable on demand with a custom set size.
+  schedule:
+    - cron: "0 6 * * 1"   # every Monday 06:00 UTC
   workflow_dispatch:
     inputs:
       per_query:
