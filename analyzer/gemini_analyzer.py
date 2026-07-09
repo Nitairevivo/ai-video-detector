@@ -26,6 +26,12 @@ _working_model: Optional[str] = None
 
 API_URL_TPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+# Latency budget — keep the vision layer inside the ~5s response target instead
+# of the old 45s-per-request × 3-retries × model-chain worst case (~minutes).
+# Override with env for slower/faster networks.
+GEMINI_HTTP_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "4"))   # per HTTP request
+GEMINI_TOTAL_BUDGET = float(os.environ.get("GEMINI_BUDGET", "5"))    # whole-call ceiling
+
 # In-memory cache: hash(video_path content) → GeminiResult
 _CACHE: dict = {}
 
@@ -92,7 +98,7 @@ def _video_duration(video_path: str) -> float:
     try:
         out = subprocess.check_output(
             [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", video_path],
-            stderr=subprocess.DEVNULL, timeout=8
+            stderr=subprocess.DEVNULL, timeout=5
         )
         return float(json.loads(out).get("format", {}).get("duration", 5.0))
     except Exception:
@@ -105,7 +111,7 @@ def _grab_frame(video_path: str, t: float, out_path: str, scale: int = 640) -> O
         [ffmpeg, "-ss", str(max(0.0, t)), "-i", video_path,
          "-vframes", "1", "-vf", f"scale={scale}:-1", "-q:v", "3",
          out_path, "-y", "-loglevel", "error"],
-        capture_output=True, timeout=12
+        capture_output=True, timeout=6
     )
     if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 500:
         with open(out_path, "rb") as f:
@@ -168,7 +174,10 @@ def _post_parts(api_key: str, parts: list) -> Optional[dict]:
     models = [_working_model] if _working_model else []
     models += [m for m in _MODEL_CHAIN if m and m not in models]
 
+    deadline = time.time() + GEMINI_TOTAL_BUDGET
     for model in models:
+        if time.time() >= deadline:
+            break  # out of budget — return best-effort (None) and let other layers decide
         gen_cfg = {"maxOutputTokens": 800, "temperature": 0.0}
         # Gemini 2.5 models "think" by default and can burn the whole output
         # budget before emitting any text (empty response → no verdict).
@@ -182,14 +191,19 @@ def _post_parts(api_key: str, parts: list) -> Optional[dict]:
         }).encode()
 
         url = API_URL_TPL.format(model=model) + f"?key={api_key}"
-        for attempt in range(3):
+        for attempt in range(2):
+            if time.time() >= deadline:
+                return None
             try:
+                # cap each request to whatever budget remains, never more than
+                # the per-request ceiling
+                req_timeout = max(1.0, min(GEMINI_HTTP_TIMEOUT, deadline - time.time()))
                 req = urllib.request.Request(
                     url, data=body,
                     headers={"Content-Type": "application/json"},
                     method="POST"
                 )
-                with urllib.request.urlopen(req, timeout=45) as resp:
+                with urllib.request.urlopen(req, timeout=req_timeout) as resp:
                     data = json.loads(resp.read())
                 text = _extract_text(data)
                 if not text:

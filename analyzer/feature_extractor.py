@@ -58,14 +58,20 @@ def extract_features(file_path: str, deep: bool = False, code_only: bool = False
     freq: Optional[FreqResult] = None
     visual: Optional[VisualResult] = None
     if run_deep:
-        try:
-            freq = analyze_frequency(file_path)
-        except Exception:
-            freq = None
-        try:
-            visual = analyze_visual(file_path)
-        except Exception:
-            visual = None
+        # These two decode frames independently — run them concurrently so the
+        # deep pass costs max(freq, visual) instead of their sum (~1.5s saved).
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_freq = ex.submit(analyze_frequency, file_path)
+            fut_visual = ex.submit(analyze_visual, file_path)
+            try:
+                freq = fut_freq.result()
+            except Exception:
+                freq = None
+            try:
+                visual = fut_visual.result()
+            except Exception:
+                visual = None
 
     signals = _collect_signals(meta, codec, container, audio, freq, visual)
     feature_vector = _build_vector(signals)

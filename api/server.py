@@ -364,13 +364,23 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
     (Gemini + visual + audio + frame-ML fused). Used by /detect, /detect-url
     and the Telegram bot.
     """
-    from analyzer.ensemble import analyze_ensemble
+    from analyzer.ensemble import analyze_ensemble, _run_gemini
+    from concurrent.futures import ThreadPoolExecutor
 
-    result = extract_features(tmp_path, deep=deep)
-    classifier = get_classifier()
-    ml_prob, _ = classifier.predict(result.feature_vector)
+    # Overlap the Gemini vision call (the slowest layer) with local feature
+    # extraction so the total is ~max(gemini, features) instead of their sum —
+    # this is what keeps the full path inside the ~5s response target.
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        gfut = ex.submit(_run_gemini, tmp_path)
+        result = extract_features(tmp_path, deep=deep)
+        classifier = get_classifier()
+        ml_prob, _ = classifier.predict(result.feature_vector)
+        try:
+            gemini = gfut.result()
+        except Exception:
+            gemini = None
 
-    ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True)
+    ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True, gemini_result=gemini)
 
     signals = result.signals or {}
     return {
