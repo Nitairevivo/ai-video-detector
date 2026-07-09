@@ -252,11 +252,16 @@ async def detect(
     request: Request,
     file: UploadFile = File(...),
     deep: bool = False,
+    mode: str = "full",
     key=Depends(get_optional_api_key),
 ):
     """
     Analyze a video file for AI generation.
-    deep=true: also runs visual + frequency analysis (~10s extra, better for re-encoded/stripped videos).
+    mode=fast: code-first path (~1s) — metadata/C2PA/container/codec only, no
+      frame decoding. Definitive on hard evidence; best when the original file
+      is available (its metadata is intact).
+    deep=true: also runs visual + frequency analysis (~10s extra, better for
+      re-encoded/stripped videos with no code evidence).
     """
     suffix = Path(file.filename).suffix.lower()
     if suffix not in SUPPORTED_FORMATS:
@@ -276,7 +281,10 @@ async def detect(
     try:
         # Analysis takes 10-60s of CPU/IO — run it off the event loop so one
         # video doesn't freeze every other request on the server.
-        payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
+        if mode == "fast":
+            payload = await run_in_threadpool(run_fast_analysis, tmp_path)
+        else:
+            payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
         payload["filename"] = file.filename
         payload["signals"] = payload.pop("_signals", {})
         if key:
@@ -286,6 +294,65 @@ async def detect(
         return payload
     finally:
         os.unlink(tmp_path)
+
+
+def run_fast_analysis(tmp_path: str, platform_flag: dict = None) -> dict:
+    """
+    FAST code-first path (~1s): read only the "code" layers — file metadata,
+    C2PA credentials, container structure, codec fingerprints — plus any
+    platform AI-disclosure label passed in. Never decodes frames, never calls
+    Gemini. Definitive when hard evidence exists (C2PA / AI-tool tag / signed
+    platform label); otherwise reports low confidence quickly instead of
+    spending seconds on visual analysis.
+
+    This is the accurate, near-instant path when the original file is
+    available (Telegram, WhatsApp-as-document, direct upload) — the metadata
+    is intact so "reading the code behind the video" is enough.
+    """
+    result = extract_features(tmp_path, code_only=True)
+    signals = result.signals or {}
+
+    verdict = result.verdict
+    confidence = result.confidence
+    method = result.method
+    ai_tool = result.ai_tool
+
+    # A platform's own AI label (TikTok AIGC / YouTube / Meta) is definitive
+    # and survives re-encoding — fold it in as top-tier evidence.
+    if platform_flag and platform_flag.get("flagged"):
+        verdict, confidence = "ai_generated", 0.96
+        method = f"Platform AI disclosure: {platform_flag.get('info', '')}"
+        ai_tool = ai_tool or "Platform AI label"
+
+    return {
+        "is_ai_generated": verdict == "ai_generated",
+        "verdict": verdict,
+        "confidence": round(confidence, 4),
+        "confidence_pct": f"{confidence * 100:.1f}%",
+        "ai_tool_detected": ai_tool,
+        "edit_tool_detected": result.edit_tool,
+        "detection_method": method,
+        "deep_analysis_ran": False,
+        "mode": "fast",
+        "explanation": {
+            "deciding_layer": method,
+            "provenance": {
+                "c2pa_present": bool(signals.get("has_c2pa")),
+                "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "metadata_stripped": bool(signals.get("metadata_is_stripped")),
+                "platform_reencoded": bool(signals.get("platform_reencoded")),
+                "platform_ai_label": bool(platform_flag and platform_flag.get("flagged")),
+                "ai_tool": ai_tool,
+                "edit_tool": result.edit_tool,
+            },
+            "caveats": [c for c in (
+                "no hard code evidence found — for stripped/re-encoded video, run full analysis for a visual check"
+                if (confidence < 0.5 and (signals.get("metadata_is_stripped") or signals.get("platform_reencoded")))
+                else None,
+            ) if c],
+        },
+        "_signals": signals,
+    }
 
 
 def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
