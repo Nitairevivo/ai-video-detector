@@ -1,20 +1,40 @@
-name: EAS Android Build
+name: EAS App Build (store-ready)
+
+# Builds the VerifAI mobile app on Expo's servers (EAS).
+# - profile "production" (default) → Android .aab / iOS release, the artifacts
+#   you upload to Google Play / App Store.
+# - profile "preview" → an installable Android .apk for side-loading/testing.
+#
+# You need an Expo access token (https://expo.dev/settings/access-tokens),
+# passed as the `expo_token` input. Run it from the Actions tab →
+# "EAS App Build (store-ready)" → Run workflow.
 
 on:
   workflow_dispatch:
     inputs:
       expo_token:
-        description: 'Expo personal access token'
+        description: 'Expo personal access token (expo.dev → Settings → Access tokens)'
         required: true
+      platform:
+        description: 'Which platform to build'
+        type: choice
+        default: android
+        options: [android, ios, all]
+      profile:
+        description: 'EAS build profile'
+        type: choice
+        default: production
+        options: [production, preview]
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build ${{ github.event.inputs.platform }} (${{ github.event.inputs.profile }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # build the latest merged code, not a stale branch
         with:
-          ref: claude/video-ai-detection-readability-41mpza
+          ref: master
 
       - uses: actions/setup-node@v4
         with:
@@ -29,8 +49,8 @@ jobs:
       - name: Setup EAS
         run: npm install -g eas-cli
 
-      - name: Build APK
-        run: eas build --profile preview --platform android --non-interactive
+      - name: Build
+        run: eas build --profile "${{ github.event.inputs.profile }}" --platform "${{ github.event.inputs.platform }}" --non-interactive --no-wait
         working-directory: mobile
         env:
           EXPO_TOKEN: ${{ github.event.inputs.expo_token }}
