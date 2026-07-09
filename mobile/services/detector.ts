@@ -15,6 +15,8 @@ export type DetectionResult = {
     provenance?: {
       c2pa_present?: boolean;
       c2pa_claims_ai?: boolean;
+      synthetic_media_marker?: boolean;
+      iptc_digital_source_type?: string | null;
       metadata_stripped?: boolean;
       platform_reencoded?: boolean;
       platform_ai_label?: boolean;

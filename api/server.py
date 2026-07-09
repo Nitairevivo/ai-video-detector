@@ -339,6 +339,8 @@ def run_fast_analysis(tmp_path: str, platform_flag: dict = None) -> dict:
             "provenance": {
                 "c2pa_present": bool(signals.get("has_c2pa")),
                 "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(signals.get("synthetic_media_marker")),
+                "iptc_digital_source_type": signals.get("iptc_digital_source_type"),
                 "metadata_stripped": bool(signals.get("metadata_is_stripped")),
                 "platform_reencoded": bool(signals.get("platform_reencoded")),
                 "platform_ai_label": bool(platform_flag and platform_flag.get("flagged")),
@@ -390,6 +392,8 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
             "provenance": {
                 "c2pa_present": bool(signals.get("has_c2pa")),
                 "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(signals.get("synthetic_media_marker")),
+                "iptc_digital_source_type": signals.get("iptc_digital_source_type"),
                 "metadata_stripped": bool(signals.get("metadata_is_stripped")),
                 "platform_reencoded": bool(signals.get("platform_reencoded")),
                 "ai_tool": result.ai_tool,

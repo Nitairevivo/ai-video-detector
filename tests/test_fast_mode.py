@@ -58,6 +58,29 @@ def test_code_only_skips_frame_decoding(clean_video):
     assert not r.signals.get("visual_analyzed")
 
 
+@pytest.fixture(scope="module")
+def iptc_video(clean_video, tmp_path_factory):
+    d = tmp_path_factory.mktemp("fast_iptc")
+    p = d / "iptc.mp4"
+    subprocess.run([FFMPEG, "-y", "-i", clean_video, "-c", "copy", "-metadata",
+                    "comment=Iptc4xmpExt:DigitalSourceType "
+                    "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+                    str(p)], check=True, capture_output=True)
+    return str(p)
+
+
+def test_fast_flags_iptc_digital_source_type(iptc_video):
+    """IPTC DigitalSourceType 'trainedAlgorithmicMedia' is an open provenance
+    standard — the code-first path must read it and call the video AI."""
+    from api.server import run_fast_analysis
+    res = run_fast_analysis(iptc_video)
+    assert res["verdict"] == "ai_generated"
+    assert res["confidence"] >= 0.9
+    prov = res["explanation"]["provenance"]
+    assert prov["synthetic_media_marker"] is True
+    assert prov["iptc_digital_source_type"] == "trainedAlgorithmicMedia"
+
+
 def test_fast_flags_sora_from_metadata(sora_video):
     from api.server import run_fast_analysis
     res = run_fast_analysis(sora_video)
