@@ -56,6 +56,7 @@ const T = {
     provC2pa: "🔏 נמצאו Content Credentials",
     provStripped: "⚠️ מטא-דאטה מקורי נמחק ע\u05f4י הפלטפורמה",
     layers: "שכבות",
+    fastMode: "זוהה מהקוד — מיידי",
     accessBtn: "⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI",
     downloadText: "📲 הורד VerifAI לטלפון אחר",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -108,6 +109,7 @@ const T = {
     provC2pa: "🔏 Content Credentials found",
     provStripped: "⚠️ Original metadata stripped by platform",
     layers: "Layers",
+    fastMode: "Read from code — instant",
     accessBtn: "⚙️ Enable auto-detection in Settings → Accessibility → VerifAI",
     downloadText: "📲 Download VerifAI on another phone",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -289,6 +291,12 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
               ? <Text style={styles.bannerLayers} numberOfLines={1}>{t.layers}: {parts.join(" · ")}</Text>
               : null;
           })()}
+          {result.explanation?.caveats?.length ? (
+            <Text style={styles.bannerCaveat} numberOfLines={2}>⚠ {result.explanation.caveats[0]}</Text>
+          ) : null}
+          {result.mode === "fast" ? (
+            <Text style={styles.bannerFast}>⚡ {t.fastMode}</Text>
+          ) : null}
         </View>
         <View style={[styles.bannerCircle, { borderColor: color }]}>
           <Text style={[styles.bannerPct, { color }]}>{pct}%</Text>
@@ -832,6 +840,8 @@ const styles = StyleSheet.create({
   bannerMethod: { color: "#555", fontSize: 11 },
   bannerProv: { color: "#8a7f4a", fontSize: 10, marginTop: 2 },
   bannerLayers: { color: "#556", fontSize: 9, marginTop: 2 },
+  bannerCaveat: { color: "#b58a4a", fontSize: 9, marginTop: 2 },
+  bannerFast: { color: "#6ee7b7", fontSize: 9, marginTop: 2, fontWeight: "600" },
   bannerCircle: { width: 66, height: 66, borderRadius: 33, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },

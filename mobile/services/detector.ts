@@ -9,6 +9,7 @@ export type DetectionResult = {
   ai_tool_detected: string | null;
   edit_tool_detected: string | null;
   detection_method: string;
+  mode?: string;  // "fast" (code-first, instant) | undefined (full)
   // Audit breakdown from the server: provenance flags + per-layer scores
   explanation?: {
     provenance?: {
@@ -16,6 +17,7 @@ export type DetectionResult = {
       c2pa_claims_ai?: boolean;
       metadata_stripped?: boolean;
       platform_reencoded?: boolean;
+      platform_ai_label?: boolean;
       ai_tool?: string | null;
     };
     layer_scores?: Record<string, number>;
