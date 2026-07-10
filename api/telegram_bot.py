@@ -107,7 +107,9 @@ def download_file(file_id: str, dest: str) -> bool:
 
 # ─── Result formatting (Hebrew) ───────────────────────────────────────────────
 
-def format_result(res: dict, as_document: bool = True) -> str:
+def format_result(res: dict, as_document: bool = True, media: str = "video") -> str:
+    is_image = media == "image"
+    noun = "התמונה" if is_image else "הסרטון"
     verdict = res.get("verdict", "real")
     pct = round(float(res.get("confidence", 0)) * 100)
     method = res.get("detection_method", "")
@@ -144,9 +146,31 @@ def format_result(res: dict, as_document: bool = True) -> str:
     if signals.get("metadata_is_stripped") or signals.get("platform_reencoded"):
         note = "⚠️ המטא-דאטה המקורי של הקובץ נמחק (כנראה עבר דרך פלטפורמה/דחיסה)"
         if not as_document:
-            note += "\n💡 <b>טיפ:</b> שלח את הסרטון <b>כקובץ</b> (📎 ← קובץ/File, בלי דחיסה) — כך כל המטא-דאטה המקורי נשמר והבדיקה מדויקת יותר"
+            note += f"\n💡 <b>טיפ:</b> שלח את {noun} <b>כקובץ</b> (📎 ← קובץ/File, בלי דחיסה) — כך כל המטא-דאטה המקורי נשמר והבדיקה מדויקת יותר"
         lines.append(note)
     return "\n".join(lines)
+
+
+def _analyze_image(chat_id, msg_id, file_id, filename, as_document=False):
+    """Download a photo/image and run the code-first image detector."""
+    from api.server import run_image_analysis
+    suffix = Path(filename or "image.jpg").suffix.lower() or ".jpg"
+    tmp = tempfile.mktemp(suffix=suffix)
+    try:
+        if not download_file(file_id, tmp):
+            send_message(chat_id, "❌ לא הצלחתי להוריד את התמונה. נסה שוב.", msg_id)
+            return
+        res = run_image_analysis(tmp)
+        send_message(chat_id, format_result(res, as_document=as_document, media="image"), msg_id)
+    except Exception as e:
+        traceback.print_exc()
+        send_message(chat_id, f"❌ שגיאה בניתוח: {str(e)[:120]}", msg_id)
+    finally:
+        try:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        except Exception:
+            pass
 
 
 # ─── Core processing ──────────────────────────────────────────────────────────
@@ -210,7 +234,7 @@ def _analyze_url(chat_id, msg_id, url):
 
 WELCOME = (
     "👋 <b>ברוך הבא ל-VerifAI</b>\n\n"
-    "אני בודק אם סרטון נוצר על ידי AI (Sora, Veo, Kling, Runway…) או אמיתי.\n\n"
+    "אני בודק אם <b>סרטון או תמונה</b> נוצרו על ידי AI (Sora, Veo, Kling, Midjourney, Firefly, DALL·E…) או אמיתיים.\n\n"
     "<b>הכי מדויק:</b> שלח לי את הסרטון <b>כקובץ</b> (📎 ← קובץ/File, בלי דחיסה) — "
     "כך אני מקבל את הבייטים המקוריים עם כל המטא-דאטה וחתימות ה-C2PA, "
     "והבדיקה הכי מדויקת שיש.\n"
@@ -254,6 +278,22 @@ def handle_update(update: dict):
             send_typing(chat_id)
             fname = video.get("file_name") or "video.mp4"
             _executor.submit(_analyze_file, chat_id, msg_id, video["file_id"], fname, as_document)
+            return
+
+        # 1b) Image — a photo (compressed by Telegram) or an image sent as a
+        # DOCUMENT (📎 → File, metadata intact). We read "the code behind the
+        # image" the same code-first way as video.
+        photo = msg.get("photo")
+        if not photo and doc and str(doc.get("mime_type", "")).startswith("image/"):
+            send_typing(chat_id)
+            _executor.submit(_analyze_image, chat_id, msg_id, doc["file_id"],
+                             doc.get("file_name") or "image.jpg", True)
+            return
+        if photo:
+            # `photo` is a list of sizes; the last is the largest.
+            best = photo[-1]
+            send_typing(chat_id)
+            _executor.submit(_analyze_image, chat_id, msg_id, best["file_id"], "image.jpg", False)
             return
 
         # 2) URL in the text
