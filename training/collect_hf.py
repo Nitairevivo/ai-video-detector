@@ -53,7 +53,11 @@ def _iter_repo_videos(repo_id: str, limit: int, seen: set):
         if got >= limit:
             break
         tag = f"hf:{repo_id}:{os.path.basename(f)}"
-        if tag in seen:
+        # collect() stores the source under the sanitized name below, so dedup
+        # must compare against THAT form (comparing the raw tag never matched,
+        # so every clip was re-downloaded and duplicated every run).
+        stored = tag.replace("/", "_").replace(":", "_")
+        if stored in seen or tag in seen:
             continue
         try:
             local = hf_hub_download(repo_id, f, repo_type="dataset", token=token)

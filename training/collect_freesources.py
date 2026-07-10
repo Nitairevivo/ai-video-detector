@@ -37,9 +37,12 @@ def collect(per_query: int, retrain_every: int = 100) -> int:
         for row in rows:
             path = tmp / row["filename"]
             tag = f"freesrc:{row['filename']}"
-            if not path.exists() or tag in seen:
+            # dedup must match the sanitized name actually stored as the source
+            # below — comparing the raw tag never matched, re-collecting clips.
+            stored = tag.replace("/", "_").replace(":", "_")
+            if not path.exists() or stored in seen or tag in seen:
                 continue
-            renamed = path.with_name(tag.replace("/", "_").replace(":", "_"))
+            renamed = path.with_name(stored)
             try:
                 os.replace(path, renamed)
                 path = renamed

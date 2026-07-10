@@ -321,11 +321,21 @@ def _billing_month() -> str:
 
 
 def _row_to_key(row) -> ApiKey:
+    # If the stored billing_month is not the current month, the key has
+    # effectively reset — record_request() zeroes it on the next call. Reflect
+    # that here so over_limit/remaining don't lock a user out on the 1st of the
+    # month (the guard runs BEFORE record_request, so a stale count would 429
+    # forever and never reach the reset). '' (never used) also reads as 0.
+    try:
+        current = row["billing_month"] == _billing_month()
+    except (IndexError, KeyError):
+        current = True
+    this_month = row["requests_this_month"] if current else 0
     return ApiKey(
         key_id=row["key_id"],
         email=row["email"],
         tier=row["tier"],
-        requests_this_month=row["requests_this_month"],
+        requests_this_month=this_month,
         requests_total=row["requests_total"],
         stripe_customer_id=row["stripe_customer_id"],
         stripe_subscription_id=row["stripe_subscription_id"],

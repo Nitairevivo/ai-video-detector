@@ -129,14 +129,18 @@ class VideoAIClassifier:
         with open(TRAINING_DATA_PATH) as f:
             samples = json.load(f)
 
-        # Always fold in the user's own real footage (dedup by source).
+        # Always fold in the user's own real footage (dedup by source). Only
+        # real sources dedup — a row without a source must never collapse to a
+        # shared None key (which would silently drop the user's seed samples).
         if USER_SEED_PATH.exists():
             try:
-                seen = {s.get("source") for s in samples}
+                seen = {s.get("source") for s in samples if s.get("source")}
                 for s in json.load(open(USER_SEED_PATH)):
-                    if s.get("source") not in seen:
+                    src = s.get("source")
+                    if src is None or src not in seen:
                         samples.append(s)
-                        seen.add(s.get("source"))
+                        if src is not None:
+                            seen.add(src)
             except Exception:
                 pass
 

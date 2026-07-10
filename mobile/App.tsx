@@ -534,6 +534,7 @@ function AppInner() {
 
       {result && <ResultBanner result={result} onDismiss={() => setResult(null)} lang={lang} />}
       <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} />
+      <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -804,7 +805,16 @@ function WhatsNew() {
   useEffect(() => {
     let alive = true;
     SecureStore.getItemAsync(WHATS_NEW_KEY)
-      .then((seen) => { if (alive && seen !== CHANGELOG_VERSION && entry) setVisible(true); })
+      .then((seen) => {
+        if (!alive || !entry) return;
+        // Fresh install (no stored value): nothing to *announce* — record the
+        // current version silently so only a genuine future OTA update pops it.
+        if (seen === null || seen === undefined) {
+          SecureStore.setItemAsync(WHATS_NEW_KEY, CHANGELOG_VERSION).catch(() => {});
+          return;
+        }
+        if (seen !== CHANGELOG_VERSION) setVisible(true);
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -858,7 +868,6 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppRouter />
-      <WhatsNew />
     </ErrorBoundary>
   );
 }

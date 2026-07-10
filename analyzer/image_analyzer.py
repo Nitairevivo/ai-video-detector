@@ -154,9 +154,10 @@ def _byte_scan(path: str) -> dict:
             if idx < 0:
                 break
             # A genuine tool tag lives in readable metadata text; a random
-            # collision inside compressed pixel bytes does not. Only trust the
-            # hit if it sits in a printable-ASCII neighbourhood.
-            if _in_text_region(blob, idx, len(nb)):
+            # collision inside compressed pixel bytes does not. Require both a
+            # printable-ASCII neighbourhood AND a whole-token boundary (so a
+            # short token like "flux"/"reve" can't match inside a real word).
+            if _in_text_region(blob, idx, len(nb)) and _byte_token_boundary(blob, idx, len(nb)):
                 found["ai_tool"] = tool
                 break
             start = idx + 1
@@ -183,6 +184,26 @@ def _in_text_region(blob: bytes, idx: int, length: int, pad: int = 6,
     return printable / len(window) >= min_ratio
 
 
+def _byte_token_boundary(blob: bytes, idx: int, length: int) -> bool:
+    """The matched token must not be flanked by ASCII letters/digits, so a short
+    token like "flux"/"reve" doesn't match inside "influx"/"forever" in metadata
+    text either."""
+    def _alnum(c: int) -> bool:
+        return (48 <= c <= 57) or (65 <= c <= 90) or (97 <= c <= 122)
+    before = blob[idx - 1] if idx > 0 else None
+    after = blob[idx + length] if idx + length < len(blob) else None
+    return not (before is not None and _alnum(before)) and not (after is not None and _alnum(after))
+
+
+def _token_present(text: str, needle: str) -> bool:
+    """Whole-token match: the needle must not be flanked by ASCII letters/digits.
+    Stops short brand tokens from matching inside ordinary words — e.g. "flux"
+    in "influx"/"reflux" or "reve" in "forever"/"reverie" — which would otherwise
+    flag a real photo as AI from a caption. Punctuation/spaces still delimit, so
+    "Adobe Firefly", "DALL·E 3" and "sdxl_model" match as intended."""
+    return re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])", text) is not None
+
+
 def _tool_from_text(exif: dict) -> Optional[str]:
     hay = " ".join(str(v).lower() for k, v in exif.items()
                    if k in ("software", "artist", "hostcomputer", "imagedescription")
@@ -191,7 +212,7 @@ def _tool_from_text(exif: dict) -> Optional[str]:
     if "text::parameters" in exif and ("steps:" in hay or "sampler" in hay or "cfg scale" in hay):
         return "Stable Diffusion"
     for needle, tool in AI_IMAGE_TOOLS.items():
-        if needle in hay:
+        if _token_present(hay, needle):
             return tool
     return None
 

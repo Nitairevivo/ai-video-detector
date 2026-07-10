@@ -55,13 +55,17 @@ def _load_seed() -> list:
 
 
 def _load_all() -> list:
-    """Accumulated dataset + the permanent user seed, de-duplicated by source."""
+    """Accumulated dataset + the permanent user seed, de-duplicated by source.
+    Only real sources dedup — a source-less row must not collapse to a shared
+    None key (which would silently drop the user's seed samples)."""
     samples = _load()
-    seen = {s.get("source") for s in samples}
+    seen = {s.get("source") for s in samples if s.get("source")}
     for s in _load_seed():
-        if s.get("source") not in seen:
+        src = s.get("source")
+        if src is None or src not in seen:
             samples.append(s)
-            seen.add(s.get("source"))
+            if src is not None:
+                seen.add(src)
     return samples
 
 

@@ -274,7 +274,9 @@ async def detect(
         tmp_path = tmp.name
         try:
             written = await _save_upload(file, tmp)
-        except HTTPException:
+        except BaseException:
+            # Any failure (client disconnect, OSError, cancellation) — not just
+            # HTTPException — must not leave the temp file on disk.
             os.unlink(tmp_path)
             raise
         if written == 0:
@@ -481,7 +483,11 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        await _save_upload(file, tmp)
+        try:
+            await _save_upload(file, tmp)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path)
@@ -614,11 +620,35 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     return False
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """SSRF guard: only allow http(s) URLs whose host resolves entirely to
+    public addresses. Blocks cloud metadata (169.254.169.254), loopback,
+    private and link-local ranges so a user-supplied URL can't make the server
+    fetch internal services."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname:
+            return False
+        for info in socket.getaddrinfo(p.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def _download_direct(url: str, tmp_path: str) -> bool:
     """
     Direct HTTP download, capped at 60MB. The cap matters: deep analysis
     needs the whole file, and social videos are almost always well under it.
     """
+    if not _is_safe_public_url(url):
+        return False
     LIMIT = 60 * 1024 * 1024
     try:
         req = urllib.request.Request(url, headers={
@@ -654,6 +684,11 @@ def download_video_from_url(url: str, tmp_path: str):
     ok = False
     aigc_flagged = False
     aigc_info = ""
+
+    # SSRF guard: a non-platform URL is fetched directly by us — never let it
+    # resolve to an internal/loopback/link-local address.
+    if not _is_platform_url(url) and not _is_safe_public_url(url):
+        return False, False, "blocked: URL is not a public address"
 
     # Strategy 0: platform AI-disclosure label (YouTube/Instagram/Facebook).
     if not is_tiktok:
@@ -770,6 +805,7 @@ async def detect_url(request: Request, url: str = Body(..., embed=True), deep: b
 
 
 @app.post("/detect-batch")
+@limiter.limit("10/minute")
 async def detect_batch(
     request: Request,
     urls: list[str] = Body(...),
@@ -945,7 +981,11 @@ async def calibrate(
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        await _save_upload(file, tmp)
+        try:
+            await _save_upload(file, tmp)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path, True)

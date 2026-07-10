@@ -294,8 +294,8 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
             <div>
               <p className="text-[11px] uppercase tracking-wider text-faint font-semibold mb-2">Visual artifacts spotted</p>
               <div className="flex flex-wrap gap-1.5">
-                {r.explanation.visual_artifacts.map((a) => (
-                  <span key={a} className="px-2 py-0.5 rounded-full text-[11px] bg-orange-500/10 text-orange-300 border border-orange-500/25">👁 {a}</span>
+                {r.explanation.visual_artifacts.map((a, i) => (
+                  <span key={`${a}-${i}`} className="px-2 py-0.5 rounded-full text-[11px] bg-orange-500/10 text-orange-300 border border-orange-500/25">👁 {a}</span>
                 ))}
               </div>
             </div>
@@ -325,7 +325,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
 
           {r.explanation?.caveats && r.explanation.caveats.length > 0 && (
             <div className="text-[11px] text-yellow-400/80 space-y-0.5">
-              {r.explanation.caveats.map((c) => <p key={c}>⚠ {c}</p>)}
+              {r.explanation.caveats.map((c, i) => <p key={`${c}-${i}`}>⚠ {c}</p>)}
             </div>
           )}
 
@@ -399,7 +399,7 @@ export default function Home() {
     } catch {}
   }, []);
 
-  const downloadAndDetect = useCallback(async (url: string, signal: AbortSignal): Promise<Response> => {
+  const downloadAndDetect = useCallback(async (url: string, signal: AbortSignal, deep = false): Promise<Response> => {
     const isDirect = /\.(mp4|webm|mov|mkv|m4v)(\?|$)/i.test(url);
     if (isDirect) {
       try {
@@ -409,12 +409,12 @@ export default function Home() {
           if (blob.size > 50000 && blob.type.includes("video")) {
             const form = new FormData();
             form.append("file", blob, "video.mp4");
-            return fetch(`${API}/detect`, { method: "POST", body: form, signal });
+            return fetch(`${API}/detect?deep=${deep}`, { method: "POST", body: form, signal });
           }
         }
       } catch { /* CORS block — fall through */ }
     }
-    return fetch(`${API}/detect-url`, {
+    return fetch(`${API}/detect-url?deep=${deep}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
@@ -429,7 +429,7 @@ export default function Home() {
     try {
       let res: Response;
       if (item.url) {
-        res = await downloadAndDetect(item.url, controller.signal);
+        res = await downloadAndDetect(item.url, controller.signal, deep);
       } else {
         const form = new FormData();
         form.append("file", item.file!);
