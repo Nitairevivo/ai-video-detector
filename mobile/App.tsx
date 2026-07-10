@@ -451,8 +451,9 @@ function AppInner() {
     // Check for file shared on startup
     if (IntentModule?.getInitialIntent) {
       IntentModule.getInitialIntent().then((intent: any) => {
-        if (intent?.uri && intent?.type?.startsWith("video/")) {
-          detectVideoFile(intent.uri, intent.type);
+        const t = intent?.type || "";
+        if (intent?.uri && (t.startsWith("video/") || t.startsWith("image/"))) {
+          detectVideoFile(intent.uri, t);
         }
       }).catch(() => {});
     }
