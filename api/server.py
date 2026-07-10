@@ -214,6 +214,8 @@ def get_optional_api_key(request: Request, x_api_key: Optional[str] = Header(Non
     return key
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
+IMAGE_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp',
+                 '.tif', '.tiff', '.heic', '.heif', '.avif'}
 # Upload cap: enough for any social-video file, small enough not to fill the
 # container's disk. Deep analysis (Gemini frame pairs, visual, audio) needs the
 # WHOLE file — MP4s often keep the moov index at the end, so a truncated file
@@ -264,8 +266,9 @@ async def detect(
       re-encoded/stripped videos with no code evidence).
     """
     suffix = Path(file.filename).suffix.lower()
-    if suffix not in SUPPORTED_FORMATS:
-        raise HTTPException(400, f"Unsupported format: {suffix}. Use: {SUPPORTED_FORMATS}")
+    is_image = suffix in IMAGE_FORMATS
+    if suffix not in SUPPORTED_FORMATS and not is_image:
+        raise HTTPException(400, f"Unsupported format: {suffix}. Use video {sorted(SUPPORTED_FORMATS)} or image {sorted(IMAGE_FORMATS)}")
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
@@ -281,7 +284,9 @@ async def detect(
     try:
         # Analysis takes 10-60s of CPU/IO — run it off the event loop so one
         # video doesn't freeze every other request on the server.
-        if mode == "fast":
+        if is_image:
+            payload = await run_in_threadpool(run_image_analysis, tmp_path)
+        elif mode == "fast":
             payload = await run_in_threadpool(run_fast_analysis, tmp_path)
         else:
             payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
@@ -355,6 +360,46 @@ def run_fast_analysis(tmp_path: str, platform_flag: dict = None) -> dict:
             ) if c],
         },
         "_signals": signals,
+    }
+
+
+def run_image_analysis(tmp_path: str) -> dict:
+    """
+    Code-first still-image analysis — the image counterpart of the fast video
+    path. Reads EXIF / C2PA / IPTC / PNG-metadata / tool tags; near-instant and
+    never decodes pixels for a verdict when provenance exists.
+    """
+    from analyzer.image_analyzer import analyze_image
+    r = analyze_image(tmp_path)
+    s = r.signals or {}
+    return {
+        "is_ai_generated": r.verdict == "ai_generated",
+        "verdict": r.verdict,
+        "confidence": round(r.confidence, 4),
+        "confidence_pct": f"{r.confidence * 100:.1f}%",
+        "ai_tool_detected": r.ai_tool,
+        "edit_tool_detected": None,
+        "detection_method": r.method,
+        "media_type": "image",
+        "mode": "fast",
+        "deep_analysis_ran": False,
+        "explanation": {
+            "deciding_layer": r.method,
+            "provenance": {
+                "c2pa_present": bool(s.get("has_c2pa")),
+                "c2pa_claims_ai": bool(s.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(s.get("synthetic_media_marker")),
+                "iptc_digital_source_type": s.get("iptc_digital_source_type"),
+                "camera_provenance": bool(s.get("camera_provenance")),
+                "metadata_stripped": bool(s.get("metadata_is_stripped")),
+                "ai_tool": r.ai_tool,
+            },
+            "caveats": [c for c in (
+                "image has no metadata (screenshot / re-saved / platform-stripped) — no provenance to read"
+                if s.get("metadata_is_stripped") else None,
+            ) if c],
+        },
+        "_signals": s,
     }
 
 

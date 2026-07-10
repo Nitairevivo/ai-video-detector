@@ -17,3 +17,4 @@ anthropic>=0.40.0
 c2pa-python==0.9.0
 sentry-sdk>=2.0.0
 huggingface-hub>=0.24.0
+pillow>=10.0.0
