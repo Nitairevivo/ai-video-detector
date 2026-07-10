@@ -5,8 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from analyzer.platform_flags import (
-    _YOUTUBE_MARKERS, _META_MARKERS, _platform_of,
-    _youtube_video_id, _scan_markers,
+    _YOUTUBE_MARKERS, _META_MARKERS, _TWITTER_MARKERS, _platform_of,
+    _youtube_video_id, _scan_markers, _TW_ID_RE,
 )
 
 
@@ -67,7 +67,30 @@ def test_platform_routing():
     assert _platform_of("https://www.youtube.com/shorts/xyz") == "youtube"
     assert _platform_of("https://www.instagram.com/reel/xyz/") == "instagram"
     assert _platform_of("https://fb.watch/abc/") == "facebook"
+    assert _platform_of("https://x.com/user/status/123") == "twitter"
+    assert _platform_of("https://twitter.com/user/status/123") == "twitter"
     assert _platform_of("https://example.com/video.mp4") == "unknown"
+
+
+# ── X / Twitter ───────────────────────────────────────────────────────────────
+def test_twitter_id_extraction():
+    assert _TW_ID_RE.search("https://x.com/jack/status/1789012345678").group(1) == "1789012345678"
+    assert _TW_ID_RE.search("https://twitter.com/a_b/status/42").group(1) == "42"
+    assert _TW_ID_RE.search("https://x.com/jack") is None
+
+
+def test_twitter_grok_attribution_flags():
+    assert _scan_markers('{"source":"Grok Imagine","text":"a cat"}', _TWITTER_MARKERS) is not None
+
+
+def test_twitter_made_with_ai_flags():
+    assert _scan_markers('{"displayText":"Made with AI"}', _TWITTER_MARKERS) is not None
+    assert _scan_markers('{"is_ai_generated":true}', _TWITTER_MARKERS) is not None
+
+
+def test_twitter_tweet_merely_mentioning_ai_does_not_match():
+    j = '{"text":"grok and Made with AI labels are interesting","source":"Twitter for iPhone"}'
+    assert _scan_markers(j, _TWITTER_MARKERS) is None
 
 
 if __name__ == "__main__":
