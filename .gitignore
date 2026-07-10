@@ -18,3 +18,6 @@ dataset_cache/
 tests/real_benchmark_report.md
 tests/real_benchmark_results.json
 tests/benchmark_data/
+
+# transient media-analysis working dir (download processor, results, id lists)
+scratch_media/
