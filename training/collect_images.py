@@ -18,6 +18,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -80,6 +81,91 @@ def collect_hf(repo: str, is_ai: bool, limit: int, seen: set) -> int:
     return added
 
 
+def _label_is_ai(value, class_names=None) -> Optional[bool]:
+    """Map a dataset label value to AI(True)/real(False). Handles string labels
+    and ClassLabel ints (via class_names)."""
+    s = None
+    if class_names and isinstance(value, int) and 0 <= value < len(class_names):
+        s = str(class_names[value]).lower()
+    elif isinstance(value, str):
+        s = value.lower()
+    if s is not None:
+        if any(t in s for t in ("ai", "fake", "synthetic", "generat", "gan", "diffus")):
+            return True
+        if any(t in s for t in ("real", "authentic", "camera", "human", "natural")):
+            return False
+        return None
+    # numeric with no class names: can't know the convention — skip (logged once)
+    return None
+
+
+def collect_hf_labeled(repo: str, limit: int, seen: set) -> int:
+    """Collect from a single HF image dataset that carries BOTH classes via a
+    label column (the common format). Uses the datasets library so parquet /
+    imagefolder / webdataset all work. Logs the schema on the first example so
+    the label mapping is transparent in the run logs."""
+    import tempfile
+    from datasets import load_dataset
+    token = os.environ.get("HF_TOKEN") or None
+    try:
+        ds = load_dataset(repo, split="train", streaming=True, token=token)
+    except Exception as e:
+        print(f"[img] load {repo}: {e}")
+        return 0
+
+    # discover the label column + its class names (if any)
+    label_key = None
+    class_names = None
+    try:
+        feats = getattr(ds, "features", None) or {}
+        for k in ("label", "labels", "target", "class", "is_ai", "ai", "y"):
+            if k in feats:
+                label_key = k
+                cn = getattr(feats[k], "names", None)
+                class_names = list(cn) if cn else None
+                break
+        print(f"[img] {repo}: features={list(feats.keys())} label_key={label_key} classes={class_names}")
+    except Exception:
+        pass
+
+    img_key = None
+    added = 0
+    for i, ex in enumerate(ds):
+        if added >= limit:
+            break
+        if img_key is None:
+            for k in ("image", "img", "images", "picture"):
+                if k in ex:
+                    img_key = k
+                    break
+            if img_key is None:
+                print(f"[img] {repo}: no image column in {list(ex.keys())}")
+                return added
+        lv = ex.get(label_key) if label_key else None
+        is_ai = _label_is_ai(lv, class_names)
+        if is_ai is None:
+            if i == 0:
+                print(f"[img] {repo}: unmapped label value={lv!r} — skipping repo")
+            continue
+        tag = f"hf:{repo}:{i}"
+        if tag in seen:
+            continue
+        try:
+            img = ex[img_key]
+            tmp = tempfile.mktemp(suffix=".png")
+            img.convert("RGB").save(tmp)
+            vec = image_feature_vector(tmp)
+            add_sample(vec, is_ai, tag)
+            seen.add(tag)
+            added += 1
+            os.unlink(tmp)
+        except Exception as e:
+            if i < 3:
+                print(f"    x ex{i}: {e}")
+    print(f"[img] {repo}: +{added} labeled samples")
+    return added
+
+
 def train_image_model() -> dict:
     import numpy as np
     from sklearn.calibration import CalibratedClassifierCV
@@ -126,12 +212,15 @@ def train_image_model() -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ai-repos", default="")
-    ap.add_argument("--real-repos", default="")
+    ap.add_argument("--ai-repos", default="")       # single-class repos (all AI)
+    ap.add_argument("--real-repos", default="")     # single-class repos (all real)
+    ap.add_argument("--labeled-repos", default="")  # one repo, both classes via a label column
     ap.add_argument("--limit", type=int, default=500)
     args = ap.parse_args()
     seen = _seen()
     total = 0
+    for repo in [r.strip() for r in args.labeled_repos.split(",") if r.strip()]:
+        total += collect_hf_labeled(repo, args.limit, seen)
     for repo in [r.strip() for r in args.ai_repos.split(",") if r.strip()]:
         total += collect_hf(repo, True, args.limit, seen)
     for repo in [r.strip() for r in args.real_repos.split(",") if r.strip()]:
