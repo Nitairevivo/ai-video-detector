@@ -120,6 +120,9 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
     token = os.environ.get("HF_TOKEN") or None
     try:
         ds = load_dataset(repo, split="train", streaming=True, token=token)
+        # datasets are often grouped by class — shuffle the stream so a
+        # sequential take gets BOTH classes (training needs >=5 of each).
+        ds = ds.shuffle(seed=42, buffer_size=5000)
     except Exception as e:
         print(f"[img] load {repo}: {e}")
         return 0
@@ -174,7 +177,8 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
         except Exception as e:
             if i < 3:
                 print(f"    x ex{i}: {e}")
-    print(f"[img] {repo}: +{added} labeled samples")
+    ai_added = sum(1 for s in _load() if s.get("source", "").startswith(f"hf:{repo}:") and s["label"] == 1)
+    print(f"[img] {repo}: +{added} labeled samples (AI so far from this repo: {ai_added})")
     return added
 
 
@@ -239,7 +243,8 @@ def main():
         total += collect_hf(repo, False, args.limit, seen)
     print(f"[img] collected {total} new samples")
     if total:
-        train_image_model()
+        result = train_image_model()
+        print(f"[img] train result: {result}")
 
 
 if __name__ == "__main__":
