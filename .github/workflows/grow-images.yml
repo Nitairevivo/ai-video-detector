@@ -64,8 +64,12 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           LIMIT: ${{ github.event.inputs.per_repo_limit || '500' }}
+          # Verified public labeled dataset as the default source (both classes
+          # via a label column); override/extend with repo variables.
+          LABELED: ${{ vars.HF_LABELED_IMAGE_REPOS || 'Parveshiiii/AI-vs-Real' }}
         run: |
           python training/collect_images.py \
+            --labeled-repos "$LABELED" \
             --ai-repos "${{ vars.HF_AI_IMAGE_REPOS }}" \
             --real-repos "${{ vars.HF_REAL_IMAGE_REPOS }}" \
             --limit "$LIMIT" || true
