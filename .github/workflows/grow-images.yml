@@ -98,7 +98,10 @@ jobs:
         if: always()
         run: |
           git checkout -B auto-train-images
-          git add data/image_training_samples.json models/image_model.joblib models/image_model_meta.json || true
+          # add each independently so a missing model file never blocks saving
+          # the dataset (git add is atomic across args and would fail otherwise)
+          git add -A data/image_training_samples.json 2>/dev/null || true
+          git add -A models/image_model.joblib models/image_model_meta.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No change to commit."
           else
