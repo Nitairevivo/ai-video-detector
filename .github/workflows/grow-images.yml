@@ -1,0 +1,101 @@
+name: Grow IMAGE dataset + retrain (autonomous)
+
+# The still-image counterpart of grow-dataset. AI *images* are abundant and
+# freely downloadable on Hugging Face, so this side can genuinely scale
+# (unlike AI video). Pulls AI + real images, extracts feature vectors, and
+# retrains models/image_model.joblib — used by analyze_image for stripped
+# images (no metadata). Only feature vectors are stored; images are discarded.
+#
+# Configure the sources as repo variables (Settings -> Actions -> Variables):
+#   HF_AI_IMAGE_REPOS   = comma-separated HF dataset ids of AI-generated images
+#   HF_REAL_IMAGE_REPOS = comma-separated HF dataset ids of real photos
+#
+# Accumulates on the `auto-train-images` branch. Review metrics, then merge.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"    # daily 03:00 UTC (offset from the video grower at 02:00)
+  workflow_dispatch:
+    inputs:
+      per_repo_limit:
+        description: "Max images per HF repo this run"
+        default: "500"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grow-images
+  cancel-in-progress: false
+
+jobs:
+  grow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Restore accumulated image dataset from auto-train-images
+        run: |
+          git config user.name "verifai-trainer"
+          git config user.email "trainer@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin auto-train-images >/dev/null 2>&1; then
+            git fetch origin auto-train-images
+            git checkout origin/auto-train-images -- data/image_training_samples.json models/image_model.joblib models/image_model_meta.json 2>/dev/null || true
+            echo "Restored image dataset."
+          else
+            echo "No auto-train-images yet — starting fresh."
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          pip install -r requirements.txt
+
+      - name: Collect + train on Hugging Face images
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          LIMIT: ${{ github.event.inputs.per_repo_limit || '500' }}
+        run: |
+          python training/collect_images.py \
+            --ai-repos "${{ vars.HF_AI_IMAGE_REPOS }}" \
+            --real-repos "${{ vars.HF_REAL_IMAGE_REPOS }}" \
+            --limit "$LIMIT" || true
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Image dataset growth"
+            python - <<'EOF'
+          import json
+          try:
+              m = json.load(open("models/image_model_meta.json"))
+              print(f"- Samples: **{m.get('samples','?')}** ({m.get('ai_samples','?')} AI / {m.get('real_samples','?')} real)")
+              for k in ("cv_auc", "cv_precision", "cv_recall", "cv_fpr"):
+                  if m.get(k) is not None:
+                      print(f"- {k}: **{m[k]}**")
+          except Exception as e:
+              print(f"- (no image model yet: {e})")
+          EOF
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit to auto-train-images
+        if: always()
+        run: |
+          git checkout -B auto-train-images
+          git add data/image_training_samples.json models/image_model.joblib models/image_model_meta.json || true
+          if git diff --cached --quiet; then
+            echo "No change to commit."
+          else
+            git commit -m "Grow image dataset + retrain ($(date -u +%Y-%m-%d))"
+            git push -f origin auto-train-images
+          fi

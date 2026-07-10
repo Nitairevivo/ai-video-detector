@@ -100,6 +100,44 @@ def test_plain_image_not_falsely_flagged(plain_image):
     assert r.verdict != "ai_generated"   # never cry wolf without evidence
 
 
+def test_image_feature_vector_shape(plain_image):
+    from analyzer.image_analyzer import image_feature_vector, _IMG_FEATURE_KEYS
+    v = image_feature_vector(plain_image)
+    assert len(v) == len(_IMG_FEATURE_KEYS)
+    assert all(isinstance(x, float) for x in v)
+
+
+def test_image_model_trains_and_serves(tmp_path, plain_image, monkeypatch):
+    """The image data machine trains a pixel model that analyze_image then uses
+    for a stripped image (no metadata)."""
+    import json, random
+    import training.collect_images as ci
+    from analyzer.image_analyzer import _IMG_FEATURE_KEYS
+    ci.DATA = tmp_path / "img_samples.json"
+    ci.MODEL = tmp_path / "image_model.joblib"
+    ci.META = tmp_path / "image_meta.json"
+    random.seed(0)
+    n = len(_IMG_FEATURE_KEYS)
+    samples = []
+    ni = _IMG_FEATURE_KEYS.index("gray_noise")
+    for i in range(40):
+        ai = i % 2 == 0
+        vec = [0.0] * n
+        vec[ni] = (0.5 if ai else 3.0) + random.random()
+        samples.append({"features": vec, "label": int(ai), "source": f"s{i}"})
+    json.dump(samples, open(ci.DATA, "w"))
+    meta = ci.train_image_model()
+    assert meta.get("cv_auc", 0) >= 0.9
+    assert ci.MODEL.exists()
+
+    import analyzer.image_analyzer as ia
+    monkeypatch.setattr(ia, "_IMG_MODEL_PATH", str(ci.MODEL))
+    monkeypatch.setattr(ia, "_img_model", None)
+    monkeypatch.setattr(ia, "_img_model_loaded", False)
+    r = ia.analyze_image(plain_image)  # stripped image → model gives a verdict
+    assert "pixel_model_prob" in r.signals
+
+
 def test_detect_endpoint_routes_images(firefly_image):
     """/detect accepts an image and returns the image payload shape."""
     from api.server import run_image_analysis
