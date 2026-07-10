@@ -120,12 +120,14 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
     token = os.environ.get("HF_TOKEN") or None
     try:
         ds = load_dataset(repo, split="train", streaming=True, token=token)
-        # datasets are often grouped by class — shuffle the stream so a
-        # sequential take gets BOTH classes (training needs >=5 of each).
-        ds = ds.shuffle(seed=42, buffer_size=5000)
+        # light shuffle to mix nearby examples (cheap buffer); the hard balance
+        # guarantee comes from the per-class caps below, not from the shuffle.
+        ds = ds.shuffle(seed=42, buffer_size=1000)
     except Exception as e:
         print(f"[img] load {repo}: {e}")
         return 0
+
+    cap = max(5, limit // 2)   # collect a balanced set: up to `cap` of each class
 
     # discover the label column + its class names (if any)
     label_key = None
@@ -144,9 +146,12 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
         pass
 
     img_key = None
-    added = 0
+    added = ai_n = real_n = 0
     for i, ex in enumerate(ds):
-        if added >= limit:
+        if ai_n >= cap and real_n >= cap:
+            break
+        # don't stream forever chasing the last few of one class
+        if i > cap * 20 + 500:
             break
         if img_key is None:
             for k in ("image", "img", "images", "picture"):
@@ -162,6 +167,11 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
             if i == 0:
                 print(f"[img] {repo}: unmapped label value={lv!r} — skipping repo")
             continue
+        # keep the two classes balanced
+        if is_ai and ai_n >= cap:
+            continue
+        if (not is_ai) and real_n >= cap:
+            continue
         tag = f"hf:{repo}:{i}"
         if tag in seen:
             continue
@@ -173,12 +183,15 @@ def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
             add_sample(vec, is_ai, tag)
             seen.add(tag)
             added += 1
+            if is_ai:
+                ai_n += 1
+            else:
+                real_n += 1
             os.unlink(tmp)
         except Exception as e:
             if i < 3:
                 print(f"    x ex{i}: {e}")
-    ai_added = sum(1 for s in _load() if s.get("source", "").startswith(f"hf:{repo}:") and s["label"] == 1)
-    print(f"[img] {repo}: +{added} labeled samples (AI so far from this repo: {ai_added})")
+    print(f"[img] {repo}: +{added} samples ({ai_n} AI / {real_n} real)")
     return added
 
 
