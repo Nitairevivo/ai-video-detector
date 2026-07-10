@@ -18,10 +18,38 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 try:
-    from PIL import Image, ExifTags
+    from PIL import Image, ExifTags, ImageFilter
     _PIL = True
 except Exception:
     _PIL = False
+
+try:
+    import numpy as np
+    _NP = True
+except Exception:
+    _NP = False
+
+import pickle
+
+_IMG_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "image_model.joblib")
+_img_model = None
+_img_model_loaded = False
+
+
+def _load_image_model():
+    """The pixel classifier for STRIPPED images (no metadata). Optional — the
+    code-first path handles everything else without it."""
+    global _img_model, _img_model_loaded
+    if _img_model_loaded:
+        return _img_model
+    _img_model_loaded = True
+    try:
+        import joblib
+        if os.path.exists(_IMG_MODEL_PATH):
+            _img_model = joblib.load(_IMG_MODEL_PATH)
+    except Exception:
+        _img_model = None
+    return _img_model
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
               ".tif", ".tiff", ".heic", ".heif", ".avif"}
@@ -150,6 +178,78 @@ def _has_camera_origin(exif: dict) -> bool:
     return False
 
 
+def _pixel_features(path: str) -> dict:
+    """Cheap pixel statistics that separate camera photos from AI renders even
+    when all metadata is gone (screenshots / re-saved / platform-stripped)."""
+    f = {"gray_noise": 0.0, "edge_mean": 0.0, "fft_high_ratio": 0.0,
+         "chan_std": 0.0, "sat_mean": 0.0}
+    if not (_PIL and _NP):
+        return f
+    try:
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            im.thumbnail((256, 256))
+            arr = np.asarray(im).astype("float32")
+        gray = arr.mean(axis=2)
+        # sensor-noise proxy: residual after a light blur (AI images are cleaner)
+        with Image.fromarray(gray.astype("uint8")) as g:
+            blur = np.asarray(g.filter(ImageFilter.GaussianBlur(2))).astype("float32")
+        f["gray_noise"] = float(np.abs(gray - blur).mean())
+        # edge energy
+        gx = np.abs(np.diff(gray, axis=1)).mean()
+        gy = np.abs(np.diff(gray, axis=0)).mean()
+        f["edge_mean"] = float((gx + gy) / 2)
+        # high-frequency spectral ratio
+        F = np.abs(np.fft.fftshift(np.fft.fft2(gray)))
+        h, w = F.shape
+        cy, cx = h // 2, w // 2
+        r = min(h, w) // 8
+        low = F[cy - r:cy + r, cx - r:cx + r].sum()
+        tot = F.sum() + 1e-6
+        f["fft_high_ratio"] = float(1.0 - low / tot)
+        # colour spread + saturation
+        f["chan_std"] = float(arr.reshape(-1, 3).std(axis=0).mean())
+        mx = arr.max(axis=2); mn = arr.min(axis=2)
+        f["sat_mean"] = float(((mx - mn) / (mx + 1e-6)).mean())
+    except Exception:
+        pass
+    return f
+
+
+# Fixed-order numeric vector for the image ML model.
+_IMG_FEATURE_KEYS = [
+    "has_c2pa", "c2pa_is_ai", "synthetic_media_marker", "camera_provenance",
+    "camera_origin_detected", "metadata_is_stripped",
+    "has_make", "has_software", "has_png_text", "has_gps",
+    "aspect", "megapixels",
+    "gray_noise", "edge_mean", "fft_high_ratio", "chan_std", "sat_mean",
+]
+
+
+def image_feature_vector(path: str) -> list:
+    """Numeric feature vector for training/serving the image model."""
+    exif = _read_exif(path)
+    scan = _byte_scan(path)
+    px = _pixel_features(path)
+    w = float(exif.get("width") or 0); h = float(exif.get("height") or 0)
+    feats = {
+        "has_c2pa": int(scan["has_c2pa"]),
+        "c2pa_is_ai": 0,  # cryptographic flag only set in analyze_image; keep 0 here
+        "synthetic_media_marker": int(bool(scan["iptc_ai"])),
+        "camera_provenance": int(bool(scan["iptc_capture"])),
+        "camera_origin_detected": int(_has_camera_origin(exif)),
+        "metadata_is_stripped": int(not (exif.get("make") or exif.get("software") or any(k.startswith("text::") for k in exif))),
+        "has_make": int(bool(exif.get("make"))),
+        "has_software": int(bool(exif.get("software"))),
+        "has_png_text": int(any(k.startswith("text::") for k in exif)),
+        "has_gps": int(bool(exif.get("gps"))),
+        "aspect": (w / h) if h else 0.0,
+        "megapixels": (w * h) / 1e6,
+        **px,
+    }
+    return [float(feats.get(k, 0.0)) for k in _IMG_FEATURE_KEYS]
+
+
 def analyze_image(path: str) -> ImageResult:
     exif = _read_exif(path)
     scan = _byte_scan(path)
@@ -204,7 +304,18 @@ def analyze_image(path: str) -> ImageResult:
     if camera:
         return ImageResult("real", 0.05, "Camera EXIF markers — real photo", None, signals)
     if not metadata_present:
-        # Stripped (screenshot / re-saved / platform) — no code evidence either
-        # way. Report low confidence rather than guessing (mirrors the video path).
+        # Stripped (screenshot / re-saved / platform) — no code evidence. Fall
+        # back to the pixel model if it has been trained; otherwise stay honest.
+        model = _load_image_model()
+        if model is not None:
+            try:
+                prob = float(model.predict_proba([image_feature_vector(path)])[0][1])
+                signals["pixel_model_prob"] = round(prob, 3)
+                if prob >= 0.65:
+                    return ImageResult("ai_generated", prob, f"Pixel model: {prob:.0%} AI (no metadata)", None, signals)
+                if prob <= 0.35:
+                    return ImageResult("real", 1 - prob, f"Pixel model: {(1-prob):.0%} real (no metadata)", None, signals)
+            except Exception:
+                pass
         return ImageResult("uncertain", 0.35, "No metadata — stripped image, no provenance to read", None, signals)
     return ImageResult("uncertain", 0.30, "Metadata present but no AI or camera markers", None, signals)
