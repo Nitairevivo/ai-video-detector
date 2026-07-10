@@ -22,6 +22,10 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 MODEL_PATH = Path(__file__).parent / "trained_model.joblib"
 MODEL_META_PATH = Path(__file__).parent / "trained_model_meta.json"
 TRAINING_DATA_PATH = Path(__file__).parent.parent / "data" / "training_samples.json"
+# Real videos the user supplied (their own phone footage). Permanent ground-truth
+# REAL samples merged into every retrain — they survive the nightly machine's
+# restore-from-branch step (which only overwrites TRAINING_DATA_PATH).
+USER_SEED_PATH = Path(__file__).parent.parent / "data" / "user_seed_videos.json"
 
 # Minimum quality requirements to use the ML model.
 # Below these thresholds the model causes more false positives than it solves.
@@ -124,6 +128,17 @@ class VideoAIClassifier:
 
         with open(TRAINING_DATA_PATH) as f:
             samples = json.load(f)
+
+        # Always fold in the user's own real footage (dedup by source).
+        if USER_SEED_PATH.exists():
+            try:
+                seen = {s.get("source") for s in samples}
+                for s in json.load(open(USER_SEED_PATH)):
+                    if s.get("source") not in seen:
+                        samples.append(s)
+                        seen.add(s.get("source"))
+            except Exception:
+                pass
 
         if len(samples) < 20:
             return {"error": f"Need at least 20 samples, have {len(samples)}"}

@@ -25,6 +25,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from analyzer.image_analyzer import image_feature_vector, _IMG_FEATURE_KEYS
 
 DATA = Path(__file__).parent.parent / "data" / "image_training_samples.json"
+# Real images the user supplied (their own photos/scans). Permanent ground-truth
+# REAL samples merged into every retrain — they survive the nightly machine's
+# restore-from-branch step (which only overwrites DATA), so the user's own data
+# keeps teaching the model not to false-positive on real media.
+USER_SEED = Path(__file__).parent.parent / "data" / "user_seed_images.json"
 MODEL = Path(__file__).parent.parent / "models" / "image_model.joblib"
 META = Path(__file__).parent.parent / "models" / "image_model_meta.json"
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
@@ -37,6 +42,27 @@ def _load() -> list:
         except Exception:
             return []
     return []
+
+
+def _load_seed() -> list:
+    """User-supplied real samples, always merged into training (dedup by source)."""
+    if USER_SEED.exists():
+        try:
+            return json.load(open(USER_SEED))
+        except Exception:
+            return []
+    return []
+
+
+def _load_all() -> list:
+    """Accumulated dataset + the permanent user seed, de-duplicated by source."""
+    samples = _load()
+    seen = {s.get("source") for s in samples}
+    for s in _load_seed():
+        if s.get("source") not in seen:
+            samples.append(s)
+            seen.add(s.get("source"))
+    return samples
 
 
 def _seen() -> set:
@@ -204,7 +230,7 @@ def train_image_model() -> dict:
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.metrics import roc_auc_score
 
-    samples = _load()
+    samples = _load_all()
     y = np.array([s["label"] for s in samples])
     if len(samples) < 20 or int(y.sum()) < 5 or int((1 - y).sum()) < 5:
         return {"error": f"need >=5 of each class, have {len(samples)} ({int(y.sum())} AI)"}

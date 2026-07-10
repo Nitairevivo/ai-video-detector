@@ -135,6 +135,7 @@ def test_image_model_trains_and_serves(tmp_path, plain_image, monkeypatch):
     import training.collect_images as ci
     from analyzer.image_analyzer import _IMG_FEATURE_KEYS
     ci.DATA = tmp_path / "img_samples.json"
+    ci.USER_SEED = tmp_path / "seed_absent.json"   # isolate from the real user seed
     ci.MODEL = tmp_path / "image_model.joblib"
     ci.META = tmp_path / "image_meta.json"
     random.seed(0)
