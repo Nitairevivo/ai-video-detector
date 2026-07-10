@@ -100,6 +100,27 @@ def test_plain_image_not_falsely_flagged(plain_image):
     assert r.verdict != "ai_generated"   # never cry wolf without evidence
 
 
+def test_tool_token_in_compressed_bytes_not_flagged(tmp_path):
+    """Regression: a real photo whose *compressed* bytes coincidentally contain
+    a short tool token (e.g. 'reve') must NOT be flagged AI. The tool tag only
+    counts inside readable metadata, not random binary. (Found on a real
+    user-supplied scan that JPEG-compressed into bytes spelling 'RevE'.)"""
+    from analyzer.image_analyzer import _byte_scan
+    p = tmp_path / "coincidence.jpg"
+    payload = b"\xff\xd8\xff\xe0" + b"\x84\x04\x1a\x15\x96IZeT\x00RevE\xc9\x85\x89!\xa2" * 4
+    p.write_bytes(payload)
+    assert _byte_scan(str(p))["ai_tool"] is None
+
+
+def test_tool_token_in_metadata_still_detected(tmp_path):
+    """The guard must not blind us to a genuine tool tag sitting in real
+    printable metadata text."""
+    from analyzer.image_analyzer import _byte_scan
+    p = tmp_path / "real_tag.png"
+    p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"tEXtSoftware\x00Created with Midjourney v6\x00")
+    assert _byte_scan(str(p))["ai_tool"] == "Midjourney"
+
+
 def test_image_feature_vector_shape(plain_image):
     from analyzer.image_analyzer import image_feature_vector, _IMG_FEATURE_KEYS
     v = image_feature_vector(plain_image)

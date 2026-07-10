@@ -147,10 +147,40 @@ def _byte_scan(path: str) -> dict:
             break
     low = blob.lower()
     for needle, tool in AI_IMAGE_TOOLS.items():
-        if needle.encode() in low:
-            found["ai_tool"] = tool
+        nb = needle.encode()
+        start = 0
+        while True:
+            idx = low.find(nb, start)
+            if idx < 0:
+                break
+            # A genuine tool tag lives in readable metadata text; a random
+            # collision inside compressed pixel bytes does not. Only trust the
+            # hit if it sits in a printable-ASCII neighbourhood.
+            if _in_text_region(blob, idx, len(nb)):
+                found["ai_tool"] = tool
+                break
+            start = idx + 1
+        if found["ai_tool"]:
             break
     return found
+
+
+def _in_text_region(blob: bytes, idx: int, length: int, pad: int = 6,
+                    min_ratio: float = 0.85) -> bool:
+    """True if the bytes around [idx, idx+length) are mostly printable ASCII.
+
+    Tool names in EXIF/XMP/PNG-text are surrounded by readable characters; a
+    chance match of a short token like "reve" or "flux" inside a JPEG's
+    compressed data is surrounded by non-printable bytes. This keeps a real
+    photo from being flagged AI just because its pixel bytes spell a tool name.
+    """
+    a = max(0, idx - pad)
+    b = min(len(blob), idx + length + pad)
+    window = blob[a:b]
+    if not window:
+        return False
+    printable = sum(1 for c in window if 32 <= c <= 126)
+    return printable / len(window) >= min_ratio
 
 
 def _tool_from_text(exif: dict) -> Optional[str]:
