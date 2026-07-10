@@ -113,7 +113,8 @@ def download_media(media_id: str, dest: str) -> bool:
 
 # ─── Result formatting (Hebrew, WhatsApp markup) ──────────────────────────────
 
-def format_result(res: dict, as_document: bool) -> str:
+def format_result(res: dict, as_document: bool, media: str = "video") -> str:
+    noun = "התמונה" if media == "image" else "הסרטון"
     verdict = res.get("verdict", "real")
     pct = round(float(res.get("confidence", 0)) * 100)
     reason = res.get("gemini_reason", "") or (res.get("detection_method", "") or "")[:120]
@@ -138,14 +139,14 @@ def format_result(res: dict, as_document: bool) -> str:
     if signals.get("metadata_is_stripped") or signals.get("platform_reencoded"):
         note = "⚠️ המטא-דאטה המקורי נמחק (פלטפורמה/דחיסה)"
         if not as_document:
-            note += "\n💡 *טיפ:* שלח את הסרטון *כמסמך* (📎 ← מסמך/Document) — כך המטא-דאטה המקורי נשמר והבדיקה מדויקת יותר"
+            note += f"\n💡 *טיפ:* שלח את {noun} *כמסמך* (📎 ← מסמך/Document) — כך המטא-דאטה המקורי נשמר והבדיקה מדויקת יותר"
         lines.append(note)
     return "\n".join(lines)
 
 
 WELCOME = (
     "👋 *ברוך הבא ל-VerifAI*\n\n"
-    "אני בודק אם סרטון נוצר על ידי AI (Sora, Veo, Kling, Runway…) או אמיתי.\n\n"
+    "אני בודק אם *סרטון או תמונה* נוצרו על ידי AI (Sora, Veo, Kling, Midjourney, Firefly, DALL·E…) או אמיתיים.\n\n"
     "*הכי מדויק:* שלח את הסרטון *כמסמך* (📎 ← מסמך/Document) — "
     "כך המטא-דאטה וחתימות ה-C2PA נשמרים.\n"
     "אפשר גם סרטון רגיל או *קישור* (TikTok / YouTube / Instagram…).\n\n"
@@ -171,6 +172,29 @@ def _analyze_media(to: str, media_id: str, filename: str, as_document: bool):
         if res["verdict"] == "real" and res["confidence"] < 0.5:
             res = run_full_analysis(tmp, deep=True)
         send_text(to, format_result(res, as_document=as_document))
+    except Exception as e:
+        traceback.print_exc()
+        send_text(to, f"❌ שגיאה בניתוח: {str(e)[:120]}")
+    finally:
+        try:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        except Exception:
+            pass
+
+
+def _analyze_image_media(to: str, media_id: str, filename: str, as_document: bool):
+    from api.server import run_image_analysis
+    suffix = Path(filename or "image.jpg").suffix.lower() or ".jpg"
+    if suffix not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".avif"):
+        suffix = ".jpg"
+    tmp = tempfile.mktemp(suffix=suffix)
+    try:
+        if not download_media(media_id, tmp):
+            send_text(to, "❌ לא הצלחתי להוריד את התמונה. נסה לשלוח שוב.")
+            return
+        res = run_image_analysis(tmp)
+        send_text(to, format_result(res, as_document=as_document, media="image"))
     except Exception as e:
         traceback.print_exc()
         send_text(to, f"❌ שגיאה בניתוח: {str(e)[:120]}")
@@ -220,12 +244,17 @@ def _handle_message(msg: dict):
 
     if mtype == "video":
         _executor.submit(_analyze_media, to, msg["video"]["id"], "video.mp4", False)
+    elif mtype == "image":
+        _executor.submit(_analyze_image_media, to, msg["image"]["id"], "image.jpg", False)
     elif mtype == "document":
         doc = msg["document"]
-        if str(doc.get("mime_type", "")).startswith("video/"):
+        mime = str(doc.get("mime_type", ""))
+        if mime.startswith("video/"):
             _executor.submit(_analyze_media, to, doc["id"], doc.get("filename") or "video.mp4", True)
+        elif mime.startswith("image/"):
+            _executor.submit(_analyze_image_media, to, doc["id"], doc.get("filename") or "image.jpg", True)
         else:
-            send_text(to, "המסמך אינו סרטון — שלח קובץ וידאו (mp4/mov…) 🎬")
+            send_text(to, "המסמך אינו סרטון או תמונה — שלח וידאו (mp4/mov…) או תמונה (jpg/png…) 🎬🖼️")
     elif mtype == "text":
         body = (msg.get("text") or {}).get("body", "")
         urls = URL_RE.findall(body)
