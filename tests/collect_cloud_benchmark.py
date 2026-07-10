@@ -110,11 +110,27 @@ def collect_wikimedia(out_dir: Path, per_query: int) -> list:
     """
     rows = []
     api = "https://commons.wikimedia.org/w/api.php"
+    # A wide, diverse term list so successive nightly runs keep surfacing NEW
+    # clips instead of re-harvesting the same handful (dedup drops repeats).
     searches = [
         ("nature landscape", "nature"), ("people walking city", "people"),
         ("ocean waves", "nature"), ("cooking", "people"),
         ("water splash", "chaotic"), ("traffic street", "street"),
         ("bird flying", "nature"), ("train railway", "aerial"),
+        ("dog playing", "animal"), ("cat", "animal"), ("horse running", "animal"),
+        ("insect macro", "animal"), ("fish underwater", "nature"),
+        ("waterfall", "nature"), ("river flowing", "nature"), ("forest", "nature"),
+        ("mountain", "nature"), ("desert", "nature"), ("snow falling", "weather"),
+        ("rain", "weather"), ("storm clouds", "weather"), ("lightning", "weather"),
+        ("sunset timelapse", "nature"), ("night city", "street"),
+        ("market people", "people"), ("festival crowd", "people"),
+        ("dancing", "people"), ("music concert", "people"), ("children playing", "people"),
+        ("sports football", "sport"), ("cycling", "sport"), ("running marathon", "sport"),
+        ("surfing", "sport"), ("skiing", "sport"), ("swimming", "sport"),
+        ("factory machine", "machine"), ("construction site", "machine"),
+        ("aircraft flying", "aerial"), ("boat sailing", "nature"),
+        ("flowers blooming timelapse", "nature"), ("wind trees", "nature"),
+        ("fireworks", "chaotic"), ("campfire", "chaotic"), ("crowd stadium", "people"),
     ]
     for term, category in searches:
         params = urllib.parse.urlencode({
@@ -190,6 +206,18 @@ def collect_archive_org(out_dir: Path, per_query: int) -> list:
         ("nature documentary", "nature"), ("home movies people", "people"),
         ("street scene city", "street"), ("news footage", "news"),
         ("dashcam", "cctv"), ("cooking demonstration", "people"),
+        ("wildlife footage", "nature"), ("travel vlog", "people"),
+        ("historical newsreel", "news"), ("vintage home movie", "people"),
+        ("aerial drone landscape", "aerial"), ("underwater diving", "nature"),
+        ("sports event", "sport"), ("concert performance", "people"),
+        ("train ride", "aerial"), ("city timelapse", "street"),
+        ("farm animals", "animal"), ("bird watching", "animal"),
+        ("beach ocean", "nature"), ("mountain hiking", "nature"),
+        ("factory production", "machine"), ("car driving pov", "street"),
+        ("public domain film", "misc"), ("educational film", "misc"),
+        ("weather storm", "weather"), ("parade crowd", "people"),
+        ("market street food", "people"), ("dance performance", "people"),
+        ("space nasa footage", "misc"), ("science experiment", "misc"),
     ]
     for term, category in searches:
         q = urllib.parse.urlencode({
