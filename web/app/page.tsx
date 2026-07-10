@@ -480,7 +480,7 @@ export default function Home() {
   }, [analyzeItem, deepMode]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
-    const valid = Array.from(files).filter(f => /\.(mp4|mov|mkv|webm|m4v)$/i.test(f.name));
+    const valid = Array.from(files).filter(f => /\.(mp4|mov|mkv|webm|m4v|jpg|jpeg|png|webp|gif|bmp|tiff?|heic|heif|avif)$/i.test(f.name));
     const newItems: VideoItem[] = valid.map(f => ({ id: Math.random().toString(36).slice(2), file: f, label: f.name, status: "pending" as const }));
     setItems(prev => [...newItems, ...prev]);
     newItems.forEach(item => analyzeItem(item, deepMode));
@@ -693,10 +693,10 @@ export default function Home() {
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
               style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>🎬</div>
             <div className="text-center">
-              <p className="text-white font-semibold text-sm">Drop video here</p>
-              <p className="text-gray-500 text-xs mt-0.5">MP4 · MOV · MKV · WebM · M4V</p>
+              <p className="text-white font-semibold text-sm">Drop video or image here</p>
+              <p className="text-gray-500 text-xs mt-0.5">Video: MP4 · MOV · WebM &nbsp;·&nbsp; Image: JPG · PNG · WebP · HEIC</p>
             </div>
-            <input ref={fileRef} type="file" accept=".mp4,.mov,.mkv,.webm,.m4v" multiple className="hidden"
+            <input ref={fileRef} type="file" accept=".mp4,.mov,.mkv,.webm,.m4v,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,.avif" multiple className="hidden"
               onChange={e => e.target.files && addFiles(e.target.files)} />
           </div>
 
