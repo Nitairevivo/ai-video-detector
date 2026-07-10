@@ -20,7 +20,12 @@ name: Promote trained model to production (gated)
 
 on:
   schedule:
-    - cron: "30 4 * * *"    # after grow-dataset (02:00) and grow-images (03:00)
+    - cron: "30 4 * * *"    # nightly safety net after the growers
+  # Ship improvements the moment a training round finishes — the model is live
+  # in the app within minutes of getting better (gated on the quality check).
+  workflow_run:
+    workflows: ["Grow IMAGE dataset + retrain (autonomous)", "Grow dataset + retrain (autonomous)", "Cloud Training"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry_run:
