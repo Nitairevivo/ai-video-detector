@@ -1,10 +1,12 @@
 {
   "cli": {
-    "version": ">= 12.0.0"
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release"
@@ -19,6 +21,8 @@
       }
     },
     "production": {
+      "channel": "production",
+      "autoIncrement": true,
       "ios": {
         "buildConfiguration": "Release"
       },

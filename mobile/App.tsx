@@ -125,6 +125,8 @@ import * as Clipboard from "expo-clipboard";
 import { useOverlay } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { OnboardingScreen } from "./components/OnboardingScreen";
+import { checkForOta } from "./updates";
+import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
@@ -791,10 +793,72 @@ function useStoredCrashLogs(): [string | null, () => void] {
   return [log, () => setLog(null)];
 }
 
+const WHATS_NEW_KEY = "verifai_whatsnew_seen";
+
+// "What's New" — shown once when the app has picked up a newer changelog entry
+// (delivered live via OTA). Reads the last-acknowledged id from SecureStore.
+function WhatsNew() {
+  const [visible, setVisible] = useState(false);
+  const entry = CHANGELOG[0];
+
+  useEffect(() => {
+    let alive = true;
+    SecureStore.getItemAsync(WHATS_NEW_KEY)
+      .then((seen) => { if (alive && seen !== CHANGELOG_VERSION && entry) setVisible(true); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    SecureStore.setItemAsync(WHATS_NEW_KEY, CHANGELOG_VERSION).catch(() => {});
+  }, []);
+
+  if (!visible || !entry) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
+      <View style={wn.backdrop}>
+        <View style={wn.card}>
+          <Text style={wn.badge}>✨ עודכן · What&apos;s New</Text>
+          <Text style={wn.title}>{entry.title}</Text>
+          <Text style={wn.date}>{entry.date}</Text>
+          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+            {entry.items.map((it, i) => (
+              <View key={i} style={wn.row}>
+                <Text style={wn.dot}>›</Text>
+                <Text style={wn.item}>{it}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={wn.btn} onPress={dismiss} activeOpacity={0.85}>
+            <Text style={wn.btnText}>מעולה · Got it</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const wn = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(3,3,10,0.82)", justifyContent: "center", alignItems: "center", padding: 22 },
+  card: { width: "100%", maxWidth: 440, backgroundColor: "#0c0c1c", borderRadius: 24, borderWidth: 1, borderColor: "rgba(124,108,255,0.35)", padding: 22 },
+  badge: { color: "#a99bff", fontSize: 12, fontWeight: "700", letterSpacing: 1, marginBottom: 10 },
+  title: { color: "#fff", fontSize: 21, fontWeight: "800" },
+  date: { color: "#5a5b74", fontSize: 12, marginTop: 2, marginBottom: 14 },
+  row: { flexDirection: "row", gap: 8, marginBottom: 10, alignItems: "flex-start" },
+  dot: { color: "#7c6cff", fontSize: 15, fontWeight: "800", lineHeight: 21 },
+  item: { color: "#c9cae0", fontSize: 14, lineHeight: 21, flex: 1 },
+  btn: { marginTop: 16, backgroundColor: "#6d5cf0", borderRadius: 16, paddingVertical: 13, alignItems: "center" },
+  btnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+});
+
 export default function App() {
+  // Check for a live OTA update on every launch (silent; applies next launch).
+  useEffect(() => { checkForOta(); }, []);
   return (
     <ErrorBoundary>
       <AppRouter />
+      <WhatsNew />
     </ErrorBoundary>
   );
 }

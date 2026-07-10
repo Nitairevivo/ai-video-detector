@@ -1,0 +1,105 @@
+name: Mobile live update (EAS Update / OTA)
+
+# Publishes the app's JS over-the-air every day and on every relevant change, so
+# installed apps update themselves live — no app-store release. Also regenerates
+# the in-app "What's New" from the current model metrics + notable commits, so
+# each update tells the user what improved.
+#
+# Requires the EXPO_TOKEN secret (already set for eas-build). Installed builds
+# must have been built AFTER expo-updates was added (see eas-build.yml) for OTA
+# to reach them; from that build on, every change ships automatically.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"     # daily 05:00 UTC, after the model promote (04:30)
+  push:
+    branches: [master]
+    paths:
+      - "mobile/**"
+      - "models/**_meta.json"
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Optional update message override"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-ota
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Guard — EXPO_TOKEN present
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::warning::EXPO_TOKEN not set — skipping OTA publish."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Regenerate in-app changelog from what changed
+        run: node mobile/scripts/gen_changelog.mjs
+
+      - name: Commit changelog back to master
+        run: |
+          git config user.name "verifai-ota"
+          git config user.email "ota@users.noreply.github.com"
+          git add mobile/changelog.data.json CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No changelog change."
+          else
+            git commit -m "Mobile changelog $(date -u +%Y-%m-%d) [skip ci]"
+            for i in 1 2 3 4; do git push origin HEAD:master && break; sleep $((2**i)); git fetch origin master && git rebase origin/master || true; done
+          fi
+
+      - name: Install deps + EAS CLI
+        if: env.SKIP != '1'
+        working-directory: mobile
+        run: |
+          npm install --no-audit --no-fund
+          npm install -g eas-cli
+
+      - name: Publish OTA update (production + preview channels)
+        if: env.SKIP != '1'
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          MSG="${{ github.event.inputs.message }}"
+          if [ -z "$MSG" ]; then
+            MSG=$(node -e "console.log((require('./changelog.data.json')[0]||{}).title || 'Daily update')")
+          fi
+          echo "Publishing OTA: $MSG"
+          # production channel (store builds) + preview channel (internal test builds)
+          eas update --branch production --message "$MSG" --non-interactive || echo "::warning::production update failed"
+          eas update --branch preview    --message "$MSG" --non-interactive || echo "::warning::preview update failed"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Mobile live update"
+            if [ "${SKIP:-0}" = "1" ]; then
+              echo "Skipped OTA publish (no EXPO_TOKEN). Changelog still regenerated."
+            else
+              echo "Published EAS Update to **production** + **preview**."
+            fi
+            echo ""
+            echo "Latest 'What's New':"
+            node -e "const e=require('./mobile/changelog.data.json')[0]; if(e){console.log('- '+e.title); for(const i of e.items) console.log('  - '+i)}"
+          } >> "$GITHUB_STEP_SUMMARY"
