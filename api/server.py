@@ -563,8 +563,23 @@ PLATFORM_DOMAINS = [
     "likee.video", "kwai.com",
 ]
 
+def _host_of(url: str) -> str:
+    from urllib.parse import urlparse
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _host_matches(host: str, domains) -> bool:
+    """True if host IS one of the domains or a subdomain of it — matched on the
+    parsed hostname, never a substring of the whole URL (so a credentials trick
+    like `http://tiktok.com@169.254.169.254/` does not count as a platform URL)."""
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
 def _is_platform_url(url: str) -> bool:
-    return any(d in url for d in PLATFORM_DOMAINS)
+    return _host_matches(_host_of(url), PLATFORM_DOMAINS)
 
 
 # Rotating User-Agents — a fixed UA is an easy block target for CDNs (roadmap 2.3)
@@ -680,15 +695,19 @@ def download_video_from_url(url: str, tmp_path: str):
                      the file's own metadata does not.
       aigc_info    — human-readable description of the label found
     """
-    is_tiktok = any(x in url for x in ["tiktok.com", "vm.tiktok", "douyin.com"])
+    # SSRF guard, UNCONDITIONAL: every strategy below (TikTok resolver,
+    # platform-flags, yt-dlp, direct HTTP) issues a request derived from `url`,
+    # so gate them all on a host that resolves only to public addresses. This
+    # runs before the platform branch precisely so a credentials/spoof trick
+    # (`http://tiktok.com@169.254.169.254/`) can't skip the check.
+    if not _is_safe_public_url(url):
+        return False, False, "blocked: URL is not a public address"
+
+    is_tiktok = _host_matches(_host_of(url), ("tiktok.com", "douyin.com")) \
+        or _host_of(url).startswith("vm.tiktok")
     ok = False
     aigc_flagged = False
     aigc_info = ""
-
-    # SSRF guard: a non-platform URL is fetched directly by us — never let it
-    # resolve to an internal/loopback/link-local address.
-    if not _is_platform_url(url) and not _is_safe_public_url(url):
-        return False, False, "blocked: URL is not a public address"
 
     # Strategy 0: platform AI-disclosure label (YouTube/Instagram/Facebook).
     if not is_tiktok:

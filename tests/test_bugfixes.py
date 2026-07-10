@@ -50,6 +50,19 @@ def test_ssrf_guard_allows_public_ip():
     assert _is_safe_public_url("https://8.8.8.8/video.mp4") is True
 
 
+def test_ssrf_credentials_bypass_blocked():
+    # The `user@host` trick must not smuggle an internal IP past the guard, and
+    # must not be mistaken for a platform URL by hostname.
+    from api.server import _is_safe_public_url, _is_platform_url, download_video_from_url
+    evil = "http://tiktok.com@169.254.169.254/latest/meta-data/"
+    assert _is_safe_public_url(evil) is False
+    assert _is_platform_url(evil) is False          # parsed host is the IP, not tiktok
+    assert _is_platform_url("https://www.youtube.com/watch?v=x") is True
+    # end-to-end: the download pipeline blocks it before any fetch
+    ok, flagged, info = download_video_from_url(evil, "/tmp/nope.mp4")
+    assert ok is False and flagged is False and "blocked" in info
+
+
 # ── billing: monthly quota resets across month boundary ───────────────────────
 def test_quota_resets_when_billing_month_is_stale():
     from api.database import _row_to_key, _billing_month
