@@ -1,66 +1,155 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   VerifAI design system — a forensic, premium, trust-first visual language.
+   Deep near-black canvas, an indigo→violet signal accent, and an emerald
+   "authentic" counter-accent. Everything is tuned for one feeling: this tool
+   reads hard evidence and tells you the truth.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #06060f;
-  --foreground: #e8e8f0;
+  --bg: #050510;
+  --bg-2: #0a0a1a;
+  --fg: #ecedf7;
+  --muted: #8b8ca7;
+  --faint: #5a5b74;
+
+  --accent: #7c6cff;        /* signal violet   */
+  --accent-2: #4f46e5;      /* indigo          */
+  --accent-3: #22d3ee;      /* cyan spark      */
+  --ai: #ff5470;            /* AI generated    */
+  --edit: #b98bff;          /* AI edited       */
+  --real: #34e0a1;          /* authentic       */
+
+  --line: rgba(255,255,255,0.08);
+  --line-soft: rgba(255,255,255,0.05);
+  --card: rgba(255,255,255,0.035);
 }
+
+* { -webkit-tap-highlight-color: transparent; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv02","cv03","cv04","ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-}
+::selection { background: rgba(124,108,255,0.35); color: #fff; }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.9); opacity: 1; }
-  100% { transform: scale(1.5); opacity: 0; }
-}
+/* Refined scrollbar */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: rgba(124,108,255,0.25); border-radius: 20px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(124,108,255,0.45); background-clip: padding-box; }
 
-@keyframes scan-line {
-  0% { top: 0%; }
-  100% { top: 100%; }
-}
+/* ── Typography helpers ─────────────────────────────────────────────────────── */
+.display { letter-spacing: -0.035em; line-height: 0.98; }
+.mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; }
+.text-muted { color: var(--muted); }
+.text-faint { color: var(--faint); }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.animate-float { animation: float 4s ease-in-out infinite; }
-.scan-line { animation: scan-line 1.5s ease-in-out infinite; }
-.pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
-
-.shimmer-text {
-  background: linear-gradient(90deg, #818cf8, #a78bfa, #c084fc, #a78bfa, #818cf8);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer 4s linear infinite;
-}
-
-/* ── Premium aurora background ─────────────────────────────────────────────── */
+/* ── Backdrop: aurora + grain + grid ───────────────────────────────────────── */
 @keyframes aurora-drift {
-  0%   { transform: translate(0, 0) scale(1); }
-  33%  { transform: translate(6%, -4%) scale(1.1); }
-  66%  { transform: translate(-4%, 5%) scale(0.95); }
-  100% { transform: translate(0, 0) scale(1); }
+  0%   { transform: translate(0,0) scale(1); }
+  33%  { transform: translate(7%,-5%) scale(1.12); }
+  66%  { transform: translate(-5%,6%) scale(0.94); }
+  100% { transform: translate(0,0) scale(1); }
 }
 .aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .aurora::before, .aurora::after {
-  content: ""; position: absolute; width: 60vw; height: 60vw; border-radius: 50%;
-  filter: blur(120px); opacity: 0.35; animation: aurora-drift 22s ease-in-out infinite;
+  content: ""; position: absolute; width: 62vw; height: 62vw; border-radius: 50%;
+  filter: blur(130px); opacity: 0.4; animation: aurora-drift 24s ease-in-out infinite;
 }
-.aurora::before { top: -20%; left: -10%; background: radial-gradient(circle, #4f46e5 0%, transparent 70%); }
-.aurora::after { bottom: -25%; right: -10%; background: radial-gradient(circle, #7c3aed 0%, transparent 70%); animation-delay: -11s; }
-.glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); }
-@keyframes rise-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-.rise-in { animation: rise-in 0.7s cubic-bezier(0.22,1,0.36,1) both; }
-.cta-glow { position: relative; box-shadow: 0 8px 30px -8px rgba(124,58,237,0.6); transition: box-shadow 0.3s, transform 0.2s; }
-.cta-glow:hover { box-shadow: 0 12px 40px -6px rgba(124,58,237,0.85); transform: translateY(-2px); }
-.grid-texture { background-image: linear-gradient(rgba(129,140,248,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(129,140,248,0.035) 1px, transparent 1px); background-size: 44px 44px; }
-@media (prefers-reduced-motion: reduce) { .aurora::before, .aurora::after, .animate-float, .shimmer-text { animation: none; } }
+.aurora::before { top: -22%; left: -12%; background: radial-gradient(circle, var(--accent-2) 0%, transparent 70%); }
+.aurora::after  { bottom: -28%; right: -12%; background: radial-gradient(circle, var(--accent) 0%, transparent 70%); animation-delay: -12s; }
+.aurora .spark {
+  position: absolute; top: 20%; right: 22%; width: 24vw; height: 24vw; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-3) 0%, transparent 70%);
+  filter: blur(140px); opacity: 0.14; animation: aurora-drift 30s ease-in-out infinite; animation-delay: -6s;
+}
+
+.grid-texture {
+  background-image:
+    linear-gradient(rgba(129,140,248,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(129,140,248,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+.grain {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Surfaces ───────────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+}
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+}
+/* Gradient hairline border via mask */
+.gborder { position: relative; }
+.gborder::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  background: linear-gradient(135deg, rgba(124,108,255,0.55), rgba(34,211,238,0.25) 45%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+
+/* ── Text effects ───────────────────────────────────────────────────────────── */
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.shimmer-text {
+  background: linear-gradient(90deg, #a5b4fc, #c4b5fd, var(--accent-3), #c4b5fd, #a5b4fc);
+  background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; animation: shimmer 5s linear infinite;
+}
+.gradient-text {
+  background: linear-gradient(120deg, #fff 20%, #c4b5fd 55%, var(--accent-3) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  position: relative; background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  box-shadow: 0 10px 34px -10px rgba(124,108,255,0.7), inset 0 1px 0 rgba(255,255,255,0.18);
+  transition: box-shadow .3s, transform .2s;
+}
+.btn-primary:hover { box-shadow: 0 16px 46px -8px rgba(124,108,255,0.9), inset 0 1px 0 rgba(255,255,255,0.22); transform: translateY(-2px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost { border: 1px solid rgba(124,108,255,0.3); transition: background .2s, border-color .2s, transform .2s; }
+.btn-ghost:hover { background: rgba(124,108,255,0.1); border-color: rgba(124,108,255,0.5); transform: translateY(-1px); }
+
+/* ── Motion ─────────────────────────────────────────────────────────────────── */
+@keyframes rise-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+.rise-in { animation: rise-in .8s cubic-bezier(0.22,1,0.36,1) both; }
+.rise-in.d1 { animation-delay: .08s; } .rise-in.d2 { animation-delay: .16s; }
+.rise-in.d3 { animation-delay: .24s; } .rise-in.d4 { animation-delay: .32s; }
+
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+.animate-float { animation: float 5s ease-in-out infinite; }
+
+/* Hero "decoding" scanner: a beam sweeping a grid of glyphs */
+@keyframes scan-y { 0% { transform: translateY(-10%); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(560%); opacity: 0; } }
+.scan-beam { animation: scan-y 3.4s cubic-bezier(0.4,0,0.2,1) infinite; }
+@keyframes glyph-flick { 0%,100% { opacity: .18; } 50% { opacity: .5; } }
+
+/* Marquee for the detected-tools trust strip */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee { display: flex; width: max-content; animation: marquee 32s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+.marquee-mask { mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+
+/* Live pulse dot */
+@keyframes ping-soft { 0% { transform: scale(1); opacity: .7; } 70%,100% { transform: scale(2.4); opacity: 0; } }
+.ping-soft::after { content: ""; position: absolute; inset: 0; border-radius: 999px; background: currentColor; animation: ping-soft 1.8s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before, .aurora::after, .aurora .spark, .animate-float,
+  .shimmer-text, .scan-beam, .marquee, .ping-soft::after { animation: none; }
+}
