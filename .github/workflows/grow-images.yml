@@ -66,7 +66,9 @@ jobs:
           LIMIT: ${{ github.event.inputs.per_repo_limit || '500' }}
           # Verified public labeled dataset as the default source (both classes
           # via a label column); override/extend with repo variables.
-          LABELED: ${{ vars.HF_LABELED_IMAGE_REPOS || 'Parveshiiii/AI-vs-Real' }}
+          # 'repo#<ai_value>' pins which label means AI. Parveshiiii/AI-vs-Real
+          # uses binary_label 0=AI, 1=real (per its dataset card).
+          LABELED: ${{ vars.HF_LABELED_IMAGE_REPOS || 'Parveshiiii/AI-vs-Real#0' }}
         run: |
           python training/collect_images.py \
             --labeled-repos "$LABELED" \

@@ -81,9 +81,15 @@ def collect_hf(repo: str, is_ai: bool, limit: int, seen: set) -> int:
     return added
 
 
-def _label_is_ai(value, class_names=None) -> Optional[bool]:
-    """Map a dataset label value to AI(True)/real(False). Handles string labels
-    and ClassLabel ints (via class_names)."""
+def _label_is_ai(value, class_names=None, ai_value=None) -> Optional[bool]:
+    """Map a dataset label value to AI(True)/real(False).
+    - ai_value: explicit convention for numeric labels ("the label that means AI"),
+      e.g. "0" for datasets where 0=AI. Everything else is treated as real.
+    - otherwise map string / ClassLabel names by keyword.
+    """
+    if ai_value is not None:
+        # explicit numeric/string convention — unambiguous, no guessing
+        return str(value) == str(ai_value)
     s = None
     if class_names and isinstance(value, int) and 0 <= value < len(class_names):
         s = str(class_names[value]).lower()
@@ -95,17 +101,22 @@ def _label_is_ai(value, class_names=None) -> Optional[bool]:
         if any(t in s for t in ("real", "authentic", "camera", "human", "natural")):
             return False
         return None
-    # numeric with no class names: can't know the convention — skip (logged once)
+    # numeric with no class names and no explicit convention — skip (logged once)
     return None
 
 
-def collect_hf_labeled(repo: str, limit: int, seen: set) -> int:
+def collect_hf_labeled(spec: str, limit: int, seen: set) -> int:
     """Collect from a single HF image dataset that carries BOTH classes via a
     label column (the common format). Uses the datasets library so parquet /
     imagefolder / webdataset all work. Logs the schema on the first example so
-    the label mapping is transparent in the run logs."""
+    the label mapping is transparent in the run logs.
+
+    spec is 'repo' or 'repo#<ai_value>' — the latter pins which numeric/string
+    label value means AI (e.g. 'Parveshiiii/AI-vs-Real#0' since 0=AI there)."""
     import tempfile
     from datasets import load_dataset
+    repo, _, ai_value = spec.partition("#")
+    ai_value = ai_value or None
     token = os.environ.get("HF_TOKEN") or None
     try:
         ds = load_dataset(repo, split="train", streaming=True, token=token)
@@ -118,13 +129,14 @@ def collect_hf_labeled(repo: str, limit: int, seen: set) -> int:
     class_names = None
     try:
         feats = getattr(ds, "features", None) or {}
-        for k in ("label", "labels", "target", "class", "is_ai", "ai", "y"):
+        for k in ("label", "labels", "target", "class", "binary_label",
+                  "is_ai", "ai", "fake", "y"):
             if k in feats:
                 label_key = k
                 cn = getattr(feats[k], "names", None)
                 class_names = list(cn) if cn else None
                 break
-        print(f"[img] {repo}: features={list(feats.keys())} label_key={label_key} classes={class_names}")
+        print(f"[img] {repo}: features={list(feats.keys())} label_key={label_key} classes={class_names} ai_value={ai_value}")
     except Exception:
         pass
 
@@ -142,7 +154,7 @@ def collect_hf_labeled(repo: str, limit: int, seen: set) -> int:
                 print(f"[img] {repo}: no image column in {list(ex.keys())}")
                 return added
         lv = ex.get(label_key) if label_key else None
-        is_ai = _label_is_ai(lv, class_names)
+        is_ai = _label_is_ai(lv, class_names, ai_value)
         if is_ai is None:
             if i == 0:
                 print(f"[img] {repo}: unmapped label value={lv!r} — skipping repo")
