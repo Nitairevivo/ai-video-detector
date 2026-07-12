@@ -99,3 +99,41 @@ def test_image_seed_merge_keeps_sourceless_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(ci, "USER_SEED", spath)
     merged = ci._load_all()
     assert len(merged) == 4   # 1 acc + u1 + 2 source-less (none dropped)
+
+
+# ── calibration must use a SHUFFLED CV (data arrives grouped by class) ─────────
+def test_video_calibration_cv_is_shuffled():
+    """Non-shuffled calibration folds on class-ordered data miscalibrate the
+    model and inflated FPR ~15x. The internal CalibratedClassifierCV must use a
+    shuffled, stratified CV."""
+    from sklearn.model_selection import StratifiedKFold
+    from models.classifier import VideoAIClassifier
+    pipe = VideoAIClassifier()._build_pipeline(1000)
+    cal_cv = pipe.named_steps["clf"].cv
+    assert isinstance(cal_cv, StratifiedKFold)
+    assert cal_cv.shuffle is True
+
+
+def test_video_model_low_fpr_on_class_ordered_data():
+    """End-to-end: train on deliberately blocky (all-AI-then-all-real) separable
+    data and confirm the false-positive rate stays low — this fails if the
+    calibration CV is left unshuffled."""
+    import json, tempfile
+    import numpy as np
+    from pathlib import Path
+    import models.classifier as C
+    rng = np.random.RandomState(0)
+    rows = []
+    # 200 AI then 500 real (blocky), separable on feature 0 with mild overlap
+    for _ in range(200):
+        v = [float(x) for x in rng.normal(0, 1, 12)]; v[0] = float(rng.normal(2.0, 1.0))
+        rows.append({"features": v, "label": 1, "source": f"ai{_}"})
+    for _ in range(500):
+        v = [float(x) for x in rng.normal(0, 1, 12)]; v[0] = float(rng.normal(-2.0, 1.0))
+        rows.append({"features": v, "label": 0, "source": f"real{_}"})
+    tmp = Path(tempfile.mkdtemp())
+    C.TRAINING_DATA_PATH = tmp / "s.json"; C.MODEL_PATH = tmp / "m.joblib"
+    C.MODEL_META_PATH = tmp / "meta.json"; C.USER_SEED_PATH = tmp / "none.json"
+    json.dump(rows, open(C.TRAINING_DATA_PATH, "w"))
+    res = C.VideoAIClassifier().train()
+    assert res.get("cv_fpr") is not None and res["cv_fpr"] <= 0.05

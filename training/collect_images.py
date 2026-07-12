@@ -240,12 +240,16 @@ def train_image_model() -> dict:
         return {"error": f"need >=5 of each class, have {len(samples)} ({int(y.sum())} AI)"}
     X = np.array([s["features"] for s in samples])
     method = "isotonic" if len(samples) >= 400 else "sigmoid"
+    # Shuffled, stratified calibration CV — the samples arrive grouped by class,
+    # and a non-shuffled KFold would build near single-class calibration folds
+    # and miscalibrate the probabilities (same bug fixed in models/classifier.py).
+    cal_cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
     pipe = Pipeline([
         ("scale", StandardScaler()),
         ("clf", CalibratedClassifierCV(
             GradientBoostingClassifier(n_estimators=200, max_depth=3,
                                        learning_rate=0.05, subsample=0.8, random_state=42),
-            method=method, cv=3)),
+            method=method, cv=cal_cv)),
     ])
     cv = StratifiedKFold(n_splits=min(5, len(samples) // 4), shuffle=True, random_state=42)
     oof = cross_val_predict(pipe, X, y, cv=cv, method="predict_proba")[:, 1]
