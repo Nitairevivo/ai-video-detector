@@ -236,17 +236,17 @@ function PremiumModal({ visible, onClose }: { visible: boolean; onClose: () => v
 function getVerdictStyle(result: DetectionResult) {
   const v = result.verdict ?? (result.is_ai_generated ? "ai_generated" : "real");
   if (v === "ai_generated") return {
-    color: "#ef4444", bg: "#160404",
+    color: "#ff5470", bg: "#160404",
     label: "🤖  AI GENERATED",
     title: result.ai_tool_detected ? `Made with ${result.ai_tool_detected}` : "AI-Generated Video",
   };
   if (v === "ai_edited") return {
-    color: "#a855f7", bg: "#0e0516",
+    color: "#b98bff", bg: "#0e0516",
     label: "✏️  נערך עם AI",
     title: result.edit_tool_detected ? `סרטון אמיתי — נערך עם ${result.edit_tool_detected}` : "סרטון אמיתי שנערך בעזרת AI",
   };
   return {
-    color: "#22c55e", bg: "#041606",
+    color: "#34e0a1", bg: "#041606",
     label: "✅  AUTHENTIC",
     title: "Real Footage",
   };
@@ -312,7 +312,7 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
                     style={{
                       flex: 1,
                       height: Math.max(2, Math.round(v * 18)),
-                      backgroundColor: v >= 0.6 ? "#ef4444" : v <= 0.4 ? "#22c55e" : "#eab308",
+                      backgroundColor: v >= 0.6 ? "#ff5470" : v <= 0.4 ? "#34e0a1" : "#eab308",
                       borderRadius: 1,
                     }}
                   />
@@ -548,7 +548,7 @@ function AppInner() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#06060f" />
+      <StatusBar barStyle="light-content" backgroundColor="#05050f" />
 
       {result && <ResultBanner result={result} onDismiss={() => setResult(null)} lang={lang} />}
       <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} />
@@ -589,16 +589,16 @@ function AppInner() {
           {/* Stats row */}
           {history.length > 0 && (
             <View style={styles.statsRow}>
-              <View style={[styles.statBox, { borderColor: "#ef444433" }]}>
-                <Text style={[styles.statNum, { color: "#ef4444" }]}>{aiCount}</Text>
+              <View style={[styles.statBox, { borderColor: "#ff547033" }]}>
+                <Text style={[styles.statNum, { color: "#ff5470" }]}>{aiCount}</Text>
                 <Text style={styles.statLabel}>{t.statAI}</Text>
               </View>
-              <View style={[styles.statBox, { borderColor: "#a855f733" }]}>
-                <Text style={[styles.statNum, { color: "#a855f7" }]}>{editedCount}</Text>
+              <View style={[styles.statBox, { borderColor: "#b98bff33" }]}>
+                <Text style={[styles.statNum, { color: "#b98bff" }]}>{editedCount}</Text>
                 <Text style={styles.statLabel}>{t.statEdited}</Text>
               </View>
-              <View style={[styles.statBox, { borderColor: "#22c55e33" }]}>
-                <Text style={[styles.statNum, { color: "#22c55e" }]}>{realCount}</Text>
+              <View style={[styles.statBox, { borderColor: "#34e0a133" }]}>
+                <Text style={[styles.statNum, { color: "#34e0a1" }]}>{realCount}</Text>
                 <Text style={styles.statLabel}>{t.statReal}</Text>
               </View>
             </View>
@@ -657,8 +657,8 @@ function AppInner() {
               <Switch
                 value={overlayActive}
                 onValueChange={(v) => (v ? startOverlay() : stopOverlay())}
-                trackColor={{ false: "#1a1a2e", true: "#4338ca" }}
-                thumbColor={overlayActive ? "#6366f1" : "#374151"}
+                trackColor={{ false: "#1a1a2e", true: "#5b4bd6" }}
+                thumbColor={overlayActive ? "#7c6cff" : "#374151"}
               />
             </View>
 
@@ -666,7 +666,7 @@ function AppInner() {
               <View style={styles.stepsWrap}>
                 {t.androidSteps.map((s, i) => (
                   <View key={i} style={styles.stepRow}>
-                    <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+                    <View style={[styles.stepNum, { backgroundColor: "#7c6cff" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
                     <Text style={styles.stepText}>{s}</Text>
                   </View>
                 ))}
@@ -685,7 +685,7 @@ function AppInner() {
             <View style={styles.stepsWrap}>
               {t.iosSteps.map((s, i) => (
                 <View key={i} style={styles.stepRow}>
-                  <View style={[styles.stepNum, { backgroundColor: "#6366f1" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+                  <View style={[styles.stepNum, { backgroundColor: "#7c6cff" }]}><Text style={styles.stepNumText}>{i + 1}</Text></View>
                   <Text style={styles.stepText}>{s}</Text>
                 </View>
               ))}
@@ -738,9 +738,9 @@ function AppInner() {
             {history.map((item, i) =>
               (item as any).loading ? (
                 <View key="loading" style={[styles.historyRow, { padding: 14, gap: 10 }]}>
-                  <View style={[styles.historyBar, { backgroundColor: "#6366f1" }]} />
+                  <View style={[styles.historyBar, { backgroundColor: "#7c6cff" }]} />
                   <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={[styles.historyTitle, { color: "#6366f1" }]}>{t.scanning}</Text>
+                    <Text style={[styles.historyTitle, { color: "#7c6cff" }]}>{t.scanning}</Text>
                     <Text style={styles.historyUrl} numberOfLines={1}>{item.url}</Text>
                   </View>
                 </View>
@@ -791,8 +791,8 @@ if (g.ErrorUtils && !g.__verifaiErrHandler) {
 
 function ErrorScreen({ title, text, onDismiss }: { title: string; text: string; onDismiss: () => void }) {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#06060f", padding: 20 }}>
-      <Text style={{ color: "#ef4444", fontSize: 18, fontWeight: "800", marginTop: 30 }}>{title}</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#05050f", padding: 20 }}>
+      <Text style={{ color: "#ff5470", fontSize: 18, fontWeight: "800", marginTop: 30 }}>{title}</Text>
       <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 6 }}>
         צלם מסך של העמוד הזה ושלח — זה בדיוק מה שצריך כדי לתקן. v{APP_VERSION}
       </Text>
@@ -803,7 +803,7 @@ function ErrorScreen({ title, text, onDismiss }: { title: string; text: string; 
       </ScrollView>
       <TouchableOpacity
         onPress={onDismiss}
-        style={{ backgroundColor: "#4f46e5", borderRadius: 14, padding: 16, alignItems: "center", marginTop: 12 }}
+        style={{ backgroundColor: "#6d5cf0", borderRadius: 14, padding: 16, alignItems: "center", marginTop: 12 }}
       >
         <Text style={{ color: "#fff", fontWeight: "700" }}>המשך לאפליקציה</Text>
       </TouchableOpacity>
@@ -1066,16 +1066,16 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   logoMark: {
     width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#4f46e5",
-    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
+    backgroundColor: "#6d5cf0",
+    shadowColor: "#7c6cff", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
   },
   logoMarkText: { color: "#fff", fontSize: 22, fontWeight: "900", letterSpacing: -1 },
-  headerEyebrow: { color: "#6366f1", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginTop: 1 },
+  headerEyebrow: { color: "#7c6cff", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginTop: 1 },
   headerTitle: { color: "#fff", fontSize: 28, fontWeight: "900", letterSpacing: -1 },
   headerSub: { color: "#4b5563", fontSize: 13, lineHeight: 20 },
   langBtn: { backgroundColor: "#0e0e1a", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#ffffff12" },
   langBtnText: { color: "#6b7280", fontSize: 11, fontWeight: "700" },
-  proBtn: { backgroundColor: "#140e2e", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "#7c3aed44" },
+  proBtn: { backgroundColor: "#140e2e", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "#6d5cf044" },
   proBtnText: { color: "#a78bfa", fontSize: 12, fontWeight: "700" },
 
   // Stats
@@ -1098,13 +1098,13 @@ const styles = StyleSheet.create({
   stepNumText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   stepText: { color: "#9ca3af", fontSize: 13, flex: 1, lineHeight: 18 },
 
-  accessBtn: { backgroundColor: "#11113a", borderRadius: 12, padding: 12, marginTop: 4, borderWidth: 1, borderColor: "#6366f122" },
-  accessBtnText: { color: "#6366f1", fontSize: 12, textAlign: "center", lineHeight: 18 },
+  accessBtn: { backgroundColor: "#11113a", borderRadius: 12, padding: 12, marginTop: 4, borderWidth: 1, borderColor: "#7c6cff22" },
+  accessBtnText: { color: "#7c6cff", fontSize: 12, textAlign: "center", lineHeight: 18 },
 
   // Check button
   checkBtn: {
-    backgroundColor: "#4f46e5", borderRadius: 20, padding: 20, alignItems: "center",
-    shadowColor: "#6366f1", shadowOffset: { width: 0, height: 8 },
+    backgroundColor: "#6d5cf0", borderRadius: 20, padding: 20, alignItems: "center",
+    shadowColor: "#7c6cff", shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.6, shadowRadius: 20, elevation: 12,
   },
   checkBtnLoading: { backgroundColor: "#1a1a35" },
@@ -1118,11 +1118,11 @@ const styles = StyleSheet.create({
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
     borderRadius: 18, padding: 16,
     backgroundColor: "#120a2e",
-    borderWidth: 1, borderColor: "#7c3aed55",
+    borderWidth: 1, borderColor: "#6d5cf055",
   },
   premiumBannerTitle: { color: "#c4b5fd", fontSize: 15, fontWeight: "800" },
   premiumBannerSub: { color: "#6d28d9", fontSize: 12, marginTop: 3 },
-  premiumArrow: { backgroundColor: "#7c3aed", borderRadius: 12, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  premiumArrow: { backgroundColor: "#6d5cf0", borderRadius: 12, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 
   // Section
   section: { gap: 10 },
@@ -1163,10 +1163,10 @@ const pm = StyleSheet.create({
   header: {
     backgroundColor: "#120a2e", padding: 28, alignItems: "center", gap: 8,
   },
-  crownWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#7c3aed33", alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  crownWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#6d5cf033", alignItems: "center", justifyContent: "center", marginBottom: 4 },
   crown: { fontSize: 32 },
   headerTitle: { color: "#fff", fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
-  headerSub: { color: "#7c3aed", fontSize: 13, textAlign: "center", lineHeight: 18 },
+  headerSub: { color: "#6d5cf0", fontSize: 13, textAlign: "center", lineHeight: 18 },
 
   features: { padding: 22, gap: 16 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 14 },
@@ -1174,19 +1174,19 @@ const pm = StyleSheet.create({
   featureText: { flex: 1 },
   featureTitle: { color: "#e5e7eb", fontSize: 14, fontWeight: "700" },
   featureDesc: { color: "#6b7280", fontSize: 12, marginTop: 1 },
-  checkmark: { color: "#7c3aed", fontSize: 18, fontWeight: "800" },
+  checkmark: { color: "#6d5cf0", fontSize: 18, fontWeight: "800" },
 
   priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 22, marginBottom: 18 },
   priceSub: { color: "#6b7280", fontSize: 11 },
   price: { color: "#fff", fontSize: 36, fontWeight: "900" },
   pricePer: { color: "#6b7280", fontSize: 14, marginBottom: 8 },
-  badge: { backgroundColor: "#7c3aed22", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: "#7c3aed55" },
+  badge: { backgroundColor: "#6d5cf022", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: "#6d5cf055" },
   badgeText: { color: "#a78bfa", fontSize: 13, fontWeight: "700" },
 
   cta: {
     marginHorizontal: 20, borderRadius: 18, padding: 18, alignItems: "center",
-    backgroundColor: "#7c3aed",
-    shadowColor: "#7c3aed", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
+    backgroundColor: "#6d5cf0",
+    shadowColor: "#6d5cf0", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
   },
   ctaText: { color: "#fff", fontSize: 17, fontWeight: "800" },
   skip: { alignItems: "center", paddingVertical: 16 },
