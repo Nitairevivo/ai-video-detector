@@ -8,7 +8,9 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#07070f",
     "icon": "./assets/icon.png",
-    "runtimeVersion": { "policy": "appVersion" },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "updates": {
       "url": "https://u.expo.dev/1ccf6c26-6560-4dfa-96d0-a026d693bbab",
       "fallbackToCacheTimeout": 0,
@@ -33,7 +35,7 @@
         "backgroundColor": "#07070f"
       },
       "package": "com.verifai.app",
-      "versionCode": 16,
+      "versionCode": 17,
       "permissions": [
         "android.permission.READ_CLIPBOARD",
         "android.permission.READ_MEDIA_VIDEO",

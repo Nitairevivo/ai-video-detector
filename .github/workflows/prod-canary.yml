@@ -1,0 +1,15 @@
+name: Production canary
+
+on:
+  schedule:
+    - cron: "0 6 * * 1,4"   # Mon+Thu 06:00 UTC — catches silent breakage within days
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run canary against production
+        run: python3 scripts/prod_canary.py

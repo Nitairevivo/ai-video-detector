@@ -614,6 +614,17 @@ public class OverlayService extends Service {
         if (s != null) s.handleFrameCaptured(jpeg);
     }
 
+    /** Called by ScreenCaptureService with a burst of JPEG frames (~0.6s apart). */
+    public static void onFramesCaptured(java.util.ArrayList<byte[]> jpegs) {
+        OverlayService s = instance;
+        if (s == null || jpegs == null || jpegs.isEmpty()) return;
+        if (jpegs.size() == 1) {
+            s.handleFrameCaptured(jpegs.get(0)); // single frame → old endpoint
+        } else {
+            s.handleFramesCaptured(jpegs);
+        }
+    }
+
     /** Called by the accessibility service when the grab flow died and no
      *  clipboard result will ever arrive — unstick the button immediately. */
     public static void onAutomationFailed() {
@@ -661,6 +672,55 @@ public class OverlayService extends Service {
                 showToastResult("❌ " + e.getMessage(), "real", "נסה שוב", 0);
             }
         });
+    }
+
+    private void handleFramesCaptured(final java.util.ArrayList<byte[]> jpegs) {
+        executor.submit(() -> {
+            try {
+                JSONObject result;
+                try {
+                    result = detectViaFrames(jpegs);
+                } catch (Exception burstFailed) {
+                    // Server without /detect-frames (or transient error) —
+                    // degrade to the single-frame path instead of failing.
+                    result = detectViaFrame(jpegs.get(jpegs.size() / 2));
+                }
+                if (result == null) throw new Exception("frame analysis failed");
+                renderResult(result);
+            } catch (Exception e) {
+                mainHandler.post(this::finishDetection);
+                showToastResult("❌ " + e.getMessage(), "real", "נסה שוב", 0);
+            }
+        });
+    }
+
+    /** Upload a burst of JPEG frames to /detect-frames for temporal analysis. */
+    private JSONObject detectViaFrames(java.util.List<byte[]> jpegs) throws Exception {
+        String boundary = "VerifAIBoundary" + System.currentTimeMillis();
+        URL uploadUrl = new URL(API + "/detect-frames");
+        HttpURLConnection upConn = (HttpURLConnection) uploadUrl.openConnection();
+        upConn.setRequestMethod("POST");
+        upConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        upConn.setDoOutput(true);
+        upConn.setConnectTimeout(10000);
+        upConn.setReadTimeout(90000);
+
+        try (OutputStream out = upConn.getOutputStream()) {
+            for (int i = 0; i < jpegs.size(); i++) {
+                String header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"files\"; filename=\"frame" + i + ".jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
+                out.write(header.getBytes("UTF-8"));
+                out.write(jpegs.get(i));
+                out.write("\r\n".getBytes("UTF-8"));
+            }
+            out.write(("--" + boundary + "--\r\n").getBytes("UTF-8"));
+        }
+
+        if (upConn.getResponseCode() != 200) throw new Exception("Burst upload error " + upConn.getResponseCode());
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(upConn.getInputStream()))) {
+            String line; while ((line = br.readLine()) != null) sb.append(line);
+        }
+        return new JSONObject(sb.toString());
     }
 
     private JSONObject detectViaFrame(byte[] jpeg) throws Exception {

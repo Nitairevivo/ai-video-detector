@@ -564,6 +564,57 @@ async def detect_frame(request: Request, file: UploadFile = File(...)):
     }
 
 
+@app.post("/detect-frames")
+@limiter.limit("30/minute")
+async def detect_frames(request: Request, files: list[UploadFile] = File(...)):
+    """
+    Detection from an ordered BURST of screen frames (~0.6s apart), captured by
+    the mobile MediaProjection path. Temporal comparison across the burst is a
+    far stronger signal than the single-frame /detect-frame fallback.
+    """
+    import base64
+    frames = []
+    for f in files[:8]:
+        raw = await f.read()
+        if not raw:
+            continue
+        if len(raw) > 8 * 1024 * 1024:
+            raise HTTPException(400, "Frame too large")
+        frames.append(base64.standard_b64encode(raw).decode())
+    if not frames:
+        raise HTTPException(400, "No frames")
+
+    try:
+        from analyzer.gemini_analyzer import analyze_frame_burst_with_gemini
+        g = await run_in_threadpool(analyze_frame_burst_with_gemini, frames)
+    except Exception:
+        g = None
+
+    if g is None:
+        return {
+            "is_ai_generated": False,
+            "verdict": "unknown",
+            "confidence": 0.0,
+            "confidence_pct": "0.0%",
+            "ai_tool_detected": None,
+            "detection_method": "Frame analysis unavailable",
+            "source": "frames",
+            "frames_analyzed": len(frames),
+        }
+
+    return {
+        "is_ai_generated": g.verdict == "ai_generated",
+        "verdict": g.verdict,
+        "confidence": round(g.ai_probability, 4),
+        "confidence_pct": f"{g.ai_probability * 100:.1f}%",
+        "ai_tool_detected": None,
+        "detection_method": f"Screen burst ({len(frames)} frames), Gemini temporal: {g.reason}",
+        "artifacts": g.artifacts,
+        "source": "frames",
+        "frames_analyzed": len(frames),
+    }
+
+
 @app.post("/train")
 def train_model():
     """Train the ML model on all collected labeled samples."""
