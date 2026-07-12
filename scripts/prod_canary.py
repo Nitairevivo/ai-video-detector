@@ -10,9 +10,7 @@ Stdlib only — no dependencies to install on the runner.
 """
 import json
 import os
-import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 import uuid
@@ -70,26 +68,18 @@ def post_files(path: str, files: list, timeout: int = 240):
             return e.code, {}
 
 
+ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "tests", "assets")
+
+
 def make_test_video() -> bytes:
-    """2s synthetic clip via ffmpeg (present on GitHub ubuntu runners)."""
-    out = os.path.join(tempfile.mkdtemp(), "canary.mp4")
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc=duration=2:size=320x240:rate=12",
-         "-pix_fmt", "yuv420p", out],
-        check=True, timeout=60)
-    with open(out, "rb") as f:
+    """Committed synthetic clip — GitHub runners don't ship ffmpeg."""
+    with open(os.path.join(ASSETS, "canary.mp4"), "rb") as f:
         return f.read()
 
 
 def make_test_jpeg() -> bytes:
-    out = os.path.join(tempfile.mkdtemp(), "canary.jpg")
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc=duration=0.1:size=320x240:rate=1",
-         "-frames:v", "1", out],
-        check=True, timeout=60)
-    with open(out, "rb") as f:
+    with open(os.path.join(ASSETS, "canary.jpg"), "rb") as f:
         return f.read()
 
 
