@@ -29,8 +29,14 @@ API_URL_TPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:g
 # Latency budget — keep the vision layer inside the ~5s response target instead
 # of the old 45s-per-request × 3-retries × model-chain worst case (~minutes).
 # Override with env for slower/faster networks.
-GEMINI_HTTP_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "4"))   # per HTTP request
-GEMINI_TOTAL_BUDGET = float(os.environ.get("GEMINI_BUDGET", "5"))    # whole-call ceiling
+# Vision analysis of video frames genuinely takes time (upload + inference).
+# A 5s ceiling made Gemini time out on every call, so the vision layer silently
+# vanished and any video without readable provenance defaulted to "real ~6%".
+# Give it a real budget: the code-first path still answers instantly when there
+# IS provenance; only the no-provenance case waits for vision. Correct-in-25s
+# beats wrong-in-5s. Override via env if needed.
+GEMINI_HTTP_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "18"))   # per HTTP request
+GEMINI_TOTAL_BUDGET = float(os.environ.get("GEMINI_BUDGET", "28"))    # whole-call ceiling
 
 # In-memory cache: hash(video_path content) → GeminiResult
 _CACHE: dict = {}
@@ -98,7 +104,7 @@ def _video_duration(video_path: str) -> float:
     try:
         out = subprocess.check_output(
             [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", video_path],
-            stderr=subprocess.DEVNULL, timeout=5
+            stderr=subprocess.DEVNULL, timeout=12
         )
         return float(json.loads(out).get("format", {}).get("duration", 5.0))
     except Exception:
@@ -111,7 +117,7 @@ def _grab_frame(video_path: str, t: float, out_path: str, scale: int = 640) -> O
         [ffmpeg, "-ss", str(max(0.0, t)), "-i", video_path,
          "-vframes", "1", "-vf", f"scale={scale}:-1", "-q:v", "3",
          out_path, "-y", "-loglevel", "error"],
-        capture_output=True, timeout=6
+        capture_output=True, timeout=15
     )
     if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 500:
         with open(out_path, "rb") as f:
