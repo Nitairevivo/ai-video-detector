@@ -7,6 +7,7 @@ import {
 import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
+import { LinearGradient } from "expo-linear-gradient";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
@@ -17,7 +18,12 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.0";
+
+// The signature bold brand gradient — violet → magenta → cyan.
+const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
+const GRAD_START = { x: 0, y: 0 };
+const GRAD_END = { x: 1, y: 1 };
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
@@ -804,6 +810,15 @@ function AppInner() {
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
+      {/* brand glow behind the header — pure depth, non-interactive */}
+      <LinearGradient
+        colors={["#2a0e63", "#1a0838", "rgba(7,3,22,0)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={s.heroGlow}
+        pointerEvents="none"
+      />
+
       {selected && !selected.loading && (
         <ResultSheet item={selected} onClose={() => setSelected(null)} onRecheck={detect} lang={lang} />
       )}
@@ -815,7 +830,9 @@ function AppInner() {
         {/* ── Header ── */}
         <View style={[s.headerTop, row]}>
           <View style={[{ alignItems: "center", gap: 10 }, row]}>
-            <View style={s.logoMark}><Text style={s.logoMarkText}>V</Text></View>
+            <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.logoMark}>
+              <Text style={s.logoMarkText}>V</Text>
+            </LinearGradient>
             <View>
               <Text style={[s.headerTitle, align]}>VerifAI</Text>
               <Text style={[s.headerVersion, align]}>v{APP_VERSION}</Text>
@@ -860,11 +877,12 @@ function AppInner() {
             )}
           </View>
           <TouchableOpacity
-            style={[s.detectBtn, (loading || !urlText.trim()) && s.detectBtnDisabled]}
+            style={[s.detectBtnWrap, (loading || !urlText.trim()) && s.detectBtnDisabled]}
             onPress={submitUrl}
             disabled={loading || !urlText.trim()}
             activeOpacity={0.85}
           >
+           <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.detectBtn}>
             {loading ? (
               <View style={[{ alignItems: "center", gap: 8 }, row]}>
                 <ActivityIndicator size="small" color="#fff" />
@@ -873,6 +891,7 @@ function AppInner() {
             ) : (
               <Text style={s.detectBtnText}>🛡️  {t.detectNow}</Text>
             )}
+           </LinearGradient>
           </TouchableOpacity>
           <Text style={s.detectHint}>{t.detectTip}</Text>
         </View>
@@ -1162,6 +1181,7 @@ function AppRouter() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
+  heroGlow: { position: "absolute", top: 0, left: 0, right: 0, height: 300 },
   scroll: { padding: 18, paddingBottom: 60, gap: 16 },
 
   // Header
@@ -1206,11 +1226,14 @@ const s = StyleSheet.create({
     backgroundColor: "#ffffff0f", borderWidth: 1, borderColor: "#ffffff1f",
   },
   clearInputText: { color: C.sub, fontSize: 15, fontWeight: "700" },
-  detectBtn: {
-    backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center",
-    marginTop: 4, borderWidth: 1, borderColor: "#ffffff26",
+  detectBtnWrap: {
+    marginTop: 4, borderRadius: 16,
     shadowColor: C.magenta, shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.7, shadowRadius: 22, elevation: 12,
+  },
+  detectBtn: {
+    borderRadius: 16, paddingVertical: 16, alignItems: "center",
+    borderWidth: 1, borderColor: "#ffffff2e",
   },
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
