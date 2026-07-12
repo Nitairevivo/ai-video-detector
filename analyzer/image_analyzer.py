@@ -276,6 +276,20 @@ _IMG_FEATURE_KEYS = [
     "gray_noise", "edge_mean", "fft_high_ratio", "chan_std", "sat_mean",
 ]
 
+# The pixel model runs ONLY on stripped images (no metadata to read), so it must
+# train and serve on the features that are actually present and meaningful then:
+# the pixel statistics. Metadata flags are all-zero for a stripped image, and
+# aspect/megapixels merely encode the source dataset's resolution — a spurious
+# artifact that let a naive model score a hollow ~1.0 AUC while ignoring every
+# real pixel signal. Restricting to these keys forces honest pixel evidence.
+_PIXEL_MODEL_KEYS = ["gray_noise", "edge_mean", "fft_high_ratio", "chan_std", "sat_mean"]
+_PIXEL_MODEL_IDX = [_IMG_FEATURE_KEYS.index(k) for k in _PIXEL_MODEL_KEYS]
+
+
+def pixel_model_vector(full_vec: list) -> list:
+    """The pixel-only sub-vector the image model trains/serves on (see above)."""
+    return [float(full_vec[i]) for i in _PIXEL_MODEL_IDX]
+
 
 def image_feature_vector(path: str) -> list:
     """Numeric feature vector for training/serving the image model."""
@@ -360,7 +374,7 @@ def analyze_image(path: str) -> ImageResult:
         model = _load_image_model()
         if model is not None:
             try:
-                prob = float(model.predict_proba([image_feature_vector(path)])[0][1])
+                prob = float(model.predict_proba([pixel_model_vector(image_feature_vector(path))])[0][1])
                 signals["pixel_model_prob"] = round(prob, 3)
                 if prob >= 0.65:
                     return ImageResult("ai_generated", prob, f"Pixel model: {prob:.0%} AI (no metadata)", None, signals)

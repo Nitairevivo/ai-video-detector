@@ -234,11 +234,16 @@ def train_image_model() -> dict:
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.metrics import roc_auc_score
 
+    from analyzer.image_analyzer import pixel_model_vector, _PIXEL_MODEL_KEYS
     samples = _load_all()
     y = np.array([s["label"] for s in samples])
     if len(samples) < 20 or int(y.sum()) < 5 or int((1 - y).sum()) < 5:
         return {"error": f"need >=5 of each class, have {len(samples)} ({int(y.sum())} AI)"}
-    X = np.array([s["features"] for s in samples])
+    # Train on the pixel-only sub-vector: metadata flags are absent for the
+    # stripped images this model actually serves, and aspect/megapixels are a
+    # source-dataset resolution artifact (they scored a hollow ~1.0 AUC). This
+    # forces the model to learn real pixel evidence.
+    X = np.array([pixel_model_vector(s["features"]) for s in samples])
     method = "isotonic" if len(samples) >= 400 else "sigmoid"
     # Shuffled, stratified calibration CV — the samples arrive grouped by class,
     # and a non-shuffled KFold would build near single-class calibration folds
@@ -261,7 +266,7 @@ def train_image_model() -> dict:
     joblib.dump(pipe, MODEL)
     meta = {
         "samples": len(samples), "ai_samples": int(y.sum()), "real_samples": int((1 - y).sum()),
-        "feature_keys": _IMG_FEATURE_KEYS,
+        "feature_keys": _PIXEL_MODEL_KEYS,
         "cv_auc": float(roc_auc_score(y, oof)),
         "cv_precision": tp / (tp + fp) if (tp + fp) else None,
         "cv_recall": tp / (tp + fn) if (tp + fn) else None,
