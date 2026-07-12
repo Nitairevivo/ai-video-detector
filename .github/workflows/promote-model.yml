@@ -1,0 +1,136 @@
+name: Promote trained model to production (gated)
+
+# The missing link that makes nightly training actually reach users.
+#
+# grow-dataset.yml and grow-images.yml retrain on side branches
+# (auto-train / auto-train-images) but the live site + API run on master, so
+# improvements never ship on their own. This job runs a strict quality gate
+# (training/promote_gate.py) and, ONLY for the models that pass it, copies the
+# model artifacts onto master. Pushing master triggers Deploy — so a promotion
+# auto-ships. The gate can only HOLD or IMPROVE accuracy, never regress it:
+#   - AUC may not drop vs the production model (small tolerance)
+#   - false-positive rate on real media must stay under a ceiling
+#   - dataset must be big enough, both classes present, and never shrink
+#
+# Only model artifacts + feature datasets are promoted — never code — so a
+# training branch can't silently revert production logic.
+#
+# Runs after the nightly growers (04:30 UTC) and on demand. Dry-run by default
+# on manual dispatch so you can preview the decision without shipping.
+
+on:
+  schedule:
+    - cron: "30 4 * * *"    # nightly safety net after the growers
+  # Ship improvements the moment a training round finishes — the model is live
+  # in the app within minutes of getting better (gated on the quality check).
+  workflow_run:
+    workflows: ["Grow IMAGE dataset + retrain (autonomous)", "Grow dataset + retrain (autonomous)", "Cloud Training"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Evaluate the gate but do NOT push to master"
+        default: "true"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-model
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch train branches
+        run: |
+          git config user.name "verifai-promoter"
+          git config user.email "promoter@users.noreply.github.com"
+          git fetch origin auto-train auto-train-images 2>/dev/null || true
+
+      - name: Evaluate gates + promote what passes
+        id: gate
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -e
+          mkdir -p /tmp/prod /tmp/cand
+          promoted=""
+
+          evaluate_kind () {
+            kind="$1"; branch="$2"; cand_meta="$3"; prod_meta="$4"; shift 4
+            files="$@"
+            echo "== $kind =="
+            # candidate metadata from the train branch
+            if ! git show "origin/$branch:$cand_meta" > "/tmp/cand/$kind.json" 2>/dev/null; then
+              echo "  no candidate meta on origin/$branch — skip"; return 0
+            fi
+            # production metadata from master (may be absent, e.g. first image model)
+            if git show "master:$prod_meta" > "/tmp/prod/$kind.json" 2>/dev/null; then :; else
+              echo "  (no production model on master yet)"; echo "{}" > "/tmp/prod/$kind.json"
+            fi
+            if python training/promote_gate.py "$kind" "/tmp/cand/$kind.json" "/tmp/prod/$kind.json"; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  PROMOTE (dry-run — not pushing)"
+              else
+                for f in $files; do
+                  git checkout "origin/$branch" -- "$f" 2>/dev/null || echo "  (missing $f on $branch)"
+                done
+                promoted="$promoted $kind"
+              fi
+            else
+              echo "  HELD by gate"
+            fi
+          }
+
+          evaluate_kind video auto-train \
+            models/trained_model_meta.json models/trained_model_meta.json \
+            models/trained_model.joblib models/trained_model_meta.json \
+            data/training_samples.json data/seen_video_ids.json
+
+          evaluate_kind image auto-train-images \
+            models/image_model_meta.json models/image_model_meta.json \
+            models/image_model.joblib models/image_model_meta.json \
+            data/image_training_samples.json
+
+          echo "promoted=$promoted" >> "$GITHUB_OUTPUT"
+
+      - name: Commit + push promotions to master
+        if: steps.gate.outputs.promoted != ''
+        run: |
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "Gate passed but no file changes to promote."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Promote to production:${{ steps.gate.outputs.promoted }} (gated auto-promote)"
+          # retry push a few times for transient network/races on master
+          for i in 1 2 3 4; do
+            if git push origin HEAD:master; then break; fi
+            echo "push failed, retry $i"; sleep $((2 ** i))
+            git fetch origin master && git rebase origin/master || true
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Model promotion"
+            if [ -n "${{ steps.gate.outputs.promoted }}" ]; then
+              echo "Promoted to master (auto-deploys):**${{ steps.gate.outputs.promoted }}**"
+            else
+              echo "Nothing promoted this run (gate held everything, or dry-run)."
+            fi
+            echo ""
+            echo "See the *Evaluate gates* step log for the per-check decision."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,20 +1,51 @@
-name: EAS Android Build
+name: EAS App Build (store-ready)
+
+# Builds the VerifAI mobile app on Expo's servers (EAS).
+# - profile "preview" (default) → an installable Android .apk for testing on
+#   your own phone (no store needed).
+# - profile "production" → Android .aab / iOS release for the stores.
+#
+# Auth: uses the repo secret EXPO_TOKEN if it exists; otherwise pass the
+# expo_token input manually. Get a token at expo.dev → Settings → Access tokens.
 
 on:
   workflow_dispatch:
     inputs:
       expo_token:
-        description: 'Expo personal access token'
-        required: true
+        description: 'Expo token (leave blank to use the saved EXPO_TOKEN secret)'
+        required: false
+        default: ''
+      platform:
+        description: 'Which platform to build'
+        type: choice
+        default: android
+        options: [android, ios, all]
+      profile:
+        description: 'EAS build profile'
+        type: choice
+        default: preview
+        options: [preview, production]
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build ${{ github.event.inputs.platform }} (${{ github.event.inputs.profile }})
     runs-on: ubuntu-latest
+    env:
+      # manual input wins; otherwise fall back to the saved secret
+      EXPO_TOKEN: ${{ github.event.inputs.expo_token != '' && github.event.inputs.expo_token || secrets.EXPO_TOKEN }}
     steps:
+      - name: Check a token is available
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::No Expo token. Add a repo secret named EXPO_TOKEN, or pass the expo_token input."
+            exit 1
+          fi
+          echo "Expo token present ✓"
+
       - uses: actions/checkout@v4
+        # build the latest merged code, not a stale branch
         with:
-          ref: claude/video-ai-detection-readability-41mpza
+          ref: master
 
       - uses: actions/setup-node@v4
         with:
@@ -29,8 +60,27 @@ jobs:
       - name: Setup EAS
         run: npm install -g eas-cli
 
-      - name: Build APK
-        run: eas build --profile preview --platform android --non-interactive
+      - name: Build (wait for EAS to finish)
         working-directory: mobile
-        env:
-          EXPO_TOKEN: ${{ github.event.inputs.expo_token }}
+        run: eas build --profile "${{ github.event.inputs.profile }}" --platform "${{ github.event.inputs.platform }}" --non-interactive --wait
+
+      - name: Get direct install link (.apk / .aab URL)
+        if: always()
+        working-directory: mobile
+        run: |
+          # Pull the finished build's direct artifact URL — a click-to-install
+          # link (no Expo website needed).
+          URL=$(eas build:list --platform "${{ github.event.inputs.platform }}" \
+                  --status finished --limit 1 --non-interactive --json 2>/dev/null \
+                | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const b=JSON.parse(s)[0]||{};const a=b.artifacts||{};console.log(a.applicationArchiveUrl||a.buildUrl||'')}catch(e){console.log('')}})")
+          echo "DIRECT INSTALL URL: $URL"
+          {
+            echo "## 📲 Direct install link"
+            if [ -n "$URL" ]; then
+              echo "Tap on your phone to install (no website needed):"
+              echo ""
+              echo "**$URL**"
+            else
+              echo "Build finished but could not read the artifact URL — check the EAS dashboard."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

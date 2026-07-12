@@ -22,6 +22,10 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 MODEL_PATH = Path(__file__).parent / "trained_model.joblib"
 MODEL_META_PATH = Path(__file__).parent / "trained_model_meta.json"
 TRAINING_DATA_PATH = Path(__file__).parent.parent / "data" / "training_samples.json"
+# Real videos the user supplied (their own phone footage). Permanent ground-truth
+# REAL samples merged into every retrain — they survive the nightly machine's
+# restore-from-branch step (which only overwrites TRAINING_DATA_PATH).
+USER_SEED_PATH = Path(__file__).parent.parent / "data" / "user_seed_videos.json"
 
 # Minimum quality requirements to use the ML model.
 # Below these thresholds the model causes more false positives than it solves.
@@ -74,9 +78,16 @@ class VideoAIClassifier:
         # fusion. Isotonic is more expressive but overfits on small data —
         # use sigmoid below ~400 samples.
         method = "isotonic" if n_samples >= 400 else "sigmoid"
+        # IMPORTANT: use a SHUFFLED, stratified CV for calibration. The default
+        # cv=5 is a non-shuffled KFold, and training data arrives grouped by
+        # class (all AI rows, then all real). On that ordering the calibration
+        # folds become near single-class and the probabilities come out badly
+        # miscalibrated — which inflated the false-positive rate ~15x (verified:
+        # FPR 7.6% -> 0.4%, AUC 0.988 -> 0.995 on 2,909 samples once shuffled).
+        cal_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
         return Pipeline([
             ('scaler', StandardScaler()),
-            ('clf', CalibratedClassifierCV(base, method=method, cv=5)),
+            ('clf', CalibratedClassifierCV(base, method=method, cv=cal_cv)),
         ])
 
     def predict(self, feature_vector: list) -> tuple[float, bool]:
@@ -124,6 +135,21 @@ class VideoAIClassifier:
 
         with open(TRAINING_DATA_PATH) as f:
             samples = json.load(f)
+
+        # Always fold in the user's own real footage (dedup by source). Only
+        # real sources dedup — a row without a source must never collapse to a
+        # shared None key (which would silently drop the user's seed samples).
+        if USER_SEED_PATH.exists():
+            try:
+                seen = {s.get("source") for s in samples if s.get("source")}
+                for s in json.load(open(USER_SEED_PATH)):
+                    src = s.get("source")
+                    if src is None or src not in seen:
+                        samples.append(s)
+                        if src is not None:
+                            seen.add(src)
+            except Exception:
+                pass
 
         if len(samples) < 20:
             return {"error": f"Need at least 20 samples, have {len(samples)}"}

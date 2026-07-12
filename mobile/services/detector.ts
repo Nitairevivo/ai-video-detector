@@ -9,16 +9,22 @@ export type DetectionResult = {
   ai_tool_detected: string | null;
   edit_tool_detected: string | null;
   detection_method: string;
+  mode?: string;  // "fast" (code-first, instant) | undefined (full)
   // Audit breakdown from the server: provenance flags + per-layer scores
   explanation?: {
     provenance?: {
       c2pa_present?: boolean;
       c2pa_claims_ai?: boolean;
+      synthetic_media_marker?: boolean;
+      iptc_digital_source_type?: string | null;
+      camera_provenance?: boolean;
       metadata_stripped?: boolean;
       platform_reencoded?: boolean;
+      platform_ai_label?: boolean;
       ai_tool?: string | null;
     };
     layer_scores?: Record<string, number>;
+    frame_timeline?: number[];  // per-frame suspicion 0=natural … 1=AI-like
     caveats?: string[];
   } | null;
 };
@@ -73,10 +79,21 @@ function needsPhoneDownload(url: string): boolean {
   return TIKTOK_CDN_PATTERNS.some((p) => p.test(url));
 }
 
-// Upload a local video file directly to /detect (bypasses URL IP blocking)
+// Upload a local video OR image file directly to /detect (bypasses URL IP
+// blocking). The server routes by filename extension, so when a content:// URI
+// has no extension we synthesise one from the mime type — otherwise an image
+// would be misrouted as a video.
 export async function detectVideoFileUpload(uri: string, mimeType = "video/mp4"): Promise<DetectionResult> {
   const form = new FormData();
-  const filename = uri.split("/").pop() || "video.mp4";
+  const raw = uri.split("/").pop() || "";
+  let filename = raw;
+  if (!/\.[a-z0-9]{2,4}$/i.test(raw)) {
+    const isImg = mimeType.startsWith("image/");
+    let ext = (mimeType.split("/")[1] || (isImg ? "jpg" : "mp4")).toLowerCase();
+    if (ext === "jpeg") ext = "jpg";
+    if (ext === "quicktime") ext = "mov";
+    filename = `upload.${ext}`;
+  }
   form.append("file", { uri, name: filename, type: mimeType } as unknown as Blob);
   const res = await fetch(`${API_BASE}/detect`, { method: "POST", body: form });
   if (!res.ok) {

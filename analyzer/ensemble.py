@@ -41,11 +41,16 @@ def _sigmoid(x: float) -> float:
     return 1 / (1 + math.exp(-x))
 
 
+_UNSET = "__unset__"
+
+
 def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
-                     use_gemini: bool = True) -> EnsembleResult:
+                     use_gemini: bool = True, gemini_result=_UNSET) -> EnsembleResult:
     """
     meta_result: FeatureResult from extract_features (already computed by caller).
     ml_prob:     trained frame-ML probability or None.
+    gemini_result: pass a precomputed Gemini result (or None) to skip the internal
+                   call — lets the caller overlap Gemini with feature extraction.
     """
     meta_conf = float(meta_result.confidence)
     camera_origin = bool(meta_result.signals.get("camera_origin_detected"))
@@ -62,12 +67,16 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
 
     # ── 1+2. Run heavy layers in parallel ────────────────────────────────────
     gemini = vis = audio = None
+    have_gemini = gemini_result is not _UNSET
     with ThreadPoolExecutor(max_workers=3) as ex:
-        fut_g = ex.submit(_run_gemini, tmp_path) if use_gemini else None
+        # Only start Gemini here if the caller didn't already run it (overlapped).
+        fut_g = ex.submit(_run_gemini, tmp_path) if (use_gemini and not have_gemini) else None
         fut_v = ex.submit(_run_visual, tmp_path)
         fut_a = ex.submit(_run_audio, tmp_path)
         if fut_g:
             gemini = fut_g.result()
+        elif have_gemini:
+            gemini = gemini_result
         vis = fut_v.result()
         audio = fut_a.result()
 

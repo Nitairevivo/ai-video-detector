@@ -53,9 +53,12 @@ const T = {
     statReal: "✅ אמיתי",
     confidence: "ביטחון",
     provC2paAi: "🔏 חתימת C2PA: נוצר ב-AI (מאומת)",
+    provIptc: "🏷 תקן IPTC מצהיר: מדיה שנוצרה ב-AI",
+    provCamera: "📷 תקן IPTC מצהיר: צולם במצלמה",
     provC2pa: "🔏 נמצאו Content Credentials",
     provStripped: "⚠️ מטא-דאטה מקורי נמחק ע\u05f4י הפלטפורמה",
     layers: "שכבות",
+    fastMode: "זוהה מהקוד — מיידי",
     accessBtn: "⚙️ הפעל זיהוי אוטומטי בהגדרות ← נגישות ← VerifAI",
     downloadText: "📲 הורד VerifAI לטלפון אחר",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -105,9 +108,12 @@ const T = {
     statReal: "✅ Real",
     confidence: "confidence",
     provC2paAi: "🔏 C2PA signature: AI-generated (verified)",
+    provIptc: "🏷 IPTC standard declares: AI-generated media",
+    provCamera: "📷 IPTC standard declares: camera capture",
     provC2pa: "🔏 Content Credentials found",
     provStripped: "⚠️ Original metadata stripped by platform",
     layers: "Layers",
+    fastMode: "Read from code — instant",
     accessBtn: "⚙️ Enable auto-detection in Settings → Accessibility → VerifAI",
     downloadText: "📲 Download VerifAI on another phone",
     premiumBannerTitle: "👑 VerifAI Pro",
@@ -275,6 +281,8 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
           {(() => {
             const prov = result.explanation?.provenance;
             const line = prov?.c2pa_claims_ai ? t.provC2paAi
+              : prov?.synthetic_media_marker ? t.provIptc
+              : prov?.camera_provenance ? t.provCamera
               : prov?.c2pa_present ? t.provC2pa
               : (prov?.metadata_stripped || prov?.platform_reencoded) ? t.provStripped
               : null;
@@ -289,6 +297,33 @@ function ResultBanner({ result, onDismiss, lang = "he" as Lang }: { result: Dete
               ? <Text style={styles.bannerLayers} numberOfLines={1}>{t.layers}: {parts.join(" · ")}</Text>
               : null;
           })()}
+          {(() => {
+            const tl = result.explanation?.frame_timeline;
+            if (!tl || tl.length < 2) return null;
+            // Compact per-frame suspicion sparkline (green=natural, red=AI-like),
+            // the same forensic signal the web report shows.
+            return (
+              <View style={styles.bannerTimeline}>
+                {tl.map((v, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: Math.max(2, Math.round(v * 18)),
+                      backgroundColor: v >= 0.6 ? "#ef4444" : v <= 0.4 ? "#22c55e" : "#eab308",
+                      borderRadius: 1,
+                    }}
+                  />
+                ))}
+              </View>
+            );
+          })()}
+          {result.explanation?.caveats?.length ? (
+            <Text style={styles.bannerCaveat} numberOfLines={2}>⚠ {result.explanation.caveats[0]}</Text>
+          ) : null}
+          {result.mode === "fast" ? (
+            <Text style={styles.bannerFast}>⚡ {t.fastMode}</Text>
+          ) : null}
         </View>
         <View style={[styles.bannerCircle, { borderColor: color }]}>
           <Text style={[styles.bannerPct, { color }]}>{pct}%</Text>
@@ -416,8 +451,9 @@ function AppInner() {
     // Check for file shared on startup
     if (IntentModule?.getInitialIntent) {
       IntentModule.getInitialIntent().then((intent: any) => {
-        if (intent?.uri && intent?.type?.startsWith("video/")) {
-          detectVideoFile(intent.uri, intent.type);
+        const t = intent?.type || "";
+        if (intent?.uri && (t.startsWith("video/") || t.startsWith("image/"))) {
+          detectVideoFile(intent.uri, t);
         }
       }).catch(() => {});
     }
@@ -832,6 +868,9 @@ const styles = StyleSheet.create({
   bannerMethod: { color: "#555", fontSize: 11 },
   bannerProv: { color: "#8a7f4a", fontSize: 10, marginTop: 2 },
   bannerLayers: { color: "#556", fontSize: 9, marginTop: 2 },
+  bannerCaveat: { color: "#b58a4a", fontSize: 9, marginTop: 2 },
+  bannerFast: { color: "#6ee7b7", fontSize: 9, marginTop: 2, fontWeight: "600" },
+  bannerTimeline: { flexDirection: "row", alignItems: "flex-end", gap: 1.5, height: 18, marginTop: 4, width: 120 },
   bannerCircle: { width: 66, height: 66, borderRadius: 33, borderWidth: 2.5, alignItems: "center", justifyContent: "center" },
   bannerPct: { fontSize: 18, fontWeight: "800" },
   bannerConf: { color: "#555", fontSize: 8 },

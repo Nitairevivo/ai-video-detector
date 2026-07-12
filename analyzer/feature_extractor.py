@@ -28,11 +28,18 @@ class DetectionResult:
     edit_tool: Optional[str] = None  # editing tool if AI-edited
 
 
-def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
+def extract_features(file_path: str, deep: bool = False, code_only: bool = False) -> DetectionResult:
     """
     Extract all features from a video file.
     deep=True runs visual + frequency analysis (slower, ~5-15s extra).
     When metadata is stripped or platform re-encoded, deep analysis runs automatically.
+
+    code_only=True is the FAST path: read only the "code" layers — file
+    metadata, C2PA credentials, container structure, codec fingerprints — and
+    never decode frames. Returns in ~1s. Definitive when hard evidence exists
+    (C2PA / AI-tool tag / proprietary box); otherwise reports low confidence
+    rather than spending seconds on visual analysis. Ideal for Telegram, where
+    the original un-re-encoded file carries intact metadata.
     """
     meta = read_metadata(file_path)
     codec = analyze_codec(file_path)
@@ -41,7 +48,8 @@ def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
 
     # Run deep analysis when we need it: stripped metadata, platform re-encode,
     # or explicitly requested. Skip for very short clips (not enough frames).
-    run_deep = (
+    # code_only forces the fast path — never decode frames.
+    run_deep = (not code_only) and (
         deep or
         meta.metadata_is_stripped or
         meta.platform_reencoded
@@ -50,14 +58,20 @@ def extract_features(file_path: str, deep: bool = False) -> DetectionResult:
     freq: Optional[FreqResult] = None
     visual: Optional[VisualResult] = None
     if run_deep:
-        try:
-            freq = analyze_frequency(file_path)
-        except Exception:
-            freq = None
-        try:
-            visual = analyze_visual(file_path)
-        except Exception:
-            visual = None
+        # These two decode frames independently — run them concurrently so the
+        # deep pass costs max(freq, visual) instead of their sum (~1.5s saved).
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_freq = ex.submit(analyze_frequency, file_path)
+            fut_visual = ex.submit(analyze_visual, file_path)
+            try:
+                freq = fut_freq.result()
+            except Exception:
+                freq = None
+            try:
+                visual = fut_visual.result()
+            except Exception:
+                visual = None
 
     signals = _collect_signals(meta, codec, container, audio, freq, visual)
     feature_vector = _build_vector(signals)
@@ -108,6 +122,9 @@ def _collect_signals(
         "has_ai_exclusive_encoder": int(meta.has_ai_exclusive_encoder),
         "has_c2pa": int(meta.has_c2pa),
         "c2pa_is_ai": int(meta.c2pa_is_ai),
+        "synthetic_media_marker": int(getattr(meta, "synthetic_media_marker", False)),
+        "iptc_digital_source_type": getattr(meta, "iptc_digital_source_type", None),
+        "capture_origin_marker": int(getattr(meta, "capture_origin_marker", False)),
         "software_tag_present": int(meta.software_tag is not None),
         "camera_origin_detected": int(_has_camera_origin(meta)),
 
@@ -169,6 +186,9 @@ def _collect_signals(
         "visual_brightness_cv": visual.signals.get("brightness_cv", 0.0) if visual else 0.0,
         "visual_ai_score": visual.confidence if visual else 0.0,
         "visual_analyzed": int(visual is not None),
+        # Per-frame suspicion timeline for the web forensics report (list, so
+        # it is excluded from the ML feature vector — see _build_vector).
+        "visual_frame_timeline": visual.signals.get("frame_timeline", []) if visual else [],
 
         # File-level
         "file_size_mb": meta.file_size_bytes / (1024 * 1024),
@@ -251,6 +271,18 @@ def _rule_based_decision(
 
     if meta.has_ai_exclusive_encoder:
         return 0.95, "AI-exclusive encoder signature detected", ai_tool
+
+    # IPTC DigitalSourceType — an open, cross-industry provenance standard. A
+    # "trainedAlgorithmicMedia" leaf is an explicit declaration that the media
+    # was AI-generated; composite leaves declare partial AI. Self-declared (so
+    # below cryptographic C2PA), but a strong, standards-based positive signal.
+    if getattr(meta, "synthetic_media_marker", False):
+        leaf = meta.iptc_digital_source_type or "synthetic"
+        composite = "composite" in leaf.lower()
+        tool = ai_tool or f"IPTC:{leaf}"
+        if composite:
+            return 0.80, f"IPTC DigitalSourceType declares partial AI: '{leaf}'", tool
+        return 0.94, f"IPTC DigitalSourceType declares AI generation: '{leaf}'", tool
 
     if container.ai_tool_from_box and "C2PA" not in container.ai_tool_from_box:
         return 0.93, f"AI tool signature in container: {container.ai_tool_from_box}", ai_tool
@@ -339,6 +371,12 @@ def _has_camera_origin(meta: MetadataResult) -> bool:
         "apple videotoolbox", "mediacodec", "qualcomm",  # hardware encoders (cameras/phones)
         "com.apple.avfoundation",
     }
+
+    # IPTC DigitalSourceType "digitalCapture" — an explicit, standards-based
+    # declaration that this was captured by a camera. Symmetric to the AI
+    # marker; a strong real-origin signal.
+    if getattr(meta, "capture_origin_marker", False):
+        return True
 
     sw = (meta.software_tag or "").lower()
     enc = (meta.encoder_tag or "").lower()

@@ -5,6 +5,10 @@ name: Real-World Benchmark
 # This is roadmap phase 0.3 — a real accuracy number, produced automatically.
 
 on:
+  # Runs itself automatically — a fresh accuracy number every week with no
+  # manual trigger. Still dispatchable on demand with a custom set size.
+  schedule:
+    - cron: "0 6 * * 1"   # every Monday 06:00 UTC
   workflow_dispatch:
     inputs:
       per_query:
@@ -34,11 +38,13 @@ jobs:
           cache: pip
 
       - name: Install ffmpeg + deps
+        timeout-minutes: 10
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
           pip install -r requirements.txt
 
       - name: Collect labeled videos
+        timeout-minutes: 20
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |

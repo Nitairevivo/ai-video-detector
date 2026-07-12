@@ -194,7 +194,11 @@ def resolve_tiktok(share_url: str) -> Tuple[Optional[str], bool, str]:
                 # bitrateInfo is a list of quality options
                 for item in val:
                     if isinstance(item, dict):
-                        u = item.get("PlayAddr", {}).get("UrlList", [None])[0]
+                        # PlayAddr may be None, and UrlList may be present-but-empty
+                        # (region-gated CDN) — guard both to avoid crashing the
+                        # whole resolve path instead of falling through to regex.
+                        url_list = (item.get("PlayAddr") or {}).get("UrlList") or []
+                        u = url_list[0] if url_list else None
                         if u and "tiktok" in u:
                             cdn_url = u
                             break

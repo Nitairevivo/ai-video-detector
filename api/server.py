@@ -214,6 +214,8 @@ def get_optional_api_key(request: Request, x_api_key: Optional[str] = Header(Non
     return key
 
 SUPPORTED_FORMATS = {'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'}
+IMAGE_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp',
+                 '.tif', '.tiff', '.heic', '.heif', '.avif'}
 # Upload cap: enough for any social-video file, small enough not to fill the
 # container's disk. Deep analysis (Gemini frame pairs, visual, audio) needs the
 # WHOLE file — MP4s often keep the moov index at the end, so a truncated file
@@ -252,21 +254,29 @@ async def detect(
     request: Request,
     file: UploadFile = File(...),
     deep: bool = False,
+    mode: str = "full",
     key=Depends(get_optional_api_key),
 ):
     """
     Analyze a video file for AI generation.
-    deep=true: also runs visual + frequency analysis (~10s extra, better for re-encoded/stripped videos).
+    mode=fast: code-first path (~1s) — metadata/C2PA/container/codec only, no
+      frame decoding. Definitive on hard evidence; best when the original file
+      is available (its metadata is intact).
+    deep=true: also runs visual + frequency analysis (~10s extra, better for
+      re-encoded/stripped videos with no code evidence).
     """
     suffix = Path(file.filename).suffix.lower()
-    if suffix not in SUPPORTED_FORMATS:
-        raise HTTPException(400, f"Unsupported format: {suffix}. Use: {SUPPORTED_FORMATS}")
+    is_image = suffix in IMAGE_FORMATS
+    if suffix not in SUPPORTED_FORMATS and not is_image:
+        raise HTTPException(400, f"Unsupported format: {suffix}. Use video {sorted(SUPPORTED_FORMATS)} or image {sorted(IMAGE_FORMATS)}")
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
         try:
             written = await _save_upload(file, tmp)
-        except HTTPException:
+        except BaseException:
+            # Any failure (client disconnect, OSError, cancellation) — not just
+            # HTTPException — must not leave the temp file on disk.
             os.unlink(tmp_path)
             raise
         if written == 0:
@@ -276,7 +286,12 @@ async def detect(
     try:
         # Analysis takes 10-60s of CPU/IO — run it off the event loop so one
         # video doesn't freeze every other request on the server.
-        payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
+        if is_image:
+            payload = await run_in_threadpool(run_image_analysis, tmp_path)
+        elif mode == "fast":
+            payload = await run_in_threadpool(run_fast_analysis, tmp_path)
+        else:
+            payload = await run_in_threadpool(run_full_analysis, tmp_path, deep)
         payload["filename"] = file.filename
         payload["signals"] = payload.pop("_signals", {})
         if key:
@@ -288,19 +303,131 @@ async def detect(
         os.unlink(tmp_path)
 
 
+def run_fast_analysis(tmp_path: str, platform_flag: dict = None) -> dict:
+    """
+    FAST code-first path (~1s): read only the "code" layers — file metadata,
+    C2PA credentials, container structure, codec fingerprints — plus any
+    platform AI-disclosure label passed in. Never decodes frames, never calls
+    Gemini. Definitive when hard evidence exists (C2PA / AI-tool tag / signed
+    platform label); otherwise reports low confidence quickly instead of
+    spending seconds on visual analysis.
+
+    This is the accurate, near-instant path when the original file is
+    available (Telegram, WhatsApp-as-document, direct upload) — the metadata
+    is intact so "reading the code behind the video" is enough.
+    """
+    result = extract_features(tmp_path, code_only=True)
+    signals = result.signals or {}
+
+    verdict = result.verdict
+    confidence = result.confidence
+    method = result.method
+    ai_tool = result.ai_tool
+
+    # A platform's own AI label (TikTok AIGC / YouTube / Meta) is definitive
+    # and survives re-encoding — fold it in as top-tier evidence.
+    if platform_flag and platform_flag.get("flagged"):
+        verdict, confidence = "ai_generated", 0.96
+        method = f"Platform AI disclosure: {platform_flag.get('info', '')}"
+        ai_tool = ai_tool or "Platform AI label"
+
+    return {
+        "is_ai_generated": verdict == "ai_generated",
+        "verdict": verdict,
+        "confidence": round(confidence, 4),
+        "confidence_pct": f"{confidence * 100:.1f}%",
+        "ai_tool_detected": ai_tool,
+        "edit_tool_detected": result.edit_tool,
+        "detection_method": method,
+        "deep_analysis_ran": False,
+        "mode": "fast",
+        "explanation": {
+            "deciding_layer": method,
+            "provenance": {
+                "c2pa_present": bool(signals.get("has_c2pa")),
+                "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(signals.get("synthetic_media_marker")),
+                "iptc_digital_source_type": signals.get("iptc_digital_source_type"),
+                "camera_provenance": bool(signals.get("capture_origin_marker")),
+                "metadata_stripped": bool(signals.get("metadata_is_stripped")),
+                "platform_reencoded": bool(signals.get("platform_reencoded")),
+                "platform_ai_label": bool(platform_flag and platform_flag.get("flagged")),
+                "ai_tool": ai_tool,
+                "edit_tool": result.edit_tool,
+            },
+            "caveats": [c for c in (
+                "no hard code evidence found — for stripped/re-encoded video, run full analysis for a visual check"
+                if (confidence < 0.5 and (signals.get("metadata_is_stripped") or signals.get("platform_reencoded")))
+                else None,
+            ) if c],
+        },
+        "_signals": signals,
+    }
+
+
+def run_image_analysis(tmp_path: str) -> dict:
+    """
+    Code-first still-image analysis — the image counterpart of the fast video
+    path. Reads EXIF / C2PA / IPTC / PNG-metadata / tool tags; near-instant and
+    never decodes pixels for a verdict when provenance exists.
+    """
+    from analyzer.image_analyzer import analyze_image
+    r = analyze_image(tmp_path)
+    s = r.signals or {}
+    return {
+        "is_ai_generated": r.verdict == "ai_generated",
+        "verdict": r.verdict,
+        "confidence": round(r.confidence, 4),
+        "confidence_pct": f"{r.confidence * 100:.1f}%",
+        "ai_tool_detected": r.ai_tool,
+        "edit_tool_detected": None,
+        "detection_method": r.method,
+        "media_type": "image",
+        "mode": "fast",
+        "deep_analysis_ran": False,
+        "explanation": {
+            "deciding_layer": r.method,
+            "provenance": {
+                "c2pa_present": bool(s.get("has_c2pa")),
+                "c2pa_claims_ai": bool(s.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(s.get("synthetic_media_marker")),
+                "iptc_digital_source_type": s.get("iptc_digital_source_type"),
+                "camera_provenance": bool(s.get("camera_provenance")),
+                "metadata_stripped": bool(s.get("metadata_is_stripped")),
+                "ai_tool": r.ai_tool,
+            },
+            "caveats": [c for c in (
+                "image has no metadata (screenshot / re-saved / platform-stripped) — no provenance to read"
+                if s.get("metadata_is_stripped") else None,
+            ) if c],
+        },
+        "_signals": s,
+    }
+
+
 def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
     """
     Shared analysis pipeline: metadata/container features → Gemini-base ensemble
     (Gemini + visual + audio + frame-ML fused). Used by /detect, /detect-url
     and the Telegram bot.
     """
-    from analyzer.ensemble import analyze_ensemble
+    from analyzer.ensemble import analyze_ensemble, _run_gemini
+    from concurrent.futures import ThreadPoolExecutor
 
-    result = extract_features(tmp_path, deep=deep)
-    classifier = get_classifier()
-    ml_prob, _ = classifier.predict(result.feature_vector)
+    # Overlap the Gemini vision call (the slowest layer) with local feature
+    # extraction so the total is ~max(gemini, features) instead of their sum —
+    # this is what keeps the full path inside the ~5s response target.
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        gfut = ex.submit(_run_gemini, tmp_path)
+        result = extract_features(tmp_path, deep=deep)
+        classifier = get_classifier()
+        ml_prob, _ = classifier.predict(result.feature_vector)
+        try:
+            gemini = gfut.result()
+        except Exception:
+            gemini = None
 
-    ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True)
+    ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True, gemini_result=gemini)
 
     signals = result.signals or {}
     return {
@@ -323,12 +450,18 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
             "provenance": {
                 "c2pa_present": bool(signals.get("has_c2pa")),
                 "c2pa_claims_ai": bool(signals.get("c2pa_is_ai")),
+                "synthetic_media_marker": bool(signals.get("synthetic_media_marker")),
+                "iptc_digital_source_type": signals.get("iptc_digital_source_type"),
+                "camera_provenance": bool(signals.get("capture_origin_marker")),
                 "metadata_stripped": bool(signals.get("metadata_is_stripped")),
                 "platform_reencoded": bool(signals.get("platform_reencoded")),
                 "ai_tool": result.ai_tool,
                 "edit_tool": result.edit_tool,
             },
             "visual_artifacts": list(getattr(ens, "gemini_artifacts", []) or []),
+            # Per-frame suspicion (0=natural … 1=AI-like) when the visual layer
+            # ran — drives the timeline in the web forensics report.
+            "frame_timeline": list(signals.get("visual_frame_timeline", []) or []),
             "caveats": [c for c in (
                 "video shorter than 2s — low reliability" if signals.get("too_short_for_analysis") else None,
                 "re-encoded by a platform — original file metadata lost" if signals.get("platform_reencoded") else None,
@@ -350,7 +483,11 @@ async def label_sample(file: UploadFile = File(...), is_ai: bool = True):
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        await _save_upload(file, tmp)
+        try:
+            await _save_upload(file, tmp)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path)
@@ -426,8 +563,23 @@ PLATFORM_DOMAINS = [
     "likee.video", "kwai.com",
 ]
 
+def _host_of(url: str) -> str:
+    from urllib.parse import urlparse
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _host_matches(host: str, domains) -> bool:
+    """True if host IS one of the domains or a subdomain of it — matched on the
+    parsed hostname, never a substring of the whole URL (so a credentials trick
+    like `http://tiktok.com@169.254.169.254/` does not count as a platform URL)."""
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
 def _is_platform_url(url: str) -> bool:
-    return any(d in url for d in PLATFORM_DOMAINS)
+    return _host_matches(_host_of(url), PLATFORM_DOMAINS)
 
 
 # Rotating User-Agents — a fixed UA is an easy block target for CDNs (roadmap 2.3)
@@ -483,11 +635,35 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     return False
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """SSRF guard: only allow http(s) URLs whose host resolves entirely to
+    public addresses. Blocks cloud metadata (169.254.169.254), loopback,
+    private and link-local ranges so a user-supplied URL can't make the server
+    fetch internal services."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname:
+            return False
+        for info in socket.getaddrinfo(p.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def _download_direct(url: str, tmp_path: str) -> bool:
     """
     Direct HTTP download, capped at 60MB. The cap matters: deep analysis
     needs the whole file, and social videos are almost always well under it.
     """
+    if not _is_safe_public_url(url):
+        return False
     LIMIT = 60 * 1024 * 1024
     try:
         req = urllib.request.Request(url, headers={
@@ -519,7 +695,16 @@ def download_video_from_url(url: str, tmp_path: str):
                      the file's own metadata does not.
       aigc_info    — human-readable description of the label found
     """
-    is_tiktok = any(x in url for x in ["tiktok.com", "vm.tiktok", "douyin.com"])
+    # SSRF guard, UNCONDITIONAL: every strategy below (TikTok resolver,
+    # platform-flags, yt-dlp, direct HTTP) issues a request derived from `url`,
+    # so gate them all on a host that resolves only to public addresses. This
+    # runs before the platform branch precisely so a credentials/spoof trick
+    # (`http://tiktok.com@169.254.169.254/`) can't skip the check.
+    if not _is_safe_public_url(url):
+        return False, False, "blocked: URL is not a public address"
+
+    is_tiktok = _host_matches(_host_of(url), ("tiktok.com", "douyin.com")) \
+        or _host_of(url).startswith("vm.tiktok")
     ok = False
     aigc_flagged = False
     aigc_info = ""
@@ -639,6 +824,7 @@ async def detect_url(request: Request, url: str = Body(..., embed=True), deep: b
 
 
 @app.post("/detect-batch")
+@limiter.limit("10/minute")
 async def detect_batch(
     request: Request,
     urls: list[str] = Body(...),
@@ -814,7 +1000,11 @@ async def calibrate(
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = tmp.name
-        await _save_upload(file, tmp)
+        try:
+            await _save_upload(file, tmp)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
     try:
         result = await run_in_threadpool(extract_features, tmp_path, True)
