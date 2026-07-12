@@ -284,6 +284,9 @@ _IMG_FEATURE_KEYS = [
 # real pixel signal. Restricting to these keys forces honest pixel evidence.
 _PIXEL_MODEL_KEYS = ["gray_noise", "edge_mean", "fft_high_ratio", "chan_std", "sat_mean"]
 _PIXEL_MODEL_IDX = [_IMG_FEATURE_KEYS.index(k) for k in _PIXEL_MODEL_KEYS]
+# Operating threshold for the weak pixel heuristic — chosen so its false-positive
+# rate stays low (~4%). Shared with training so reported metrics match real use.
+_PIXEL_AI_THRESHOLD = 0.85
 
 
 def pixel_model_vector(full_vec: list) -> list:
@@ -376,10 +379,16 @@ def analyze_image(path: str) -> ImageResult:
             try:
                 prob = float(model.predict_proba([pixel_model_vector(image_feature_vector(path))])[0][1])
                 signals["pixel_model_prob"] = round(prob, 3)
-                if prob >= 0.65:
-                    return ImageResult("ai_generated", prob, f"Pixel model: {prob:.0%} AI (no metadata)", None, signals)
-                if prob <= 0.35:
-                    return ImageResult("real", 1 - prob, f"Pixel model: {(1-prob):.0%} real (no metadata)", None, signals)
+                # Pixel-only evidence on a stripped image is a WEAK heuristic
+                # (honest CV: ~4% FPR only at a 0.85 cut), so act only at the
+                # extremes and never claim provenance-level certainty — confidence
+                # is capped. Bias against false positives: prefer uncertain.
+                if prob >= _PIXEL_AI_THRESHOLD:
+                    return ImageResult("ai_generated", min(prob, 0.72),
+                                       f"Pixel heuristic (no metadata): looks AI-generated ({prob:.0%})", None, signals)
+                if prob <= (1 - _PIXEL_AI_THRESHOLD):
+                    return ImageResult("real", min(1 - prob, 0.72),
+                                       f"Pixel heuristic (no metadata): looks real ({(1 - prob):.0%})", None, signals)
             except Exception:
                 pass
         return ImageResult("uncertain", 0.35, "No metadata — stripped image, no provenance to read", None, signals)

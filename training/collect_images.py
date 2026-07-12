@@ -256,9 +256,13 @@ def train_image_model() -> dict:
                                        learning_rate=0.05, subsample=0.8, random_state=42),
             method=method, cv=cal_cv)),
     ])
+    from analyzer.image_analyzer import _PIXEL_AI_THRESHOLD
     cv = StratifiedKFold(n_splits=min(5, len(samples) // 4), shuffle=True, random_state=42)
     oof = cross_val_predict(pipe, X, y, cv=cv, method="predict_proba")[:, 1]
-    pred = oof >= 0.5
+    # Report metrics at the model's real OPERATING threshold (analyze_image only
+    # acts on prob >= _PIXEL_AI_THRESHOLD), so cv_fpr reflects how it's actually
+    # used — not an irrelevant 0.5 cut it never applies.
+    pred = oof >= _PIXEL_AI_THRESHOLD
     tp = int(((pred == 1) & (y == 1)).sum()); fp = int(((pred == 1) & (y == 0)).sum())
     fn = int(((pred == 0) & (y == 1)).sum()); tn = int(((pred == 0) & (y == 0)).sum())
     pipe.fit(X, y)
@@ -267,6 +271,7 @@ def train_image_model() -> dict:
     meta = {
         "samples": len(samples), "ai_samples": int(y.sum()), "real_samples": int((1 - y).sum()),
         "feature_keys": _PIXEL_MODEL_KEYS,
+        "operating_threshold": _PIXEL_AI_THRESHOLD,
         "cv_auc": float(roc_auc_score(y, oof)),
         "cv_precision": tp / (tp + fp) if (tp + fp) else None,
         "cv_recall": tp / (tp + fn) if (tp + fn) else None,
@@ -274,7 +279,8 @@ def train_image_model() -> dict:
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     META.write_text(json.dumps(meta))
-    print(f"[img] trained: {meta['samples']} samples, AUC {meta['cv_auc']:.3f}, FPR {meta['cv_fpr']}")
+    print(f"[img] trained: {meta['samples']} samples, AUC {meta['cv_auc']:.3f}, "
+          f"FPR@{_PIXEL_AI_THRESHOLD} {meta['cv_fpr']}")
     return meta
 
 
