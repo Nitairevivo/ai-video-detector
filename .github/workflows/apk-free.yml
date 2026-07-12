@@ -1,0 +1,91 @@
+name: Free Android APK (GitHub build)
+
+# Builds an installable Android APK on GitHub's runners with Gradle — no EAS
+# cloud quota needed — and publishes it as a public GitHub Release asset with a
+# direct, click-to-install download URL. Debug signing keeps it installable for
+# sideloading without managing a keystore.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag for the APK asset'
+        required: false
+        default: 'apk-latest'
+
+jobs:
+  apk:
+    name: Build release APK (free)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm install
+        working-directory: mobile
+
+      - name: Read app version
+        id: ver
+        run: |
+          V=$(node -p "require('./app.json').expo.version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+        working-directory: mobile
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+        env:
+          CI: "1"
+
+      - name: Sign the release build with the debug key (sideload-installable)
+        working-directory: mobile/android
+        run: |
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/' app/build.gradle
+          grep -n "signingConfig " app/build.gradle || true
+
+      - name: Build release APK with Gradle
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon -x lint
+
+      - name: Collect APK
+        id: apk
+        run: |
+          SRC=mobile/android/app/build/outputs/apk/release/app-release.apk
+          OUT=/tmp/verifai-${{ steps.ver.outputs.version }}.apk
+          cp "$SRC" "$OUT"
+          ls -la "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Publish APK to a GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || 'apk-latest' }}
+          name: VerifAI ${{ steps.ver.outputs.version }} (Android APK)
+          body: |
+            VerifAI ${{ steps.ver.outputs.version }} — free GitHub Gradle build (no EAS).
+            Tap the .apk below on your Android phone to install.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
+
+      - name: Emit direct install URL
+        run: |
+          TAG="${{ github.event.inputs.tag || 'apk-latest' }}"
+          FILE="verifai-${{ steps.ver.outputs.version }}.apk"
+          URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${FILE}"
+          echo "DIRECT INSTALL URL: $URL"
+          {
+            echo "## 📲 Direct install link"
+            echo "Tap on your Android phone to install:"
+            echo ""
+            echo "**$URL**"
+          } >> "$GITHUB_STEP_SUMMARY"
