@@ -191,7 +191,7 @@ export default function Dashboard() {
                   onClick={() => upgrade(plan.tier)}
                   disabled={loading}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-105 disabled:opacity-40"
-                  style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+                  style={{ background: "linear-gradient(135deg, #6d28ff, #7c3aed)" }}>
                   Upgrade
                 </button>
               )}
@@ -218,7 +218,7 @@ export default function Dashboard() {
                   onClick={register}
                   disabled={loading}
                   className="px-6 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:scale-105 transition-all"
-                  style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+                  style={{ background: "linear-gradient(135deg, #6d28ff, #7c3aed)" }}>
                   {loading ? "…" : "Get Key"}
                 </button>
               </div>
@@ -295,7 +295,7 @@ export default function Dashboard() {
               onClick={checkUsage}
               disabled={usageLoading || !usageKey.trim()}
               className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
-              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              style={{ background: "linear-gradient(135deg, #6d28ff, #7c3aed)" }}>
               {usageLoading ? "Loading…" : "Show"}
             </button>
           </div>
@@ -370,7 +370,7 @@ export default function Dashboard() {
               onClick={rotate}
               disabled={rotating || !rotateInput.trim()}
               className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
-              style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+              style={{ background: "linear-gradient(135deg, #6d28ff, #7c3aed)" }}>
               {rotating ? "Rotating…" : "Rotate"}
             </button>
           </div>

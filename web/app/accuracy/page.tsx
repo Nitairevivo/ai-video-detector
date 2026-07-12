@@ -12,12 +12,12 @@ function Stat({ value, label, note }: { value: string; label: string; note?: str
 
 export default function Accuracy() {
   return (
-    <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at 50% -10%, #180a3a 0%, #05050f 55%)" }}>
+    <div className="min-h-screen relative" style={{ background: "radial-gradient(ellipse at 50% -10%, #180a3a 0%, #060314 55%)" }}>
       <div className="aurora" aria-hidden><span className="spark" /></div>
       <div className="fixed inset-0 z-0 grid-texture pointer-events-none" aria-hidden />
       <div className="grain" aria-hidden />
       <div className="relative z-10 max-w-2xl mx-auto px-6 py-16 text-gray-300">
-        <a href="/" className="text-sm text-[#7c6cff] hover:text-[#a99bff] transition-colors">← VerifAI</a>
+        <a href="/" className="text-sm text-[#a066ff] hover:text-[#a99bff] transition-colors">← VerifAI</a>
         <h1 className="display text-3xl sm:text-4xl font-extrabold gradient-text mt-6 mb-2">Accuracy &amp; Methodology</h1>
         <p className="text-xs text-faint mb-10">
           We publish how the numbers are measured, not just the numbers. The model retrains nightly and
@@ -90,13 +90,13 @@ export default function Accuracy() {
             <li><b className="text-gray-200">Vision ensemble</b> — Gemini temporal-pair analysis fused in log-odds space with frame, frequency, motion and audio models.</li>
           </ol>
           <p className="text-xs text-faint mt-3">
-            Every API response includes an <code className="text-[#7c6cff]">explanation</code> object showing which
+            Every API response includes an <code className="text-[#a066ff]">explanation</code> object showing which
             layer decided and every layer&apos;s score — audit it yourself.
           </p>
         </section>
 
         <div className="flex gap-4 text-sm">
-          <a href="/#detect" className="text-[#7c6cff] hover:text-[#a99bff] transition-colors">Try it →</a>
+          <a href="/#detect" className="text-[#a066ff] hover:text-[#a99bff] transition-colors">Try it →</a>
           <a href="/privacy" className="text-muted hover:text-white transition-colors">Privacy</a>
         </div>
       </div>
