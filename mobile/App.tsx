@@ -24,20 +24,22 @@ const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-  bg: "#05060e",
-  card: "#0c0e1d",
-  card2: "#131530",
-  border: "#ffffff10",
-  text: "#f1f2f8",
-  sub: "#9aa0b8",
-  faint: "#565c78",
-  primary: "#7c6cff",
-  primaryDeep: "#4f46e5",
-  ai: "#f43f5e",
-  edited: "#a855f7",
-  real: "#10b981",
+  bg: "#070316",
+  card: "#0e0a24",
+  card2: "#17103a",
+  border: "#ffffff14",
+  text: "#f4f2ff",
+  sub: "#a29dc4",
+  faint: "#6b6690",
+  primary: "#a066ff",      // bright signal violet
+  primaryDeep: "#6d28ff",  // electric indigo
+  magenta: "#ff3ec9",      // hot magenta accent
+  cyan: "#22e3ee",         // cyan spark
+  ai: "#ff3d6e",
+  edited: "#c084fc",
+  real: "#2ee6a6",
   gold: "#fbbf24",
-  violet: "#8b5cf6",
+  violet: "#b061ff",
 };
 
 // ─── i18n — Hebrew / English ──────────────────────────────────────────────────
@@ -1165,12 +1167,12 @@ const s = StyleSheet.create({
   // Header
   headerTop: { justifyContent: "space-between", alignItems: "center" },
   logoMark: {
-    width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center",
-    backgroundColor: C.primaryDeep, borderWidth: 1, borderColor: "#ffffff2e",
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 8,
+    width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center",
+    backgroundColor: C.primary, borderWidth: 1.5, borderColor: "#ffffff33",
+    shadowColor: C.magenta, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.85, shadowRadius: 18, elevation: 12,
   },
-  logoMarkText: { color: "#fff", fontSize: 22, fontWeight: "900", letterSpacing: -1 },
-  headerTitle: { color: C.text, fontSize: 26, fontWeight: "900", letterSpacing: -0.8 },
+  logoMarkText: { color: "#fff", fontSize: 26, fontWeight: "900", letterSpacing: -1 },
+  headerTitle: { color: C.text, fontSize: 30, fontWeight: "900", letterSpacing: -1 },
   headerVersion: { color: C.faint, fontSize: 10, fontWeight: "600", letterSpacing: 1 },
   tagline: { color: C.sub, fontSize: 14, marginTop: -6 },
   langBtn: { backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: C.border },
@@ -1180,12 +1182,12 @@ const s = StyleSheet.create({
 
   // Detect card (paste a link → answer)
   detectCard: {
-    backgroundColor: C.card, borderRadius: 22, padding: 18, gap: 10,
-    borderWidth: 1, borderColor: C.primary + "55",
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 24, elevation: 8,
+    backgroundColor: C.card, borderRadius: 24, padding: 18, gap: 10,
+    borderWidth: 1.5, borderColor: C.primary + "66",
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4, shadowRadius: 28, elevation: 10,
   },
-  detectTitle: { color: C.text, fontSize: 18, fontWeight: "800" },
+  detectTitle: { color: C.text, fontSize: 19, fontWeight: "800" },
   detectSub: { color: C.sub, fontSize: 12.5, marginTop: -4 },
   inputRow: { gap: 8, alignItems: "center", marginTop: 4 },
   input: {
@@ -1205,12 +1207,13 @@ const s = StyleSheet.create({
   },
   clearInputText: { color: C.sub, fontSize: 15, fontWeight: "700" },
   detectBtn: {
-    backgroundColor: C.primaryDeep, borderRadius: 16, paddingVertical: 15, alignItems: "center",
-    marginTop: 4, shadowColor: C.primaryDeep, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5, shadowRadius: 16, elevation: 8,
+    backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center",
+    marginTop: 4, borderWidth: 1, borderColor: "#ffffff26",
+    shadowColor: C.magenta, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.7, shadowRadius: 22, elevation: 12,
   },
   detectBtnDisabled: { opacity: 0.4 },
-  detectBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
   detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
 
   // How-it-works explainer
