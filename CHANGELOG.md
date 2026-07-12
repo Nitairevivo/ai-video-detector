@@ -1,5 +1,10 @@
 # VerifAI — What's New
 
+## 2026-07-12 — Nightly model refresh
+
+- Video detector now at 0.975 AUC with a 2.7% false-positive rate (trained on 882 videos).
+- Image detector trained on 1,749 samples (AUC 1.000).
+
 ## 2026-07-11 — Model & detection improvements
 
 - Video detector now at 0.975 AUC with a 2.7% false-positive rate (trained on 882 videos).
