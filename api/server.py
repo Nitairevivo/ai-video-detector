@@ -418,11 +418,17 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
     # as .mp4, truncated download, wrong format) would otherwise flow through
     # feature extraction as an all-defaults vector and the classifier would
     # return a constant, confidently wrong score.
-    import cv2
-    cap = cv2.VideoCapture(tmp_path)
-    got_frame, _ = cap.read()
-    cap.release()
-    if not got_frame:
+    try:
+        import imageio_ffmpeg
+        _gen = imageio_ffmpeg.read_frames(tmp_path)
+        next(_gen)  # metadata
+        next(_gen)  # first decoded frame
+        _gen.close()
+    except StopIteration:
+        raise HTTPException(422, "File is not a decodable video — try uploading the original file.")
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(422, "File is not a decodable video — try uploading the original file.")
 
     # Overlap the Gemini vision call (the slowest layer) with local feature
