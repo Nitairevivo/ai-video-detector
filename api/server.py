@@ -2,6 +2,8 @@
 FastAPI server — upload a video, get AI detection results in seconds.
 """
 import os
+import json
+import re
 import tempfile
 import urllib.parse
 import urllib.request
@@ -613,6 +615,62 @@ def _pick_ua() -> str:
     return random.choice(_DOWNLOAD_UAS)
 
 
+_YT_INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+_YT_ID_RE = re.compile(
+    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+_YT_PLAYER_CLIENTS = [
+    ({"client": {"clientName": "ANDROID", "clientVersion": "19.44.38",
+                 "androidSdkVersion": 34, "hl": "en", "osName": "Android", "osVersion": "14"}},
+     "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip"),
+    ({"client": {"clientName": "IOS", "clientVersion": "19.45.4",
+                 "deviceModel": "iPhone16,2", "hl": "en", "osName": "iOS", "osVersion": "18.1.0.22B83"}},
+     "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)"),
+    ({"client": {"clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "clientVersion": "2.0", "hl": "en"},
+      "thirdParty": {"embedUrl": "https://www.youtube.com"}}, _DOWNLOAD_UAS[0]),
+]
+
+
+def _download_youtube_innertube(url: str, tmp_path: str) -> bool:
+    """
+    Fetch a YouTube video via the innertube 'player' API with a mobile/embedded
+    client. Those clients return progressive (muxed audio+video) stream URLs
+    that download directly — no signature-cipher deciphering. This often works
+    where yt-dlp's default web client hits YouTube's bot wall. Same 60MB cap and
+    magic-byte guard as the other strategies.
+    """
+    m = _YT_ID_RE.search(url)
+    if not m:
+        return False
+    vid = m.group(1)
+    for context, ua in _YT_PLAYER_CLIENTS:
+        try:
+            body = json.dumps({
+                "context": context, "videoId": vid,
+                "contentCheckOk": True, "racyCheckOk": True,
+            }).encode()
+            req = urllib.request.Request(
+                f"https://www.youtube.com/youtubei/v1/player?key={_YT_INNERTUBE_KEY}&prettyPrint=false",
+                data=body,
+                headers={"Content-Type": "application/json", "User-Agent": ua,
+                         "Accept-Language": "en-US,en;q=0.9"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read(4 * 1024 * 1024).decode("utf-8", errors="ignore"))
+        except Exception:
+            continue
+        formats = [f for f in (data.get("streamingData", {}).get("formats") or [])
+                   if f.get("url") and "mp4" in (f.get("mimeType") or "")]
+        if not formats:
+            continue
+        muxed = [f for f in formats if "audio" in (f.get("mimeType") or "")]
+        pool = muxed or formats
+        chosen = next((f for f in pool if f.get("itag") == 18), pool[0])
+        if _download_direct(chosen["url"], tmp_path):
+            return True
+    return False
+
+
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     """Use yt-dlp to download video. Tries multiple format strategies."""
     import subprocess, shutil
@@ -777,6 +835,12 @@ def download_video_from_url(url: str, tmp_path: str):
                 return ok, True, aigc_info
         except Exception:
             pass
+
+    # Strategy 1.5: YouTube via innertube (progressive mobile-client stream).
+    # Tried before yt-dlp because YouTube bot-walls yt-dlp's web client from
+    # datacenter IPs; the mobile-client player API often still works.
+    if not ok and _host_matches(_host_of(url), ("youtube.com", "youtu.be")):
+        ok = _download_youtube_innertube(url, tmp_path)
 
     # Strategy 2: yt-dlp
     if not ok and _is_platform_url(url):

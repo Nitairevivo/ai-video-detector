@@ -129,6 +129,106 @@ const CDN_URL_RE = [
   /(https:\/\/[^"'\\\s]+\.mp4[^"'\\\s]*)/i,
 ];
 
+// ── YouTube ───────────────────────────────────────────────────────────────
+// YouTube blocks yt-dlp from datacenter IPs (Railway) with a "confirm you're
+// not a bot" wall, so the server can't fetch it. The phone's residential IP is
+// NOT blocked. YouTube's own innertube "player" API, called with a mobile
+// client, returns progressive (audio+video muxed) stream URLs that are
+// directly downloadable — no signature-cipher/JS-execution needed. That's the
+// trick that makes a pasted YouTube link actually work.
+const YOUTUBE_RE = /(?:youtube\.com|youtu\.be)/i;
+const YT_ID_RE =
+  /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i;
+const YT_INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+
+function youtubeId(url: string): string | null {
+  const m = url.match(YT_ID_RE);
+  return m ? m[1] : null;
+}
+
+// Mobile / embedded innertube clients — each returns un-ciphered progressive
+// URLs for a large share of videos. We try them in order until one yields a
+// downloadable stream (different clients succeed on different videos, and one
+// often works when another is bot-walled).
+const YT_CLIENTS: Array<{ context: Record<string, unknown>; ua: string }> = [
+  {
+    context: {
+      client: {
+        clientName: "IOS", clientVersion: "19.45.4",
+        deviceModel: "iPhone16,2", hl: "en",
+        osName: "iOS", osVersion: "18.1.0.22B83",
+      },
+    },
+    ua: "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)",
+  },
+  {
+    context: {
+      client: {
+        clientName: "ANDROID", clientVersion: "19.44.38",
+        androidSdkVersion: 34, hl: "en",
+        osName: "Android", osVersion: "14",
+      },
+    },
+    ua: "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip",
+  },
+  {
+    context: {
+      client: { clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", clientVersion: "2.0", hl: "en" },
+      thirdParty: { embedUrl: "https://www.youtube.com" },
+    },
+    ua: MOBILE_UA,
+  },
+];
+
+// Pick the best directly-downloadable progressive stream (muxed audio+video).
+// itag 18 (360p mp4) is the reliable, universally-present muxed format; prefer
+// it, then any other muxed mp4 with a plain url.
+function pickYouTubeStream(streamingData: any): string | null {
+  const formats: any[] = (streamingData?.formats || []).filter(
+    (f: any) => f?.url && typeof f.url === "string" && /mp4/i.test(f.mimeType || "")
+  );
+  if (!formats.length) return null;
+  const muxed = formats.filter((f) => (f.mimeType || "").includes("audio"));
+  const pool = muxed.length ? muxed : formats;
+  const itag18 = pool.find((f) => f.itag === 18);
+  return (itag18 || pool[0]).url;
+}
+
+async function resolveYouTubeOnPhone(url: string): Promise<{ aigc: boolean; cdnUrl: string | null }> {
+  const id = youtubeId(url);
+  if (!id) return { aigc: false, cdnUrl: null };
+  for (const c of YT_CLIENTS) {
+    try {
+      const resp = await fetch(
+        `https://www.youtube.com/youtubei/v1/player?key=${YT_INNERTUBE_KEY}&prettyPrint=false`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": c.ua,
+            "Accept-Language": "en-US,en;q=0.9",
+            "X-YouTube-Client-Name": "5",
+          },
+          body: JSON.stringify({
+            context: c.context,
+            videoId: id,
+            contentCheckOk: true,
+            racyCheckOk: true,
+          }),
+        }
+      );
+      const txt = await resp.text();
+      // Platform's own AI disclosure, straight from the player JSON.
+      const aigc = AIGC_PAGE_RE.some((re) => re.test(txt));
+      let data: any = {};
+      try { data = JSON.parse(txt); } catch { /* not JSON — skip */ }
+      const cdnUrl = pickYouTubeStream(data?.streamingData);
+      if (aigc || cdnUrl) return { aigc, cdnUrl };
+    } catch { /* try next client */ }
+  }
+  return { aigc: false, cdnUrl: null };
+}
+
 // Fetch a platform PAGE on the phone's residential IP (not blocked like the
 // server's datacenter IP), read the AI label, and pull the real video URL.
 async function resolveOnPhone(url: string): Promise<{ aigc: boolean; cdnUrl: string | null }> {
@@ -149,6 +249,26 @@ export async function detectVideoUrl(url: string): Promise<DetectionResult> {
   // Direct video file → download on the phone and upload.
   if (DIRECT_FILE_RE.test(url)) {
     try { return await downloadAndDetect(url); } catch { /* fall through */ }
+  }
+
+  // YouTube → resolve on the phone (residential IP is not bot-walled like the
+  // server's datacenter IP) via the innertube player API, then download the
+  // progressive stream on the phone and upload it.
+  if (YOUTUBE_RE.test(url)) {
+    try {
+      const { aigc, cdnUrl } = await resolveYouTubeOnPhone(url);
+      if (aigc) {
+        return {
+          is_ai_generated: true, verdict: "ai_generated", confidence: 0.97,
+          ai_tool_detected: "Platform AI label", edit_tool_detected: null,
+          detection_method: "YouTube AI-disclosure label (read on device)",
+          explanation: { provenance: { platform_ai_label: true } },
+        };
+      }
+      if (cdnUrl) {
+        try { return await downloadAndDetect(cdnUrl); } catch { /* fall through to server */ }
+      }
+    } catch { /* fall through to server */ }
   }
 
   // Platform page → resolve on the phone (residential IP) first.
