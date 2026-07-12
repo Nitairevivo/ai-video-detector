@@ -693,24 +693,27 @@ function AppInner() {
           </View>
         )}
 
-        {/* ── Manual Check Button ──────────────────────────────────── */}
-        <TouchableOpacity
-          style={[styles.checkBtn, loading && styles.checkBtnLoading]}
-          onPress={onManualCheck}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <View style={styles.checkBtnInner}>
-              <Text style={styles.checkBtnText}>{t.analyzing}</Text>
-              <View style={styles.loadingBar}>
-                <Animated.View style={styles.loadingFill} />
-              </View>
+        {/* ── How it works (explanation) ───────────────────────────── */}
+        <View style={styles.howCard}>
+          <Text style={styles.howCardTitle}>{lang === "he" ? "איך VerifAI יודע?" : "How VerifAI knows"}</Text>
+          {(lang === "he"
+            ? [
+                ["🔏", "קורא את הקוד של הקובץ — אישורי C2PA וחתימות של כלי-AI (Sora, Veo, Midjourney…)"],
+                ["🏷️", "קורא את תוויות ה-AI של הפלטפורמות — TikTok, YouTube, Instagram, X"],
+                ["👁️", "ואם צריך — ניתוח חזותי מכויל, כדי לא לטעות"],
+              ]
+            : [
+                ["🔏", "Reads the file's code — C2PA credentials & AI-tool signatures (Sora, Veo, Midjourney…)"],
+                ["🏷️", "Reads the platforms' own AI labels — TikTok, YouTube, Instagram, X"],
+                ["👁️", "And when needed, a calibrated visual check — so it doesn't cry wolf"],
+              ]
+          ).map(([icon, text], i) => (
+            <View key={i} style={styles.howRow}>
+              <Text style={styles.howIcon}>{icon}</Text>
+              <Text style={styles.howRowText}>{text}</Text>
             </View>
-          ) : (
-            <Text style={styles.checkBtnText}>{t.checkBtn}</Text>
-          )}
-        </TouchableOpacity>
+          ))}
+        </View>
 
         {/* ── Premium Banner ───────────────────────────────────────── */}
         <TouchableOpacity style={styles.premiumBanner} onPress={() => setShowPremium(true)} activeOpacity={0.85}>
@@ -751,9 +754,9 @@ function AppInner() {
         {history.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🎬</Text>
-            <Text style={styles.emptyTitle}>{t.noVideos}</Text>
+            <Text style={styles.emptyTitle}>{lang === "he" ? "עדיין לא בדקת כלום" : "Nothing checked yet"}</Text>
             <Text style={styles.emptyHint}>
-              {Platform.OS === "android" ? t.noVideosHint.android : t.noVideosHint.ios}
+              {lang === "he" ? "הדבק קישור בתיבה למעלה ולחץ \"בדוק עכשיו\" — התוצאה תופיע כאן." : "Paste a link in the box above and tap \"Detect now\" — the result shows here."}
             </Text>
           </View>
         )}
@@ -1021,6 +1024,16 @@ const styles = StyleSheet.create({
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   detectHint: { color: "#5a5b74", fontSize: 11, textAlign: "center", marginTop: 2 },
+
+  // How-it-works explainer
+  howCard: {
+    backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", gap: 11,
+  },
+  howCardTitle: { color: "#c9c3ff", fontSize: 13, fontWeight: "800", letterSpacing: 0.3, marginBottom: 2 },
+  howRow: { flexDirection: "row", gap: 11, alignItems: "flex-start" },
+  howIcon: { fontSize: 17, width: 24, textAlign: "center" },
+  howRowText: { color: "#b6b7cc", fontSize: 13, lineHeight: 19, flex: 1 },
 
   // Banner
   banner: {
