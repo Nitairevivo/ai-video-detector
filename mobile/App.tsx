@@ -667,7 +667,19 @@ function AppInner() {
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch (e: unknown) {
       setHistory((prev) => prev.filter((h) => !h.loading));
-      Alert.alert(T[lang].error, e instanceof Error ? e.message : T[lang].connError);
+      const emsg = e instanceof Error ? e.message : "";
+      const downloadIssue = !emsg || /download|fetch|network|timeout|could not|5\d\d|blocked|failed/i.test(emsg);
+      if (downloadIssue) {
+        Alert.alert(
+          lang === "he" ? "לא הצלחתי לשלוף את הסרטון מהקישור" : "Couldn't fetch the video from the link",
+          lang === "he"
+            ? "יוטיוב/טיקטוק לפעמים חוסמים שליפה אוטומטית. הדרך הכי בטוחה שתמיד עובדת:\n\nפתח את הסרטון ← שתף (Share) ← VerifAI"
+            : "YouTube/TikTok sometimes block automatic fetching. The most reliable way:\n\nOpen the video → Share → VerifAI",
+          [{ text: lang === "he" ? "הבנתי" : "Got it" }]
+        );
+      } else {
+        Alert.alert(T[lang].error, emsg || T[lang].connError);
+      }
     } finally {
       setLoading(false);
     }
