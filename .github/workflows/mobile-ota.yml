@@ -81,7 +81,11 @@ jobs:
           # A published OTA bundle auto-applies on installed apps, so a bundle
           # that fails to build must NEVER reach a channel. `expo export` runs the
           # real Metro bundle and fails on any unresolved import / bundling error.
-          npx expo export --platform android --output-dir /tmp/otaverify
+          # NOTE: expo export refuses an --output-dir outside the project, so use
+          # a project-relative dir (a /tmp path fails and would block every OTA).
+          rm -rf ./_otaverify
+          npx expo export --platform android --output-dir ./_otaverify
+          rm -rf ./_otaverify
           echo "Bundle built OK — safe to publish."
 
       - name: Publish OTA update (preview → production)
