@@ -1,16 +1,29 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
-  Dimensions, Platform, Linking, NativeModules, AppState,
+  Dimensions, Platform, Linking, NativeModules, AppState, Easing,
 } from "react-native";
 
 const { width } = Dimensions.get("window");
 const { OverlayModule } = NativeModules;
 
+const C = {
+  bg: "#05060e",
+  card: "#0c0e1d",
+  border: "#ffffff10",
+  text: "#f1f2f8",
+  sub: "#9aa0b8",
+  faint: "#565c78",
+  primary: "#7c6cff",
+  primaryDeep: "#4f46e5",
+  real: "#10b981",
+};
+
 type Step = {
   emoji: string;
   title: string;
   desc: string;
+  how: string;
   btnLabel: string;
   check: () => Promise<boolean>;
   open: () => void;
@@ -20,7 +33,8 @@ const STEPS: Step[] = [
   {
     emoji: "🔍",
     title: "כפתור צף מעל כל אפליקציה",
-    desc: 'לחץ "הפעל" ← בחר VerifAI ← הפעל את המתג',
+    desc: "כפתור VerifAI קטן יופיע בתוך TikTok, Instagram ו-YouTube — לחיצה אחת בודקת את הסרטון שמולך",
+    how: 'במסך שייפתח: בחר VerifAI ← הפעל את המתג ← חזור לכאן',
     btnLabel: "הפעל הרשאה",
     check: async () => {
       if (Platform.OS !== "android" || !OverlayModule) return true;
@@ -35,7 +49,8 @@ const STEPS: Step[] = [
   {
     emoji: "⚡",
     title: "זיהוי בלחיצה אחת",
-    desc: 'לחץ "הפעל" ← VerifAI Auto-Detect ← הפעל את המתג\nכך הכפתור יופיע רק בתוך TikTok, Instagram וכו\' ויביא תשובה בלחיצה',
+    desc: "שירות הנגישות שולף את הקישור של הסרטון שמוצג על המסך — בלי להעתיק כלום ידנית",
+    how: 'במסך שייפתח: VerifAI Auto-Detect ← הפעל את המתג ← חזור לכאן',
     btnLabel: "הפעל נגישות",
     check: async () => {
       if (Platform.OS !== "android" || !OverlayModule?.isAccessibilityEnabled) return false;
@@ -50,77 +65,92 @@ const STEPS: Step[] = [
     },
   },
   {
-    emoji: "✅",
+    emoji: "🛡️",
     title: "הכל מוכן!",
-    desc: "פתח TikTok, גלול על סרטון — התוצאה תופיע אוטומטית תוך שניות",
+    desc: "פתח TikTok, גלול לסרטון ולחץ על כפתור VerifAI — התוצאה תופיע תוך שניות",
+    how: "",
     btnLabel: "התחל",
     check: async () => true,
     open: () => {},
   },
 ];
 
-type Props = {
-  onDone: () => void;
-};
+type Props = { onDone: () => void };
 
 export function OnboardingScreen({ onDone }: Props) {
   const [step, setStep] = useState(0);
   const [stepDone, setStepDone] = useState([false, false, false]);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const checkAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   const current = STEPS[step];
 
-  // When app comes back to foreground, re-check permission
-  // Auto-request permission when step appears
+  // Soft breathing glow behind the emoji
   useEffect(() => {
-    if (step < STEPS.length - 1) {
-      const timer = setTimeout(() => {
-        STEPS[step].open();
-      }, 800);
-      return () => clearTimeout(timer);
-    }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  // When a step appears: if its permission is ALREADY granted, mark it done
+  // instead of bouncing the user to Settings for nothing. Otherwise open
+  // Settings for them after a short beat.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (step >= STEPS.length - 1) return;
+      const already = await STEPS[step].check().catch(() => false);
+      if (cancelled) return;
+      if (already) {
+        markDone();
+      } else {
+        const timer = setTimeout(() => STEPS[step].open(), 800);
+        return () => clearTimeout(timer);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [step]);
 
-  // Check permission when app returns from settings
+  // Re-check when returning from Settings
   useEffect(() => {
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
       const done = await STEPS[step].check();
-      if (done) {
-        setStepDone((prev) => {
-          const next = [...prev];
-          next[step] = true;
-          return next;
-        });
-        Animated.spring(checkAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 6 }).start();
-        // Auto-advance after short delay
-        if (step < STEPS.length - 1) {
-          setTimeout(() => goNext(), 1200);
-        }
-      }
+      if (done) markDone();
     });
     return () => sub.remove();
   }, [step]);
 
-  const goNext = () => {
-    if (step === STEPS.length - 1) {
-      onDone();
-      return;
+  const markDone = () => {
+    setStepDone((prev) => {
+      if (prev[step]) return prev;
+      const next = [...prev];
+      next[step] = true;
+      return next;
+    });
+    Animated.spring(checkAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 6 }).start();
+    if (step < STEPS.length - 1) {
+      setTimeout(() => goNext(), 1100);
     }
-    Animated.timing(slideAnim, { toValue: -width, duration: 250, useNativeDriver: true }).start(() => {
-      setStep((s) => s + 1);
+  };
+
+  const goNext = () => {
+    if (step === STEPS.length - 1) { onDone(); return; }
+    Animated.timing(slideAnim, { toValue: -width, duration: 220, useNativeDriver: true }).start(() => {
+      setStep((s2) => s2 + 1);
       checkAnim.setValue(0);
       slideAnim.setValue(width);
-      Animated.timing(slideAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start();
+      Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     });
   };
 
   const handleBtn = () => {
     if (step === STEPS.length - 1) { onDone(); return; }
     current.open();
-    // Advancing happens via the AppState listener once the permission
-    // is actually granted, or manually via the skip button.
   };
 
   const isLast = step === STEPS.length - 1;
@@ -128,16 +158,25 @@ export function OnboardingScreen({ onDone }: Props) {
 
   return (
     <View style={s.root}>
-      {/* Progress dots */}
-      <View style={s.dots}>
+      {/* Brand */}
+      <View style={s.brand}>
+        <View style={s.logoMark}><Text style={s.logoMarkText}>V</Text></View>
+        <Text style={s.brandName}>VerifAI</Text>
+      </View>
+
+      {/* Progress */}
+      <View style={s.progress}>
         {STEPS.map((_, i) => (
-          <View key={i} style={[s.dot, i === step && s.dotActive, i < step && s.dotDone]} />
+          <View key={i} style={[s.seg, i < step && s.segDone, i === step && s.segActive]} />
         ))}
       </View>
 
       <Animated.View style={[s.card, { transform: [{ translateX: slideAnim }] }]}>
-        {/* Emoji */}
         <View style={s.emojiWrap}>
+          <Animated.View style={[s.emojiGlow, {
+            opacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] }),
+            transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) }],
+          }]} />
           <Text style={s.emoji}>{current.emoji}</Text>
           {isDone && (
             <Animated.View style={[s.checkBadge, { transform: [{ scale: checkAnim }] }]}>
@@ -146,121 +185,125 @@ export function OnboardingScreen({ onDone }: Props) {
           )}
         </View>
 
-        {/* Step number */}
-        {!isLast && (
-          <Text style={s.stepLabel}>שלב {step + 1} מתוך {STEPS.length - 1}</Text>
-        )}
+        {!isLast && <Text style={s.stepLabel}>שלב {step + 1} מתוך {STEPS.length - 1}</Text>}
 
         <Text style={s.title}>{current.title}</Text>
         <Text style={s.desc}>{current.desc}</Text>
+        {!!current.how && !isDone && (
+          <View style={s.howBox}><Text style={s.howBoxText}>{current.how}</Text></View>
+        )}
 
-        {/* Main action button */}
-        {!isLast && (
+        {!isLast && !isDone && (
           <TouchableOpacity style={s.actionBtn} onPress={handleBtn} activeOpacity={0.85}>
-            <Text style={s.actionBtnText}>{current.btnLabel} →</Text>
+            <Text style={s.actionBtnText}>{current.btnLabel}</Text>
           </TouchableOpacity>
         )}
 
-        {/* Done state or skip */}
         {isDone && !isLast && (
           <TouchableOpacity style={s.nextBtn} onPress={goNext}>
             <Text style={s.nextBtnText}>הרשאה אושרה ✓ — המשך</Text>
           </TouchableOpacity>
         )}
 
-        {!isDone && !isLast && step < STEPS.length - 1 && (
+        {!isDone && !isLast && (
           <TouchableOpacity style={s.skipBtn} onPress={goNext}>
             <Text style={s.skipText}>דלג בינתיים</Text>
           </TouchableOpacity>
         )}
 
-        {/* Final step */}
         {isLast && (
           <View style={s.finalWrap}>
-            {["TikTok", "Instagram", "YouTube", "Facebook", "Snapchat"].map((app) => (
-              <View key={app} style={s.appPill}>
-                <Text style={s.appPillText}>{app}</Text>
-              </View>
-            ))}
-            <TouchableOpacity style={[s.actionBtn, { marginTop: 24, width: "100%" }]} onPress={onDone}>
-              <Text style={s.actionBtnText}>סיים והתחל →</Text>
+            <View style={s.pillsRow}>
+              {["TikTok", "Instagram", "YouTube", "Facebook", "X"].map((app) => (
+                <View key={app} style={s.appPill}>
+                  <Text style={s.appPillText}>{app}</Text>
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={[s.actionBtn, { marginTop: 20 }]} onPress={onDone}>
+              <Text style={s.actionBtnText}>סיים והתחל</Text>
             </TouchableOpacity>
           </View>
         )}
       </Animated.View>
-
-      {/* How it works */}
-      {!isLast && (
-        <View style={s.howWrap}>
-          <Text style={s.howTitle}>איך זה עובד?</Text>
-          {step === 0 && <Text style={s.howText}>כפתור 🔍 קבוע יופיע למעלה בצד — רק בתוך אפליקציות הסרטונים</Text>}
-          {step === 1 && <Text style={s.howText}>לחיצה על הכפתור שולפת את הסרטון הנוכחי ומחזירה תשובה</Text>}
-        </View>
-      )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: {
-    flex: 1, backgroundColor: "#06060f",
+    flex: 1, backgroundColor: C.bg,
     justifyContent: "center", alignItems: "center",
     padding: 24,
   },
-  dots: { flexDirection: "row", gap: 8, marginBottom: 32 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#1a1a2e" },
-  dotActive: { backgroundColor: "#6366f1", width: 24 },
-  dotDone: { backgroundColor: "#22c55e" },
+  brand: { flexDirection: "row-reverse", alignItems: "center", gap: 10, marginBottom: 28 },
+  logoMark: {
+    width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center",
+    backgroundColor: C.primaryDeep, borderWidth: 1, borderColor: "#ffffff2e",
+  },
+  logoMarkText: { color: "#fff", fontSize: 18, fontWeight: "900" },
+  brandName: { color: C.text, fontSize: 20, fontWeight: "900", letterSpacing: -0.5 },
+
+  progress: { flexDirection: "row", gap: 6, marginBottom: 28, width: "70%" },
+  seg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "#1a1c30" },
+  segActive: { backgroundColor: C.primary },
+  segDone: { backgroundColor: C.real },
 
   card: {
-    width: "100%", backgroundColor: "#0d0d1e",
-    borderRadius: 28, padding: 28,
-    borderWidth: 1, borderColor: "#ffffff0a",
-    alignItems: "center", gap: 16,
+    width: "100%", backgroundColor: C.card,
+    borderRadius: 26, padding: 26,
+    borderWidth: 1, borderColor: C.border,
+    alignItems: "center", gap: 14,
   },
 
-  emojiWrap: { position: "relative", marginBottom: 8 },
-  emoji: { fontSize: 72 },
+  emojiWrap: { position: "relative", marginBottom: 6, alignItems: "center", justifyContent: "center" },
+  emojiGlow: {
+    position: "absolute", width: 110, height: 110, borderRadius: 55,
+    backgroundColor: C.primaryDeep,
+  },
+  emoji: { fontSize: 64 },
   checkBadge: {
-    position: "absolute", bottom: -4, right: -4,
+    position: "absolute", bottom: -2, right: -6,
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: "#22c55e", alignItems: "center", justifyContent: "center",
-    borderWidth: 2, borderColor: "#0d0d1e",
+    backgroundColor: C.real, alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: C.card,
   },
   checkBadgeText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 
-  stepLabel: { color: "#6366f1", fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
-  title: { color: "#fff", fontSize: 22, fontWeight: "800", textAlign: "center", lineHeight: 28 },
-  desc: { color: "#9ca3af", fontSize: 14, textAlign: "center", lineHeight: 22 },
+  stepLabel: { color: C.primary, fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
+  title: { color: C.text, fontSize: 22, fontWeight: "800", textAlign: "center", lineHeight: 28 },
+  desc: { color: C.sub, fontSize: 14, textAlign: "center", lineHeight: 22 },
+
+  howBox: {
+    backgroundColor: "#ffffff08", borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: C.border, width: "100%",
+  },
+  howBoxText: { color: C.sub, fontSize: 12, textAlign: "center", lineHeight: 19 },
 
   actionBtn: {
-    backgroundColor: "#4f46e5", borderRadius: 16, paddingVertical: 16,
-    paddingHorizontal: 32, alignItems: "center",
-    shadowColor: "#4f46e5", shadowOffset: { width: 0, height: 6 },
+    backgroundColor: C.primaryDeep, borderRadius: 16, paddingVertical: 16,
+    alignItems: "center", width: "100%",
+    shadowColor: C.primaryDeep, shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
-    width: "100%",
   },
-  actionBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  actionBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
 
   nextBtn: {
-    backgroundColor: "#14532d", borderRadius: 14, paddingVertical: 12,
-    paddingHorizontal: 24, alignItems: "center", width: "100%",
-    borderWidth: 1, borderColor: "#22c55e44",
+    backgroundColor: "#0b2a1c", borderRadius: 14, paddingVertical: 13,
+    alignItems: "center", width: "100%",
+    borderWidth: 1, borderColor: C.real + "44",
   },
-  nextBtnText: { color: "#22c55e", fontSize: 14, fontWeight: "600" },
+  nextBtnText: { color: C.real, fontSize: 14, fontWeight: "700" },
 
-  skipBtn: { paddingVertical: 8 },
-  skipText: { color: "#374151", fontSize: 13 },
+  skipBtn: { paddingVertical: 6 },
+  skipText: { color: C.faint, fontSize: 13 },
 
-  finalWrap: { width: "100%", alignItems: "center", gap: 12 },
+  finalWrap: { width: "100%", alignItems: "center" },
+  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
   appPill: {
-    backgroundColor: "#111122", borderRadius: 20,
+    backgroundColor: "#12142a", borderRadius: 18,
     paddingHorizontal: 14, paddingVertical: 6,
-    borderWidth: 1, borderColor: "#ffffff0a",
+    borderWidth: 1, borderColor: C.border,
   },
-  appPillText: { color: "#6b7280", fontSize: 13 },
-
-  howWrap: { marginTop: 24, alignItems: "center", gap: 6 },
-  howTitle: { color: "#374151", fontSize: 11, fontWeight: "600", letterSpacing: 1 },
-  howText: { color: "#1f2937", fontSize: 13, textAlign: "center" },
+  appPillText: { color: C.sub, fontSize: 13 },
 });

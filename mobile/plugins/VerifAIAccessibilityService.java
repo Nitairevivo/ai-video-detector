@@ -52,7 +52,22 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
     private boolean grabInProgress = false;
     private boolean waitingForShareSheet = false;
+    /** Whether the current grab flow actually clicked "Copy Link" — lets the
+     *  overlay distinguish a fresh link from stale clipboard leftovers. */
+    private boolean automationClicked = false;
     private static final long SHARE_SHEET_TIMEOUT_MS = 2500;
+    private static final long GRAB_WATCHDOG_MS = 8000;
+
+    // If a grab flow ever dies mid-way (app killed the share sheet, event never
+    // arrived…) this watchdog clears the flags so the NEXT tap still works —
+    // otherwise grabInProgress stays true forever and every tap gets stuck.
+    private final Runnable grabWatchdog = () -> {
+        if (grabInProgress) {
+            grabInProgress = false;
+            waitingForShareSheet = false;
+            finishGrab();
+        }
+    };
 
     public static String getForegroundPackage() { return foregroundPackage; }
 
@@ -147,6 +162,9 @@ public class VerifAIAccessibilityService extends AccessibilityService {
     private void startGrabFlow() {
         if (grabInProgress) return;
         grabInProgress = true;
+        automationClicked = false;
+        mainHandler.removeCallbacks(grabWatchdog);
+        mainHandler.postDelayed(grabWatchdog, GRAB_WATCHDOG_MS);
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         AccessibilityNodeInfo shareBtn = root != null ? findShareButton(root) : null;
@@ -186,6 +204,7 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
             for (String label : COPY_LINK_LABELS) {
                 if (combined.contains(label.toLowerCase())) {
+                    automationClicked = true;
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                     recycleAll(nodes);
                     root.recycle();
@@ -210,14 +229,19 @@ public class VerifAIAccessibilityService extends AccessibilityService {
     private void finishGrab() {
         grabInProgress = false;
         waitingForShareSheet = false;
+        mainHandler.removeCallbacks(grabWatchdog);
         // Read the clipboard through the focused transparent activity
         // (background clipboard reads are blocked on Android 10+).
         try {
             Intent i = new Intent(this, ClipboardReaderActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             i.putExtra(ClipboardReaderActivity.EXTRA_SOURCE, OverlayService.SOURCE_AUTOMATION);
+            i.putExtra(OverlayService.EXTRA_AUTOMATION_CLICKED, automationClicked);
             startActivity(i);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // The overlay is waiting for a callback — never leave it hanging.
+            OverlayService.onAutomationFailed();
+        }
     }
 
     // ─── Node helpers ─────────────────────────────────────────────────────────

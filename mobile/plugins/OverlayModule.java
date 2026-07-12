@@ -81,8 +81,33 @@ public class OverlayModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void isRunning(Promise promise) {
-        // Simplified: always resolve true if service was started
-        promise.resolve(true);
+        // The service keeps a same-process instance handle — this is the truth,
+        // not a guess, so the JS switch never drifts out of sync.
+        promise.resolve(OverlayService.instance != null);
+    }
+
+    /** One call the JS status card uses to show live diagnostics:
+     *  overlay permission / accessibility service / floating service state. */
+    @ReactMethod
+    public void getStatus(Promise promise) {
+        try {
+            com.facebook.react.bridge.WritableMap map = com.facebook.react.bridge.Arguments.createMap();
+            boolean overlayPerm = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || Settings.canDrawOverlays(reactContext);
+            map.putBoolean("overlayPermission", overlayPerm);
+            map.putBoolean("serviceRunning", OverlayService.instance != null);
+            String enabled = Settings.Secure.getString(
+                reactContext.getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String pkg = reactContext.getPackageName();
+            boolean acc = enabled != null &&
+                (enabled.contains(pkg + "/" + VerifAIAccessibilityService.class.getName())
+                 || enabled.contains(pkg + "/.VerifAIAccessibilityService"));
+            map.putBoolean("accessibilityEnabled", acc);
+            promise.resolve(map);
+        } catch (Exception e) {
+            promise.reject("STATUS_ERROR", e.getMessage());
+        }
     }
 
     @ReactMethod
