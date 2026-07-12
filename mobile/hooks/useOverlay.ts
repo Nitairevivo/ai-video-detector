@@ -15,6 +15,8 @@ const EMPTY_STATUS: OverlayStatus = {
   serviceRunning: false,
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function useOverlay() {
   const [overlayActive, setOverlayActive] = useState(false);
   const [status, setStatus] = useState<OverlayStatus>(EMPTY_STATUS);
@@ -35,6 +37,20 @@ export function useOverlay() {
     } catch {}
   }, []);
 
+  // Read the live permission state. Android reflects a freshly granted overlay
+  // permission with a short delay, so poll a few times before trusting a false.
+  const checkPermission = useCallback(async (retries = 1): Promise<boolean> => {
+    if (Platform.OS !== "android" || !OverlayModule?.hasPermission) return false;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const ok = await OverlayModule.hasPermission();
+        if (ok) return true;
+      } catch { /* ignore, retry */ }
+      if (i < retries - 1) await sleep(600);
+    }
+    return false;
+  }, []);
+
   const actuallyStart = useCallback(async () => {
     try {
       await OverlayModule.start();
@@ -51,20 +67,17 @@ export function useOverlay() {
   // Explicit user action only (the home-screen toggle) — never called at launch.
   const startOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
-    try {
-      const hasPerm = await OverlayModule.hasPermission();
-      if (!hasPerm) {
-        // Remember the intent, send the user to grant the permission, and
-        // finish the start when they come back (see the AppState listener).
-        pendingStart.current = true;
-        await OverlayModule.requestPermission();
-        return;
-      }
+    // If the permission is already granted, just start — never bounce the user
+    // to Settings again.
+    if (await checkPermission(1)) {
       await actuallyStart();
-    } catch (e) {
-      console.warn("Overlay permission check failed:", e);
+      return;
     }
-  }, [actuallyStart]);
+    // Otherwise remember the intent and open the grant screen; the AppState
+    // listener finishes the start when they return.
+    pendingStart.current = true;
+    try { await OverlayModule.requestPermission(); } catch (e) { console.warn(e); }
+  }, [checkPermission, actuallyStart]);
 
   const stopOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
@@ -81,25 +94,24 @@ export function useOverlay() {
   // On mount: read the real state (service may already be running from a
   // previous session). On every return to foreground: re-read permissions and,
   // if the user just granted the overlay permission they asked for, finish
-  // that start. Does nothing on a normal launch (pendingStart=false).
+  // that start (polling a few times — the grant may not be visible on the
+  // first check). Does nothing on a normal launch (pendingStart=false).
   useEffect(() => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     refreshStatus();
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
       if (pendingStart.current) {
-        try {
-          const hasPerm = await OverlayModule.hasPermission();
-          if (hasPerm) {
-            await actuallyStart();
-            return;
-          }
-        } catch {}
+        const granted = await checkPermission(4);
+        if (granted) {
+          await actuallyStart();
+          return;
+        }
       }
       refreshStatus();
     });
     return () => sub.remove();
-  }, [actuallyStart, refreshStatus]);
+  }, [checkPermission, actuallyStart, refreshStatus]);
 
-  return { overlayActive, status, startOverlay, stopOverlay, refreshStatus };
+  return { overlayActive, status, startOverlay, stopOverlay, refreshStatus, checkPermission };
 }

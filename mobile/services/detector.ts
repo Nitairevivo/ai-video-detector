@@ -103,18 +103,73 @@ export async function detectVideoFileUpload(uri: string, mimeType = "video/mp4")
   return res.json();
 }
 
+// A direct video FILE (…/x.mp4), as opposed to a platform *page* URL.
+const DIRECT_FILE_RE = /\.(mp4|webm|mov|mkv|m4v)(\?|$)/i;
+const PLATFORM_PAGE_RE = /(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|snapchat\.com|pinterest\.com)/i;
+
+const MOBILE_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1";
+
+// The platform's own "AI-generated" disclosure, read straight from the page —
+// definitive, and doesn't need the video at all. Anchored to JSON boundaries so
+// a post merely *about* AI doesn't match.
+const AIGC_PAGE_RE = [
+  /"aigc_label_type"\s*:\s*[1-9]/i,
+  /"aigcLabelType"\s*:\s*[1-9]/i,
+  /"is_ai_generated"\s*:\s*true/i,
+  /"content_check[^"]*"\s*:\s*\{[^}]*"ai[_-]?generated"\s*:\s*true/i,
+  /"(?:label|text|displayText)"\s*:\s*"(?:Creator labeled as AI-generated|AI-generated|Made with AI)"/i,
+];
+
+// The real CDN video URL embedded in the page JSON.
+const CDN_URL_RE = [
+  /"playAddr":"([^"]+\.mp4[^"]*)"/i,
+  /"downloadAddr":"([^"]+\.mp4[^"]*)"/i,
+  /(https:\/\/[^"'\\\s]*tiktokcdn[^"'\\\s]+\.mp4[^"'\\\s]*)/i,
+  /(https:\/\/[^"'\\\s]+\.mp4[^"'\\\s]*)/i,
+];
+
+// Fetch a platform PAGE on the phone's residential IP (not blocked like the
+// server's datacenter IP), read the AI label, and pull the real video URL.
+async function resolveOnPhone(url: string): Promise<{ aigc: boolean; cdnUrl: string | null }> {
+  const resp = await fetch(url, {
+    headers: { "User-Agent": MOBILE_UA, "Accept-Language": "en-US,en;q=0.9" },
+  });
+  const html = await resp.text();
+  const aigc = AIGC_PAGE_RE.some((re) => re.test(html));
+  let cdnUrl: string | null = null;
+  for (const re of CDN_URL_RE) {
+    const m = html.match(re);
+    if (m && m[1]) { cdnUrl = m[1].replace(/\\u002F/gi, "/").replace(/\\\//g, "/").replace(/\\u0026/gi, "&"); break; }
+  }
+  return { aigc, cdnUrl };
+}
+
 export async function detectVideoUrl(url: string): Promise<DetectionResult> {
-  // For TikTok/Instagram: download on phone first, then upload
-  // For YouTube/others: let server handle it (server can download those)
-  if (needsPhoneDownload(url)) {
-    try {
-      return await downloadAndDetect(url);
-    } catch {
-      // Fallback to server-side if phone download fails
-    }
+  // Direct video file → download on the phone and upload.
+  if (DIRECT_FILE_RE.test(url)) {
+    try { return await downloadAndDetect(url); } catch { /* fall through */ }
   }
 
-  // Server-side detection (works for YouTube, direct MP4 links, etc.)
+  // Platform page → resolve on the phone (residential IP) first.
+  if (PLATFORM_PAGE_RE.test(url)) {
+    try {
+      const { aigc, cdnUrl } = await resolveOnPhone(url);
+      if (aigc) {
+        return {
+          is_ai_generated: true, verdict: "ai_generated", confidence: 0.97,
+          ai_tool_detected: "Platform AI label", edit_tool_detected: null,
+          detection_method: "Platform AI-disclosure label (read on device)",
+          explanation: { provenance: { platform_ai_label: true } },
+        };
+      }
+      if (cdnUrl) {
+        try { return await downloadAndDetect(cdnUrl); } catch { /* fall through */ }
+      }
+    } catch { /* fall through to server */ }
+  }
+
+  // Fallback: let the server try (yt-dlp / resolver / direct).
   const res = await fetch(`${API_BASE}/detect-url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
