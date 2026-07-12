@@ -60,6 +60,27 @@ jobs:
       - name: Setup EAS
         run: npm install -g eas-cli
 
-      - name: Build
-        run: eas build --profile "${{ github.event.inputs.profile }}" --platform "${{ github.event.inputs.platform }}" --non-interactive --no-wait
+      - name: Build (wait for EAS to finish)
         working-directory: mobile
+        run: eas build --profile "${{ github.event.inputs.profile }}" --platform "${{ github.event.inputs.platform }}" --non-interactive --wait
+
+      - name: Get direct install link (.apk / .aab URL)
+        if: always()
+        working-directory: mobile
+        run: |
+          # Pull the finished build's direct artifact URL — a click-to-install
+          # link (no Expo website needed).
+          URL=$(eas build:list --platform "${{ github.event.inputs.platform }}" \
+                  --status finished --limit 1 --non-interactive --json 2>/dev/null \
+                | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const b=JSON.parse(s)[0]||{};const a=b.artifacts||{};console.log(a.applicationArchiveUrl||a.buildUrl||'')}catch(e){console.log('')}})")
+          echo "DIRECT INSTALL URL: $URL"
+          {
+            echo "## 📲 Direct install link"
+            if [ -n "$URL" ]; then
+              echo "Tap on your phone to install (no website needed):"
+              echo ""
+              echo "**$URL**"
+            else
+              echo "Build finished but could not read the artifact URL — check the EAS dashboard."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
