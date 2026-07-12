@@ -2,22 +2,22 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity, ActivityIndicator,
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration, Easing,
-  Platform, Switch, Modal, Dimensions, Linking, AppState,
+  Platform, Switch, Modal, Dimensions, Linking, AppState, TextInput,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
-import { OnboardingScreen } from "./components/OnboardingScreen";
+import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
+import { SelfCheck } from "./SelfCheck";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.5.0";
-const ONBOARDING_KEY = "verifai_onboarding_done";
+const APP_VERSION = "1.5.1";
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
@@ -48,6 +48,22 @@ const T = {
     tagline: "גלה מה אמיתי. תוך שניות.",
     scanBtn: "בדוק סרטון",
     scanHint: "מעתיק קישור? פשוט חזור לכאן — נזהה אותו לבד",
+    detectTitle: "בדוק סרטון או תמונה",
+    detectSub: "הדבק קישור מטיקטוק / יוטיוב / אינסטגרם / X",
+    pastePlaceholder: "הדבק כאן קישור…",
+    pasteBtn: "הדבק",
+    detectNow: "בדוק עכשיו",
+    detectTip: "טיפ: אפשר גם לשתף סרטון או תמונה מכל אפליקציה אל VerifAI",
+    invalidLink: "הדבק קישור תקין שמתחיל ב-http",
+    howKnowTitle: "איך VerifAI יודע?",
+    howKnowRows: [
+      ["🔏", "קורא את הקוד של הקובץ — אישורי C2PA וחתימות של כלי-AI (Sora, Veo, Midjourney…)"],
+      ["🏷️", "קורא את תוויות ה-AI של הפלטפורמות — TikTok, YouTube, Instagram, X"],
+      ["👁️", "ואם צריך — ניתוח חזותי מכויל, כדי לא לטעות"],
+    ],
+    provIptc: "🏷 תקן IPTC מצהיר: מדיה שנוצרה ב-AI",
+    provCamera: "📷 תקן IPTC מצהיר: צולם במצלמה",
+    fastMode: "⚡ זוהה מהקוד — מיידי",
     analyzing: "מנתח…",
     stages: ["מאתר את הסרטון…", "מוריד נתונים…", "מנתח פריימים…", "מצליב ממצאים…"],
     statusTitle: "מרכז בקרה",
@@ -119,6 +135,22 @@ const T = {
     tagline: "Know what's real. In seconds.",
     scanBtn: "Check video",
     scanHint: "Copied a link? Just come back here — we'll catch it",
+    detectTitle: "Check a video or image",
+    detectSub: "Paste a TikTok / YouTube / Instagram / X link",
+    pastePlaceholder: "Paste a link here…",
+    pasteBtn: "Paste",
+    detectNow: "Detect now",
+    detectTip: "Tip: you can also Share a video or image from any app to VerifAI",
+    invalidLink: "Paste a valid link that starts with http",
+    howKnowTitle: "How VerifAI knows",
+    howKnowRows: [
+      ["🔏", "Reads the file's code — C2PA credentials & AI-tool signatures (Sora, Veo, Midjourney…)"],
+      ["🏷️", "Reads the platforms' own AI labels — TikTok, YouTube, Instagram, X"],
+      ["👁️", "And when needed, a calibrated visual check — so it doesn't cry wolf"],
+    ],
+    provIptc: "🏷 IPTC standard declares: AI-generated media",
+    provCamera: "📷 IPTC standard declares: camera capture",
+    fastMode: "⚡ Read from code — instant",
     analyzing: "Analyzing…",
     stages: ["Locating video…", "Fetching data…", "Analyzing frames…", "Cross-checking…"],
     statusTitle: "Control center",
@@ -257,11 +289,15 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
 
   const prov = item.explanation?.provenance;
   const provLine = prov?.c2pa_claims_ai ? t.provC2paAi
+    : prov?.synthetic_media_marker ? t.provIptc
+    : prov?.camera_provenance ? t.provCamera
     : prov?.c2pa_present ? t.provC2pa
     : (prov?.metadata_stripped || prov?.platform_reencoded) ? t.provStripped
     : null;
   const layers = item.explanation?.layer_scores
     ? Object.entries(item.explanation.layer_scores).slice(0, 4) : [];
+  const timeline = item.explanation?.frame_timeline;
+  const caveat = item.explanation?.caveats?.[0];
 
   const copyResult = async () => {
     const summary = `VerifAI · ${th.label} (${pct}%)\n${item.url}`;
@@ -287,6 +323,7 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
               ) : v === "ai_edited" && item.edit_tool_detected ? (
                 <Text style={rs.headerTool}>{t.editedWith} {item.edit_tool_detected}</Text>
               ) : null}
+              {item.mode === "fast" && <Text style={rs.fastBadge}>{t.fastMode}</Text>}
             </View>
 
             {/* Confidence */}
@@ -337,6 +374,21 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
                   ))}
                 </View>
               )}
+              {timeline && timeline.length >= 2 && (
+                // Per-frame suspicion sparkline (green=natural, red=AI-like) —
+                // the same forensic signal the web report shows.
+                <View style={rs.timeline}>
+                  {timeline.map((val, i) => (
+                    <View key={i} style={{
+                      flex: 1,
+                      height: Math.max(2, Math.round(val * 20)),
+                      backgroundColor: val >= 0.6 ? C.ai : val <= 0.4 ? C.real : C.gold,
+                      borderRadius: 1,
+                    }} />
+                  ))}
+                </View>
+              )}
+              {!!caveat && <Text style={[rs.caveat, align]} numberOfLines={2}>⚠ {caveat}</Text>}
               <Text style={[rs.urlLine, align]} numberOfLines={1}>
                 {t.resultFor} · {platformName(item.url, t)} · {item.timestamp}
               </Text>
@@ -524,11 +576,11 @@ function AppInner() {
   const [showPremium, setShowPremium] = useState(false);
   const [scansTotal, setScansTotal] = useState(0);
   const [showHow, setShowHow] = useState(false);
+  const [urlText, setUrlText] = useState("");
   const [lang, setLangState] = useState<Lang>("he");
   const t = T[lang];
   const rtl = lang === "he";
   const lastChecked = useRef<string>("");
-  const pulse = useRef(new Animated.Value(1)).current;
 
   const { overlayActive, status, startOverlay, stopOverlay } = useOverlay();
 
@@ -568,16 +620,6 @@ function AppInner() {
     FileSystem.writeAsStringAsync(HISTORY_FILE, JSON.stringify({ items, scans: scansTotal }))
       .catch(() => {});
   }, [history, scansTotal, historyLoaded]);
-
-  // ── Idle pulse on the hero button ──
-  useEffect(() => {
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1.05, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
-    if (!loading) loop.start();
-    return () => loop.stop();
-  }, [loading]);
 
   // ── Staged loading text ──
   useEffect(() => {
@@ -675,8 +717,9 @@ function AppInner() {
     const IntentModule = NativeModules.IntentModule || NativeModules.RNIntentModule;
     if (IntentModule?.getInitialIntent) {
       IntentModule.getInitialIntent().then((intent: { uri?: string; type?: string }) => {
-        if (intent?.uri && intent?.type?.startsWith("video/")) {
-          detectVideoFile(intent.uri, intent.type);
+        const mime = intent?.type || "";
+        if (intent?.uri && (mime.startsWith("video/") || mime.startsWith("image/"))) {
+          detectVideoFile(intent.uri, mime);
         }
       }).catch(() => {});
     }
@@ -702,25 +745,28 @@ function AppInner() {
     return () => sub.remove();
   }, [handleIncomingUrl]);
 
-  const onManualCheck = useCallback(async () => {
+  const submitUrl = useCallback(() => {
+    const u = urlText.trim();
+    if (!u.startsWith("http")) {
+      Alert.alert(t.error, t.invalidLink);
+      return;
+    }
+    setUrlText("");
+    detect(u);
+  }, [urlText, detect, t]);
+
+  const pasteFromClipboard = useCallback(async () => {
     try {
       const text = await Clipboard.getStringAsync();
-      if (!text?.startsWith("http")) {
+      if (text?.startsWith("http")) {
+        setUrlText(text.trim());
+      } else {
         Alert.alert(t.copyFirst, t.copyHint, [{ text: t.understood }]);
-        return;
       }
-      if (!isVideoUrl(text)) {
-        Alert.alert(t.analyzeUrl, text.slice(0, 100), [
-          { text: t.cancel, style: "cancel" },
-          { text: t.analyze, onPress: () => detect(text) },
-        ]);
-        return;
-      }
-      detect(text);
     } catch {
       Alert.alert(t.error, t.clipboardError);
     }
-  }, [detect, t]);
+  }, [t]);
 
   const counts = useMemo(() => {
     const real = history.filter((h) => !h.loading && verdictOf(h) === "real").length;
@@ -741,6 +787,7 @@ function AppInner() {
         <ResultSheet item={selected} onClose={() => setSelected(null)} onRecheck={detect} lang={lang} />
       )}
       <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} lang={lang} />
+      <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
@@ -764,29 +811,49 @@ function AppInner() {
         </View>
         <Text style={[s.tagline, align]}>{t.tagline}</Text>
 
-        {/* ── Hero scan button ── */}
-        <View style={s.heroWrap}>
-          <Animated.View style={{ transform: [{ scale: loading ? 1 : pulse }] }}>
-            <TouchableOpacity
-              style={[s.hero, loading && s.heroLoading]}
-              onPress={onManualCheck}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <>
-                  <ActivityIndicator size="large" color={C.primary} />
-                  <Text style={s.heroLoadingText}>{t.stages[stage]}</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={s.heroIcon}>🛡️</Text>
-                  <Text style={s.heroText}>{t.scanBtn}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </Animated.View>
-          {!loading && <Text style={s.heroHint}>{t.scanHint}</Text>}
+        {/* ── Detect card: paste a link → get an answer ── */}
+        <View style={s.detectCard}>
+          <Text style={[s.detectTitle, align]}>{t.detectTitle}</Text>
+          <Text style={[s.detectSub, align]}>{t.detectSub}</Text>
+          <View style={[s.inputRow, row]}>
+            <TextInput
+              style={[s.input, align]}
+              value={urlText}
+              onChangeText={setUrlText}
+              placeholder={t.pastePlaceholder}
+              placeholderTextColor={C.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="go"
+              onSubmitEditing={submitUrl}
+            />
+            {urlText.length === 0 ? (
+              <TouchableOpacity style={s.pasteBtn} onPress={pasteFromClipboard} activeOpacity={0.8}>
+                <Text style={s.pasteBtnText}>{t.pasteBtn}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={s.clearInputBtn} onPress={() => setUrlText("")} activeOpacity={0.8}>
+                <Text style={s.clearInputText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[s.detectBtn, (loading || !urlText.trim()) && s.detectBtnDisabled]}
+            onPress={submitUrl}
+            disabled={loading || !urlText.trim()}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <View style={[{ alignItems: "center", gap: 8 }, row]}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={s.detectBtnText}>{t.stages[stage]}</Text>
+              </View>
+            ) : (
+              <Text style={s.detectBtnText}>🛡️  {t.detectNow}</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={s.detectHint}>{t.detectTip}</Text>
         </View>
 
         {/* ── Stats ── */}
@@ -829,6 +896,15 @@ function AppInner() {
                 <View key={i} style={[{ alignItems: "center", gap: 10 }, row]}>
                   <View style={s.stepNum}><Text style={s.stepNumText}>{i + 1}</Text></View>
                   <Text style={[s.stepText, align, { flex: 1 }]}>{step}</Text>
+                </View>
+              ))}
+              <Text style={[s.cardTitle, align, { marginTop: 10, fontSize: 13, color: "#c9c3ff" }]}>
+                {t.howKnowTitle}
+              </Text>
+              {t.howKnowRows.map(([icon, text], i) => (
+                <View key={`k${i}`} style={[{ alignItems: "flex-start", gap: 10 }, row]}>
+                  <Text style={s.howIcon}>{icon}</Text>
+                  <Text style={[s.stepText, align, { flex: 1 }]}>{text}</Text>
                 </View>
               ))}
             </View>
@@ -879,6 +955,9 @@ function AppInner() {
           </View>
         )}
 
+        {/* Self-check: which Expo project/channel/update this install really runs */}
+        <SelfCheck version={APP_VERSION} />
+
         <TouchableOpacity onPress={() => Linking.openURL(DOWNLOAD_URL)} style={s.downloadLink}>
           <Text style={s.downloadText}>📲 {t.downloadText}</Text>
         </TouchableOpacity>
@@ -887,6 +966,73 @@ function AppInner() {
     </SafeAreaView>
   );
 }
+
+// ─── "What's New" — shown once when the app picked up a newer changelog entry
+// (delivered live via OTA). Fresh installs record the current version silently
+// so only a genuine future update pops it. ─────────────────────────────────────
+const WHATS_NEW_KEY = "verifai_whatsnew_seen";
+
+function WhatsNew() {
+  const [visible, setVisible] = useState(false);
+  const entry = CHANGELOG[0];
+
+  useEffect(() => {
+    let alive = true;
+    SecureStore.getItemAsync(WHATS_NEW_KEY)
+      .then((seen) => {
+        if (!alive || !entry) return;
+        if (seen === null || seen === undefined) {
+          SecureStore.setItemAsync(WHATS_NEW_KEY, CHANGELOG_VERSION).catch(() => {});
+          return;
+        }
+        if (seen !== CHANGELOG_VERSION) setVisible(true);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    SecureStore.setItemAsync(WHATS_NEW_KEY, CHANGELOG_VERSION).catch(() => {});
+  }, []);
+
+  if (!visible || !entry) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
+      <View style={wn.backdrop}>
+        <View style={wn.card}>
+          <Text style={wn.badge}>✨ עודכן · What&apos;s New</Text>
+          <Text style={wn.title}>{entry.title}</Text>
+          <Text style={wn.date}>{entry.date}</Text>
+          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+            {entry.items.map((it, i) => (
+              <View key={i} style={wn.row}>
+                <Text style={wn.dot}>›</Text>
+                <Text style={wn.item}>{it}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={wn.btn} onPress={dismiss} activeOpacity={0.85}>
+            <Text style={wn.btnText}>מעולה · Got it</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const wn = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "#03030ad1", justifyContent: "center", alignItems: "center", padding: 22 },
+  card: { width: "100%", maxWidth: 440, backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.primary + "59", padding: 22 },
+  badge: { color: "#a99bff", fontSize: 12, fontWeight: "700", letterSpacing: 1, marginBottom: 10 },
+  title: { color: C.text, fontSize: 21, fontWeight: "800" },
+  date: { color: C.faint, fontSize: 12, marginTop: 2, marginBottom: 14 },
+  row: { flexDirection: "row", gap: 8, marginBottom: 10, alignItems: "flex-start" },
+  dot: { color: C.primary, fontSize: 15, fontWeight: "800", lineHeight: 21 },
+  item: { color: "#c9cae0", fontSize: 14, lineHeight: 21, flex: 1 },
+  btn: { marginTop: 16, backgroundColor: C.primaryDeep, borderRadius: 16, paddingVertical: 13, alignItems: "center" },
+  btnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+});
 
 // ─── Crash visibility ─────────────────────────────────────────────────────────
 // Any fatal JS error is persisted so the next launch SHOWS it instead of a
@@ -980,48 +1126,15 @@ export default function App() {
 }
 
 function AppRouter() {
-  // null = still loading the stored flag, true/false = decided.
-  // Any failure (SecureStore error, timeout) falls back to showing the app —
-  // the user must never be stuck on an empty screen.
-  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let decided = false;
-    const decide = (v: boolean) => {
-      if (!decided) { decided = true; setShowOnboarding(v); }
-    };
-
-    if (Platform.OS !== "android") {
-      decide(false); // onboarding steps are Android-only (overlay + accessibility)
-      return;
-    }
-
-    SecureStore.getItemAsync(ONBOARDING_KEY)
-      .then((v) => decide(v !== "1"))
-      .catch(() => decide(false));
-
-    // Safety net: if SecureStore hangs, go straight to the home screen
-    const timer = setTimeout(() => decide(false), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const finishOnboarding = useCallback(() => {
-    setShowOnboarding(false); // switch screens first — persistence is best-effort
-    SecureStore.setItemAsync(ONBOARDING_KEY, "1").catch(() => {});
-  }, []);
-
   // Crash from a previous run? Show it before anything else.
   const [crashLog, dismissCrashLog] = useStoredCrashLogs();
   if (crashLog) {
     return <ErrorScreen title="🛠️ נתפסה שגיאה מהריצה הקודמת" text={crashLog} onDismiss={dismissCrashLog} />;
   }
 
-  if (showOnboarding === null) {
-    return <View style={{ flex: 1, backgroundColor: C.bg }} />;
-  }
-  if (showOnboarding) {
-    return <OnboardingScreen onDone={finishOnboarding} />;
-  }
+  // Onboarding is no longer a hard gate: the overlay/accessibility permissions
+  // are optional (offered inside the app via the control-center card), so the
+  // permission flow can never block or loop the user out of the app.
   return <AppInner />;
 }
 
@@ -1046,21 +1159,43 @@ const s = StyleSheet.create({
   proBtn: { backgroundColor: "#171130", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.violet + "55" },
   proBtnText: { color: "#c4b5fd", fontSize: 12, fontWeight: "700" },
 
-  // Hero
-  heroWrap: { alignItems: "center", gap: 12, paddingVertical: 10 },
-  hero: {
-    width: 170, height: 170, borderRadius: 85,
-    backgroundColor: C.primaryDeep,
-    borderWidth: 3, borderColor: "#ffffff2a",
-    alignItems: "center", justifyContent: "center", gap: 8,
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.55, shadowRadius: 30, elevation: 16,
+  // Detect card (paste a link → answer)
+  detectCard: {
+    backgroundColor: C.card, borderRadius: 22, padding: 18, gap: 10,
+    borderWidth: 1, borderColor: C.primary + "55",
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 24, elevation: 8,
   },
-  heroLoading: { backgroundColor: C.card2, borderColor: C.primary + "44" },
-  heroIcon: { fontSize: 44 },
-  heroText: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  heroLoadingText: { color: C.sub, fontSize: 12, fontWeight: "600", textAlign: "center", paddingHorizontal: 16 },
-  heroHint: { color: C.faint, fontSize: 12, textAlign: "center", paddingHorizontal: 40, lineHeight: 18 },
+  detectTitle: { color: C.text, fontSize: 18, fontWeight: "800" },
+  detectSub: { color: C.sub, fontSize: 12.5, marginTop: -4 },
+  inputRow: { gap: 8, alignItems: "center", marginTop: 4 },
+  input: {
+    flex: 1, backgroundColor: "#ffffff0d", borderRadius: 14,
+    borderWidth: 1, borderColor: "#ffffff1f",
+    paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14,
+  },
+  pasteBtn: {
+    backgroundColor: C.primary + "26", borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderWidth: 1, borderColor: C.primary + "66",
+  },
+  pasteBtnText: { color: "#c9c3ff", fontWeight: "700", fontSize: 13 },
+  clearInputBtn: {
+    width: 40, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#ffffff0f", borderWidth: 1, borderColor: "#ffffff1f",
+  },
+  clearInputText: { color: C.sub, fontSize: 15, fontWeight: "700" },
+  detectBtn: {
+    backgroundColor: C.primaryDeep, borderRadius: 16, paddingVertical: 15, alignItems: "center",
+    marginTop: 4, shadowColor: C.primaryDeep, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5, shadowRadius: 16, elevation: 8,
+  },
+  detectBtnDisabled: { opacity: 0.4 },
+  detectBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
+
+  // How-it-works explainer
+  howIcon: { fontSize: 17, width: 26, textAlign: "center" },
 
   // Stats
   statsRow: { gap: 10 },
@@ -1138,6 +1273,9 @@ const rs = StyleSheet.create({
   headerEmoji: { fontSize: 40 },
   headerLabel: { fontSize: 22, fontWeight: "900", letterSpacing: -0.3 },
   headerTool: { color: C.sub, fontSize: 13, fontWeight: "600" },
+  fastBadge: { color: "#6ee7b7", fontSize: 11, fontWeight: "700", marginTop: 2 },
+  timeline: { flexDirection: "row", alignItems: "flex-end", gap: 1.5, height: 20, marginTop: 6 },
+  caveat: { color: "#b58a4a", fontSize: 11, lineHeight: 16, marginTop: 4 },
 
   confWrap: { gap: 8 },
   confRow: { justifyContent: "space-between", alignItems: "center" },
