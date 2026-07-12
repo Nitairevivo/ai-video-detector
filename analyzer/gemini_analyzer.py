@@ -342,3 +342,53 @@ def analyze_image_with_gemini(image_b64: str) -> Optional[GeminiResult]:
     if not parsed:
         return None
     return _to_result(parsed, n_frames=1)
+
+
+SCREEN_BURST_PROMPT = """You are the world's top forensic expert in detecting AI-generated video (Sora, Veo 3, Kling 2, Runway Gen-4, Pika, HeyGen avatars, etc. — 2026-era tools).
+
+You are given an ORDERED BURST of frames captured ~0.6s apart from a phone screen playing a social-media video (TikTok/YouTube/Instagram/etc.). The frames may include app UI (buttons, captions, progress bar) around the video — judge only the video content, ignore the UI chrome and its changes (like/scroll counters updating is normal).
+
+STRONG AI INDICATORS (compare consecutive frames):
+- Temporal morphing: objects/faces/background subtly changing identity or geometry between frames
+- Text/logos that warp, garble or rewrite themselves across frames
+- Identity drift: a person's face/hair/clothing not staying exactly the same person
+- Physics-defying motion; over-coherent "cinematic" render look held across frames
+- Single-frame tells: waxy skin, wrong finger counts, impossible anatomy
+
+NOT AI (normal for real social video): compression blocking, motion blur, grain/noise, imperfect lighting, beauty filters, cuts/scene changes (a hard cut is NOT morphing). Chaotic materials — flour, smoke, water spray, confetti, fire — naturally look "morphy" across 0.6s gaps; do NOT count them as temporal morphing.
+
+Be calibrated and do NOT over-flag: a false "AI" on a real video is the worst failure.
+
+Respond ONLY with this JSON (no markdown):
+{
+  "ai_probability": 0.0 to 1.0,
+  "verdict": "ai_generated" OR "ai_edited" OR "real",
+  "confidence": 0.0 to 1.0,
+  "reason": "specific visual evidence, under 90 chars",
+  "artifacts": ["short artifact descriptions, max 4"]
+}
+Never say 0.5 exactly — commit to a direction."""
+
+
+def analyze_frame_burst_with_gemini(frames_b64: list) -> Optional[GeminiResult]:
+    """
+    Temporal analysis over an ordered burst of screen frames (~0.6s apart),
+    captured by the mobile MediaProjection path. Much stronger than a single
+    frame: consecutive frames expose the morphing/identity-drift artifacts the
+    video pair prompt was built around. Returns None if unavailable.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or not frames_b64:
+        return None
+    if len(frames_b64) == 1:
+        return analyze_image_with_gemini(frames_b64[0])
+
+    parts = []
+    for i, frame in enumerate(frames_b64[:8], 1):
+        parts.append({"text": f"Frame {i} (~0.6s after previous):" if i > 1 else "Frame 1:"})
+        parts.append({"inline_data": {"mime_type": "image/jpeg", "data": frame}})
+    parts.append({"text": SCREEN_BURST_PROMPT})
+    parsed = _post_parts(api_key, parts)
+    if not parsed:
+        return None
+    return _to_result(parsed, n_frames=len(frames_b64))

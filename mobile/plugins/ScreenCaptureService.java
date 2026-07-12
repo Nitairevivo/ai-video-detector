@@ -26,10 +26,12 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 
 /**
- * Captures ONE frame of the screen via MediaProjection, encodes it to JPEG, and
- * hands it to {@link OverlayService} for /detect-frame analysis. This is the
- * last-resort fallback used when neither the clipboard nor the accessibility
- * Share→Copy-Link automation could produce a video URL (e.g. SSL-pinned apps).
+ * Captures a BURST of screen frames (~0.6s apart) via MediaProjection, encodes
+ * them to JPEG, and hands them to {@link OverlayService} for /detect-frames
+ * temporal analysis. Used when neither the clipboard nor the accessibility
+ * Share→Copy-Link automation could produce a video URL (e.g. SSL-pinned apps),
+ * and as the primary path of the Play build. Consecutive frames let the server
+ * check for temporal morphing — a far stronger AI signal than a single frame.
  *
  * Runs as a foreground service of type mediaProjection, which Android 14+
  * requires to be started *before* MediaProjection.getMediaProjection() is used.
@@ -42,13 +44,17 @@ public class ScreenCaptureService extends Service {
     private static final String CHANNEL_ID = "verifai_capture";
     private static final int NOTIF_ID = 4712;
     private static final int MAX_EDGE = 1280;       // downscale long edge before upload
-    private static final long CAPTURE_TIMEOUT_MS = 4000;
+    private static final int BURST_TARGET = 5;      // frames per burst
+    private static final long FRAME_INTERVAL_MS = 600;  // matches the server's pair-gap
+    private static final long CAPTURE_TIMEOUT_MS = 6000;
 
     private MediaProjection projection;
     private VirtualDisplay virtualDisplay;
     private ImageReader imageReader;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private volatile boolean captured = false;
+    private final java.util.ArrayList<byte[]> frames = new java.util.ArrayList<>();
+    private volatile long lastGrabMs = 0;
+    private volatile boolean delivered = false;
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
@@ -96,16 +102,20 @@ public class ScreenCaptureService extends Service {
             imageReader.getSurface(), null, handler);
 
         imageReader.setOnImageAvailableListener(reader -> {
-            if (captured) return;
+            if (delivered) return;
             Image image = null;
             try {
                 image = reader.acquireLatestImage();
                 if (image == null) return;
-                captured = true;
-                byte[] jpeg = toJpeg(image, w, h);
-                cleanup();
-                OverlayService.onFrameCaptured(jpeg);
-                stopSelf();
+                // Sample the stream at ~FRAME_INTERVAL_MS so the burst spans a
+                // couple of seconds of playback instead of adjacent frames.
+                long now = android.os.SystemClock.elapsedRealtime();
+                if (lastGrabMs != 0 && now - lastGrabMs < FRAME_INTERVAL_MS - 50) return;
+                lastGrabMs = now;
+                frames.add(toJpeg(image, w, h));
+                if (frames.size() >= BURST_TARGET) {
+                    deliverFrames();
+                }
             } catch (Exception e) {
                 finishWithFailure(String.valueOf(e.getMessage()));
             } finally {
@@ -115,10 +125,22 @@ public class ScreenCaptureService extends Service {
             }
         }, handler);
 
-        // Safety net: if no frame arrives, don't hang the projection open.
+        // Safety net: a static/paused screen stops producing images — deliver
+        // whatever the burst collected (even 1 frame) instead of hanging.
         handler.postDelayed(() -> {
-            if (!captured) finishWithFailure("capture timeout");
+            if (delivered) return;
+            if (!frames.isEmpty()) deliverFrames();
+            else finishWithFailure("capture timeout");
         }, CAPTURE_TIMEOUT_MS);
+    }
+
+    private void deliverFrames() {
+        if (delivered) return;
+        delivered = true;
+        java.util.ArrayList<byte[]> burst = new java.util.ArrayList<>(frames);
+        cleanup();
+        OverlayService.onFramesCaptured(burst);
+        stopSelf();
     }
 
     /** Convert a MediaProjection RGBA_8888 Image to a downscaled JPEG byte[]. */
@@ -152,6 +174,8 @@ public class ScreenCaptureService extends Service {
     }
 
     private void finishWithFailure(String reason) {
+        if (delivered) { stopSelf(); return; }
+        delivered = true;
         cleanup();
         OverlayService.onFrameCaptureFailed(reason);
         stopSelf();
