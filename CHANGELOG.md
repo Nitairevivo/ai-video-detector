@@ -1,9 +1,11 @@
 # VerifAI — What's New
 
-## 2026-07-12 — Nightly model refresh
+## 2026-07-12 — Model & detection improvements
 
 - Video detector now at 0.975 AUC with a 2.7% false-positive rate (trained on 882 videos).
 - Image detector trained on 1,749 samples (AUC 1.000).
+- Fix mobile startup crash: make OTA safe, not a brick vector.
+- Fix miscalibration on class-ordered data: FPR 7.6% -> 0.4%.
 
 ## 2026-07-11 — Model & detection improvements
 
