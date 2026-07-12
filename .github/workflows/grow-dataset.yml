@@ -49,9 +49,15 @@ jobs:
           git config user.email "trainer@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin auto-train >/dev/null 2>&1; then
             git fetch origin auto-train
-            # bring over the growing dataset + model, keep master's code
-            git checkout origin/auto-train -- data/training_samples.json models/ 2>/dev/null || true
-            echo "Restored dataset from auto-train."
+            # Bring over the growing dataset + model ARTIFACTS only — never code.
+            # Restoring all of models/ would clobber master's classifier.py with
+            # the branch's stale copy, so training would silently run old code
+            # (this is exactly what hid the calibration fix). List files explicitly.
+            git checkout origin/auto-train -- \
+              data/training_samples.json data/seen_video_ids.json \
+              models/trained_model.joblib models/trained_model_meta.json \
+              models/frame_model.pkl 2>/dev/null || true
+            echo "Restored dataset + model artifacts from auto-train (code kept from master)."
           else
             echo "No auto-train yet — starting from master's dataset."
           fi
@@ -121,7 +127,10 @@ jobs:
         if: always()
         run: |
           git checkout -B auto-train
-          git add data/training_samples.json models/ || true
+          # Artifacts + data only — keep code (classifier.py) out of the branch.
+          git add data/training_samples.json data/seen_video_ids.json \
+                  models/trained_model.joblib models/trained_model_meta.json \
+                  models/frame_model.pkl 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No change to commit."
           else
