@@ -74,7 +74,17 @@ jobs:
           npm install --no-audit --no-fund
           npm install -g eas-cli
 
-      - name: Publish OTA update (production + preview channels)
+      - name: Gate — verify the JS bundle actually builds before publishing
+        if: env.SKIP != '1'
+        working-directory: mobile
+        run: |
+          # A published OTA bundle auto-applies on installed apps, so a bundle
+          # that fails to build must NEVER reach a channel. `expo export` runs the
+          # real Metro bundle and fails on any unresolved import / bundling error.
+          npx expo export --platform android --output-dir /tmp/otaverify
+          echo "Bundle built OK — safe to publish."
+
+      - name: Publish OTA update (preview → production)
         if: env.SKIP != '1'
         working-directory: mobile
         env:
@@ -85,9 +95,15 @@ jobs:
             MSG=$(node -e "console.log((require('./changelog.data.json')[0]||{}).title || 'Daily update')")
           fi
           echo "Publishing OTA: $MSG"
-          # production channel (store builds) + preview channel (internal test builds)
-          eas update --branch production --message "$MSG" --non-interactive || echo "::warning::production update failed"
-          eas update --branch preview    --message "$MSG" --non-interactive || echo "::warning::preview update failed"
+          # Publish preview (internal test) first; only promote to production
+          # (store builds) if that succeeded — never push an unverified bundle
+          # straight to every installed app.
+          if eas update --branch preview --message "$MSG" --non-interactive; then
+            eas update --branch production --message "$MSG" --non-interactive || echo "::warning::production update failed"
+          else
+            echo "::error::preview update failed — NOT publishing to production"
+            exit 1
+          fi
 
       - name: Summary
         if: always()

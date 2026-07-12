@@ -12,7 +12,7 @@
     "updates": {
       "url": "https://u.expo.dev/1ccf6c26-6560-4dfa-96d0-a026d693bbab",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "ON_ERROR_RECOVERY"
     },
     "splash": {
       "image": "./assets/splash.png",

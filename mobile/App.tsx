@@ -125,7 +125,6 @@ import * as Clipboard from "expo-clipboard";
 import { useOverlay } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { OnboardingScreen } from "./components/OnboardingScreen";
-import { checkForOta } from "./updates";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 
 const { width } = Dimensions.get("window");
@@ -707,7 +706,7 @@ function AppInner() {
 }
 
 const ONBOARDING_KEY = "verifai_onboarding_done";
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const JS_ERROR_KEY = "verifai_last_js_error";
 
 // ─── Crash visibility ─────────────────────────────────────────────────────────
@@ -863,13 +862,13 @@ const wn = StyleSheet.create({
 });
 
 export default function App() {
-  // Check for a live OTA update AFTER the UI is up (deferred + fully guarded),
-  // never during the first paint — so the update system can never be on the
-  // startup-crash path.
-  useEffect(() => {
-    const t = setTimeout(() => { try { checkForOta(); } catch {} }, 2500);
-    return () => clearTimeout(t);
-  }, []);
+  // OTA is intentionally NOT fetched/applied automatically on launch. Blindly
+  // auto-applying the newest published bundle can brick every install if that
+  // bundle has a load-time error (uncatchable, before React mounts). Instead
+  // app.json sets checkAutomatically="ON_ERROR_RECOVERY": the native layer only
+  // pulls a new bundle when the previous launch crashed, so a healthy launch can
+  // never be swapped out from under the user. Proactive updates, when wanted,
+  // go through the explicit applyOtaNow() user action.
   return (
     <ErrorBoundary>
       <AppRouter />
