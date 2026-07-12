@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity,
   SafeAreaView, StatusBar, ScrollView, Alert, Vibration,
-  Platform, Switch, Modal, Dimensions, Linking, I18nManager,
+  Platform, Switch, Modal, Dimensions, Linking, I18nManager, TextInput,
 } from "react-native";
 
 // ─── i18n — Hebrew / English ──────────────────────────────────────────────────
@@ -367,6 +367,7 @@ function AppInner() {
   const [showPremium, setShowPremium] = useState(false);
   const [scansToday, setScansToday] = useState(0);
   const [lang, setLang] = useState<Lang>("he");
+  const [urlText, setUrlText] = useState("");
   const t = T[lang];
   const lastChecked = useRef<string>("");
 
@@ -524,6 +525,23 @@ function AppInner() {
     }
   }, [detect, t]);
 
+  const submitUrl = useCallback(() => {
+    const u = urlText.trim();
+    if (!u.startsWith("http")) {
+      Alert.alert(t.error, lang === "he" ? "הדבק קישור תקין שמתחיל ב-http" : "Paste a valid http link");
+      return;
+    }
+    setUrlText("");
+    detect(u);
+  }, [urlText, detect, t, lang]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (text?.startsWith("http")) setUrlText(text.trim());
+    } catch {}
+  }, []);
+
   const aiCount = history.filter((h) => (h as any).verdict === "ai_generated").length;
   const editedCount = history.filter((h) => (h as any).verdict === "ai_edited").length;
   const realCount = history.filter((h) => (h as any).verdict === "real").length;
@@ -587,7 +605,47 @@ function AppInner() {
           )}
         </View>
 
-        {/* ── Android Overlay Card ────────────────────────────────── */}
+        {/* ── Detect card: paste a link → get an answer ───────────── */}
+        <View style={styles.detectCard}>
+          <Text style={styles.detectTitle}>{lang === "he" ? "בדוק סרטון או תמונה" : "Check a video or image"}</Text>
+          <Text style={styles.detectSub}>{lang === "he" ? "הדבק קישור מטיקטוק / יוטיוב / אינסטגרם / X" : "Paste a TikTok / YouTube / Instagram / X link"}</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              value={urlText}
+              onChangeText={setUrlText}
+              placeholder={lang === "he" ? "הדבק כאן קישור…" : "Paste a link here…"}
+              placeholderTextColor="#5a5b74"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="go"
+              onSubmitEditing={submitUrl}
+            />
+            {urlText.length === 0 ? (
+              <TouchableOpacity style={styles.pasteBtn} onPress={pasteFromClipboard} activeOpacity={0.8}>
+                <Text style={styles.pasteBtnText}>{lang === "he" ? "הדבק" : "Paste"}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.clearInputBtn} onPress={() => setUrlText("")} activeOpacity={0.8}>
+                <Text style={styles.clearInputText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[styles.detectBtn, (loading || !urlText.trim()) && styles.detectBtnDisabled]}
+            onPress={submitUrl}
+            disabled={loading || !urlText.trim()}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.detectBtnText}>{loading ? t.analyzing : (lang === "he" ? "בדוק עכשיו" : "Detect now")}</Text>
+          </TouchableOpacity>
+          <Text style={styles.detectHint}>
+            {lang === "he" ? "טיפ: אפשר גם לשתף סרטון מכל אפליקציה אל VerifAI" : "Tip: you can also Share a video from any app to VerifAI"}
+          </Text>
+        </View>
+
+        {/* ── Android Overlay Card (optional power feature) ─────────── */}
         {Platform.OS === "android" && (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -918,20 +976,51 @@ function AppRouter() {
     return <ErrorScreen title="🛠️ נתפסה שגיאה מהריצה הקודמת" text={crashLog} onDismiss={dismissCrashLog} />;
   }
 
-  if (showOnboarding === null) {
-    return <View style={{ flex: 1, backgroundColor: "#06060f" }} />;
-  }
-  if (showOnboarding) {
-    return <OnboardingScreen onDone={finishOnboarding} />;
-  }
+  // Onboarding is no longer a hard gate: the overlay/accessibility permissions
+  // are optional (offered inside the app), so the permission flow can never
+  // block or loop the user out of the app. Go straight to the home screen.
+  void showOnboarding; void finishOnboarding;
   return <AppInner />;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#06060f" },
+  root: { flex: 1, backgroundColor: "#05050f" },
   scroll: { padding: 18, paddingBottom: 60, gap: 14 },
+
+  // Detect card (paste a link → answer)
+  detectCard: {
+    backgroundColor: "#0c0c1c", borderRadius: 22, padding: 18,
+    borderWidth: 1, borderColor: "rgba(124,108,255,0.35)", gap: 10,
+  },
+  detectTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  detectSub: { color: "#8b8ca7", fontSize: 12.5, marginTop: -2 },
+  inputRow: { flexDirection: "row", gap: 8, alignItems: "center", marginTop: 4 },
+  input: {
+    flex: 1, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 14,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 14, paddingVertical: 12, color: "#fff", fontSize: 14,
+  },
+  pasteBtn: {
+    backgroundColor: "rgba(124,108,255,0.15)", borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderWidth: 1, borderColor: "rgba(124,108,255,0.4)",
+  },
+  pasteBtnText: { color: "#c9c3ff", fontWeight: "700", fontSize: 13 },
+  clearInputBtn: {
+    width: 40, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+  },
+  clearInputText: { color: "#8b8ca7", fontSize: 15, fontWeight: "700" },
+  detectBtn: {
+    backgroundColor: "#6d5cf0", borderRadius: 16, paddingVertical: 15, alignItems: "center",
+    marginTop: 4, shadowColor: "#6d5cf0", shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5, shadowRadius: 16, elevation: 8,
+  },
+  detectBtnDisabled: { opacity: 0.4 },
+  detectBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  detectHint: { color: "#5a5b74", fontSize: 11, textAlign: "center", marginTop: 2 },
 
   // Banner
   banner: {
