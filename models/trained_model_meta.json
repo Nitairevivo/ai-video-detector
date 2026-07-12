@@ -1,1 +1,1 @@
-{"samples": 882, "ai_samples": 400, "real_samples": 482, "cv_auc_mean": 0.9752626986683849, "cv_auc_std": 0.011851705054817066, "cv_brier": 0.053524327865671475, "cv_accuracy": 0.9342403628117913, "cv_precision": 0.9646739130434783, "cv_recall": 0.8875, "cv_fpr": 0.026970954356846474, "threshold_fpr5": 0.42103289094114454, "calibration": "isotonic", "trained_at": "2026-07-07T19:45:51+00:00", "sklearn_version": "1.5.0"}
+{"samples": 1047, "ai_samples": 477, "real_samples": 570, "cv_auc_mean": 0.9609718374884579, "cv_auc_std": 0.010660763132566689}

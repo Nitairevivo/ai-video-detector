@@ -39,6 +39,13 @@ _YOUTUBE_MARKERS = [
      "YouTube 'Altered or synthetic content' disclosure"),
     (re.compile(r'"Sound or visuals were significantly edited or digitally generated'),
      "YouTube synthetic-media disclosure text"),
+    # Current (2026) format: an instantiated howThisWasMadeSectionViewModel object.
+    # Must match `:{` — the bare name also appears in a renderer-registry list on
+    # every watch page, which must NOT count as a flag.
+    (re.compile(r'"howThisWasMadeSectionViewModel"\s*:\s*\{'),
+     "YouTube 'How this was made' disclosure section"),
+    (re.compile(r'"Sounds? or visuals were (?:altered or (?:fully |digitally )?generated|significantly edited)'),
+     "YouTube altered/generated disclosure text"),
 ]
 
 _META_MARKERS = [

@@ -12,6 +12,7 @@ web/node_modules/
 mobile/node_modules/
 *.log
 .vercel
+data/videos/
 dataset_cache/
 
 # Local benchmark outputs
