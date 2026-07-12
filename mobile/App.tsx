@@ -126,6 +126,7 @@ import { useOverlay } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { OnboardingScreen } from "./components/OnboardingScreen";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
+import { SelfCheck } from "./SelfCheck";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
@@ -536,6 +537,10 @@ function AppInner() {
       <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* On-open self-check: shows which Expo project/channel/update the app is
+            really running, so an account/project mismatch is visible on screen. */}
+        <SelfCheck version={APP_VERSION} />
 
         {/* ── Header ─────────────────────────────────────────────── */}
         <View style={styles.header}>
