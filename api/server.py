@@ -414,6 +414,17 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
     from analyzer.ensemble import analyze_ensemble, _run_gemini
     from concurrent.futures import ThreadPoolExecutor
 
+    # A verdict must rest on decoded frames. An undecodable file (HTML saved
+    # as .mp4, truncated download, wrong format) would otherwise flow through
+    # feature extraction as an all-defaults vector and the classifier would
+    # return a constant, confidently wrong score.
+    import cv2
+    cap = cv2.VideoCapture(tmp_path)
+    got_frame, _ = cap.read()
+    cap.release()
+    if not got_frame:
+        raise HTTPException(422, "File is not a decodable video — try uploading the original file.")
+
     # Overlap the Gemini vision call (the slowest layer) with local feature
     # extraction so the total is ~max(gemini, features) instead of their sum —
     # this is what keeps the full path inside the ~5s response target.
@@ -657,6 +668,32 @@ def _is_safe_public_url(url: str) -> bool:
         return False
 
 
+def _looks_like_video(path: str) -> bool:
+    """Magic-byte sniff: does this file plausibly hold a media container?
+    Guards the URL pipeline against a platform's HTML page saved as '.mp4'
+    (what a blocked yt-dlp + direct-HTTP fallback produces) — feeding that to
+    the feature extractor yields a degenerate vector and a bogus verdict."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(16)
+    except Exception:
+        return False
+    if len(head) < 12:
+        return False
+    if head[4:8] == b"ftyp":                            # MP4 / MOV / M4V
+        return True
+    if head[:4] == b"\x1aE\xdf\xa3":                    # WebM / MKV (EBML)
+        return True
+    if head[:4] == b"RIFF" and head[8:12] == b"AVI ":   # AVI
+        return True
+    if head[:4] == b"OggS" or head[:3] == b"FLV":       # Ogg / FLV
+        return True
+    if head.lstrip()[:1] in (b"<", b"{"):               # HTML / JSON error page
+        return False
+    # Unrecognized but binary (e.g. MPEG-TS): let the decoder decide downstream.
+    return True
+
+
 def _download_direct(url: str, tmp_path: str) -> bool:
     """
     Direct HTTP download, capped at 60MB. The cap matters: deep analysis
@@ -672,11 +709,17 @@ def _download_direct(url: str, tmp_path: str) -> bool:
             "Accept": "video/mp4,video/*;q=0.9,*/*;q=0.8",
         })
         with urllib.request.urlopen(req, timeout=15) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            if "text/html" in ctype or "application/json" in ctype:
+                return False  # a watch page / error page, not the video itself
             data = resp.read(LIMIT)
         if len(data) < 1000:
             return False
         with open(tmp_path, "wb") as f:
             f.write(data)
+        if not _looks_like_video(tmp_path):
+            os.unlink(tmp_path)
+            return False
         return True
     except Exception:
         return False
@@ -740,6 +783,15 @@ def download_video_from_url(url: str, tmp_path: str):
     # Strategy 4: yt-dlp as last resort
     if not ok:
         ok = _download_with_ytdlp(url, tmp_path)
+
+    # Whatever strategy claimed success must have produced an actual media
+    # file — never hand an HTML/error page to the analyzers.
+    if ok and not _looks_like_video(tmp_path):
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        ok = False
 
     return ok, aigc_flagged, aigc_info
 
