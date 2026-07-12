@@ -62,6 +62,8 @@ public class ClipboardReaderActivity extends Activity {
             i.setAction(OverlayService.ACTION_CLIPBOARD_RESULT);
             i.putExtra(EXTRA_TEXT, text);
             i.putExtra(EXTRA_SOURCE, getIntent().getStringExtra(EXTRA_SOURCE));
+            i.putExtra(OverlayService.EXTRA_AUTOMATION_CLICKED,
+                getIntent().getBooleanExtra(OverlayService.EXTRA_AUTOMATION_CLICKED, false));
             startService(i);
         } catch (Exception ignored) {}
         finish();

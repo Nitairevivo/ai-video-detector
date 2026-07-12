@@ -42,6 +42,7 @@ public class OverlayService extends Service {
 
     public static final String ACTION_DETECT_URL = "DETECT_URL";
     public static final String ACTION_CLIPBOARD_RESULT = "CLIPBOARD_RESULT";
+    public static final String EXTRA_AUTOMATION_CLICKED = "automation_clicked";
     public static final String SOURCE_TAP = "tap";
     public static final String SOURCE_AUTOMATION = "automation";
 
@@ -59,6 +60,9 @@ public class OverlayService extends Service {
 
     private volatile boolean detectionPending = false;
     private volatile String lastAnalyzedUrl = "";
+    /** Clipboard content captured right before accessibility automation ran —
+     *  lets us tell a freshly-copied link apart from stale leftovers. */
+    private volatile String preAutomationClip = null;
 
     private final Runnable detectionTimeout = new Runnable() {
         @Override
@@ -98,9 +102,12 @@ public class OverlayService extends Service {
             startGalleryWatcher();
 
             // If the accessibility service already knows which app is in front,
-            // sync the button visibility immediately.
-            String fg = VerifAIAccessibilityService.getForegroundPackage();
-            if (fg != null) onForegroundApp(fg);
+            // sync the button visibility immediately. (Play build has no
+            // accessibility service — the button is simply always visible.)
+            if (!BuildFlags.PLAY_BUILD) {
+                String fg = VerifAIAccessibilityService.getForegroundPackage();
+                if (fg != null) onForegroundApp(fg);
+            }
         } catch (Throwable t) {
             // Never take the whole app process down — record and stop cleanly
             CrashLog.log(this, "OverlayService.onCreate", t);
@@ -168,39 +175,59 @@ public class OverlayService extends Service {
 
     // ─── Floating Button (pinned top-side, hidden until a supported app opens) ──
 
+    private TextView btnIcon;
+    private TextView btnLabel;
+    private android.widget.ProgressBar btnSpinner;
+
+    private GradientDrawable buttonBg(boolean loading) {
+        GradientDrawable bg = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            loading
+                ? new int[]{Color.parseColor("#334155"), Color.parseColor("#1e293b")}
+                : new int[]{Color.parseColor("#7c6cff"), Color.parseColor("#4f46e5")});
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setStroke(dp(2), Color.parseColor("#66ffffff"));
+        return bg;
+    }
+
     private View buildButtonView() {
         FrameLayout root = new FrameLayout(this);
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.parseColor("#6366f1"));
-        bg.setSize(dp(60), dp(60));
-        root.setBackground(bg);
-        root.setElevation(dp(12));
+        root.setBackground(buttonBg(false));
+        root.setElevation(dp(10));
 
         LinearLayout inner = new LinearLayout(this);
         inner.setOrientation(LinearLayout.VERTICAL);
         inner.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(60), dp(60));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(58), dp(58));
         lp.gravity = Gravity.CENTER;
         inner.setLayoutParams(lp);
 
-        TextView icon = new TextView(this);
-        icon.setText("🔍");
-        icon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        icon.setGravity(Gravity.CENTER);
+        btnIcon = new TextView(this);
+        btnIcon.setText("AI?");
+        btnIcon.setTextColor(Color.WHITE);
+        btnIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        btnIcon.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        btnIcon.setGravity(Gravity.CENTER);
 
-        TextView label = new TextView(this);
-        label.setText("AI?");
-        label.setTextColor(Color.WHITE);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setGravity(Gravity.CENTER);
-        label.setLetterSpacing(0.08f);
+        btnLabel = new TextView(this);
+        btnLabel.setText("VerifAI");
+        btnLabel.setTextColor(Color.parseColor("#ccffffff"));
+        btnLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 7);
+        btnLabel.setTypeface(null, Typeface.BOLD);
+        btnLabel.setGravity(Gravity.CENTER);
+        btnLabel.setLetterSpacing(0.1f);
 
-        inner.addView(icon);
-        inner.addView(label);
+        btnSpinner = new android.widget.ProgressBar(this);
+        btnSpinner.setIndeterminate(true);
+        btnSpinner.setVisibility(View.GONE);
+        FrameLayout.LayoutParams spLp = new FrameLayout.LayoutParams(dp(30), dp(30));
+        spLp.gravity = Gravity.CENTER;
+        btnSpinner.setLayoutParams(spLp);
+
+        inner.addView(btnIcon);
+        inner.addView(btnLabel);
         root.addView(inner);
+        root.addView(btnSpinner);
         return root;
     }
 
@@ -214,48 +241,84 @@ public class OverlayService extends Service {
         buttonView = buildButtonView();
 
         buttonParams = new WindowManager.LayoutParams(
-            dp(64), dp(64),
+            dp(58), dp(58),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         );
-        // Pinned: top edge, side of the screen. Not draggable.
+        // Pinned to the screen edge; the user can drag it up/down and the
+        // position is remembered across restarts.
         buttonParams.gravity = Gravity.TOP | Gravity.END;
-        buttonParams.x = dp(10);
-        buttonParams.y = dp(130);
+        buttonParams.x = dp(8);
+        buttonParams.y = getSharedPreferences("verifai_overlay", MODE_PRIVATE)
+            .getInt("button_y", dp(140));
 
-        buttonView.setOnClickListener(v -> onButtonTapped());
-        buttonView.setVisibility(View.GONE); // hidden until a supported app is foreground
+        attachDragAndTap(buttonView);
+        // Without the accessibility service there is no foreground-app signal,
+        // so the Play build shows the button whenever the service is on.
+        buttonView.setVisibility(BuildFlags.PLAY_BUILD ? View.VISIBLE : View.GONE);
         windowManager.addView(buttonView, buttonParams);
+    }
+
+    /** Tap = detect. Vertical drag = move the button (position persisted).
+     *  A plain OnClickListener can't coexist with dragging, so both gestures
+     *  are resolved here from raw touch events. */
+    private void attachDragAndTap(View v) {
+        final int slop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
+        v.setOnTouchListener(new View.OnTouchListener() {
+            private float downRawY; private int startY; private boolean dragging;
+            @Override public boolean onTouch(View view, android.view.MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        downRawY = e.getRawY();
+                        startY = buttonParams.y;
+                        dragging = false;
+                        view.animate().scaleX(0.88f).scaleY(0.88f).setDuration(80).start();
+                        return true;
+                    case android.view.MotionEvent.ACTION_MOVE: {
+                        float dy = e.getRawY() - downRawY;
+                        if (!dragging && Math.abs(dy) > slop) dragging = true;
+                        if (dragging) {
+                            buttonParams.y = Math.max(dp(40), startY + (int) dy);
+                            try { windowManager.updateViewLayout(view, buttonParams); } catch (Exception ignored) {}
+                        }
+                        return true;
+                    }
+                    case android.view.MotionEvent.ACTION_UP:
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+                        if (dragging) {
+                            getSharedPreferences("verifai_overlay", MODE_PRIVATE)
+                                .edit().putInt("button_y", buttonParams.y).apply();
+                        } else {
+                            onButtonTapped();
+                        }
+                        return true;
+                    case android.view.MotionEvent.ACTION_CANCEL:
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+                        return true;
+                }
+                return false;
+            }
+        });
     }
 
     private void showLoading() {
         mainHandler.post(() -> {
-            if (buttonView instanceof FrameLayout) {
-                LinearLayout inner = (LinearLayout) ((FrameLayout) buttonView).getChildAt(0);
-                ((TextView) inner.getChildAt(0)).setText("⏳");
-                ((TextView) inner.getChildAt(1)).setText("...");
-                GradientDrawable bg = new GradientDrawable();
-                bg.setShape(GradientDrawable.OVAL);
-                bg.setColor(Color.parseColor("#4b5563"));
-                bg.setSize(dp(60), dp(60));
-                buttonView.setBackground(bg);
-            }
+            if (buttonView == null) return;
+            buttonView.setBackground(buttonBg(true));
+            btnIcon.setVisibility(View.GONE);
+            btnLabel.setVisibility(View.GONE);
+            btnSpinner.setVisibility(View.VISIBLE);
         });
     }
 
     private void resetButton() {
         mainHandler.post(() -> {
-            if (buttonView instanceof FrameLayout) {
-                LinearLayout inner = (LinearLayout) ((FrameLayout) buttonView).getChildAt(0);
-                ((TextView) inner.getChildAt(0)).setText("🔍");
-                ((TextView) inner.getChildAt(1)).setText("AI?");
-                GradientDrawable bg = new GradientDrawable();
-                bg.setShape(GradientDrawable.OVAL);
-                bg.setColor(Color.parseColor("#6366f1"));
-                bg.setSize(dp(60), dp(60));
-                buttonView.setBackground(bg);
-            }
+            if (buttonView == null) return;
+            buttonView.setBackground(buttonBg(false));
+            btnIcon.setVisibility(View.VISIBLE);
+            btnLabel.setVisibility(View.VISIBLE);
+            btnSpinner.setVisibility(View.GONE);
         });
     }
 
@@ -399,7 +462,20 @@ public class OverlayService extends Service {
     // ─── Button Tap ─────────────────────────────────────────────────────────
 
     private void onButtonTapped() {
-        if (detectionPending) return;
+        if (detectionPending) {
+            // Second tap while working = cancel. A button that ignores taps
+            // reads as "stuck" — always give the user a way out.
+            finishDetection();
+            showToastResult("✋ הבדיקה בוטלה", "real", "לחץ שוב על הכפתור כדי לבדוק", 0);
+            return;
+        }
+        if (BuildFlags.PLAY_BUILD) {
+            // No accessibility automation here, and the clipboard can't be
+            // trusted on its own (a stale link would answer the WRONG video) —
+            // analyze what's actually on screen.
+            startScreenCaptureFallback();
+            return;
+        }
         detectionPending = true;
         showLoading();
         // Stage timeout: covers clipboard check + accessibility automation.
@@ -440,28 +516,34 @@ public class OverlayService extends Service {
         resetButton();
     }
 
-    private void handleClipboardResult(String text, String source) {
+    private void handleClipboardResult(String text, String source, boolean automationClicked) {
         String url = extractVideoUrl(text);
 
         if (SOURCE_TAP.equals(source)) {
-            boolean fresh = url != null && !url.equals(lastAnalyzedUrl);
-            if (fresh) {
-                detectAndShow(url);
-            } else if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
-                // Accessibility service is clicking Share → Copy Link for us;
-                // it will come back through ACTION_CLIPBOARD_RESULT (automation).
-            } else if (url != null) {
-                detectAndShow(url); // same link again — user asked, re-check it
-            } else {
-                // No URL from clipboard or accessibility automation —
-                // last resort: capture a screen frame and analyze that.
-                startScreenCaptureFallback();
+            // Accessibility automation copies the link of the video CURRENTLY on
+            // screen, so it always beats the clipboard (which may hold a stale
+            // link from yesterday and produce an answer for the wrong video).
+            preAutomationClip = text;
+            if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
+                return; // comes back with SOURCE_AUTOMATION
             }
-        } else { // automation
             if (url != null) {
                 detectAndShow(url);
             } else {
-                // Automation ran but produced no link — fall back to a frame.
+                // No accessibility and no link in the clipboard —
+                // last resort: capture a screen frame and analyze that.
+                startScreenCaptureFallback();
+            }
+        } else { // automation came back
+            String preUrl = extractVideoUrl(preAutomationClip);
+            if (url != null && (automationClicked || preUrl == null || url.equals(lastAnalyzedUrl))) {
+                // Copy-Link actually got clicked (fresh link of the visible
+                // video), or there was nothing stale to confuse it with, or the
+                // user is re-checking the same video — all safe to analyze.
+                detectAndShow(url);
+            } else {
+                // Automation never clicked Copy Link and the clipboard only has
+                // the same old text — analyzing it would answer the WRONG video.
                 startScreenCaptureFallback();
             }
         }
@@ -530,6 +612,16 @@ public class OverlayService extends Service {
     public static void onFrameCaptured(byte[] jpeg) {
         OverlayService s = instance;
         if (s != null) s.handleFrameCaptured(jpeg);
+    }
+
+    /** Called by the accessibility service when the grab flow died and no
+     *  clipboard result will ever arrive — unstick the button immediately. */
+    public static void onAutomationFailed() {
+        OverlayService s = instance;
+        if (s == null) return;
+        s.mainHandler.post(s::finishDetection);
+        s.showToastResult("⚠️ הזיהוי האוטומטי נכשל", "real",
+            "העתק קישור (Share ← Copy Link) ולחץ שוב", 0);
     }
 
     /** Called by the capture activity/service when capture couldn't happen. */
@@ -739,6 +831,14 @@ public class OverlayService extends Service {
                 content.addView(circle);
             }
 
+            // Explicit ✕ — tap-anywhere-to-dismiss is invisible to users
+            TextView close = new TextView(this);
+            close.setText("✕");
+            close.setTextColor(Color.parseColor("#99ffffff"));
+            close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            close.setPadding(dp(10), dp(4), dp(4), dp(10));
+            content.addView(close);
+
             card.addView(content);
             resultView = card;
 
@@ -754,21 +854,24 @@ public class OverlayService extends Service {
             resultParams.y = 60;
             resultParams.width = -1; // match parent minus margins
 
+            card.setTranslationY(-dp(48));
+            card.setAlpha(0f);
             windowManager.addView(resultView, resultParams);
+            card.animate().translationY(0f).alpha(1f).setDuration(260).start();
 
-            // Tap to dismiss
-            card.setOnClickListener(v -> {
-                try { windowManager.removeView(resultView); } catch (Exception ignored) {}
+            Runnable dismiss = () -> {
+                final View v = resultView;
+                if (v == null) return;
                 resultView = null;
-            });
+                v.animate().translationY(-dp(48)).alpha(0f).setDuration(200)
+                    .withEndAction(() -> {
+                        try { windowManager.removeView(v); } catch (Exception ignored) {}
+                    }).start();
+            };
 
-            // Auto-dismiss after 7s
-            mainHandler.postDelayed(() -> {
-                if (resultView != null) {
-                    try { windowManager.removeView(resultView); } catch (Exception ignored) {}
-                    resultView = null;
-                }
-            }, 7000);
+            card.setOnClickListener(v -> dismiss.run());
+            close.setOnClickListener(v -> dismiss.run());
+            mainHandler.postDelayed(dismiss, 8000);
         });
     }
 
@@ -806,7 +909,8 @@ public class OverlayService extends Service {
                 // ClipboardReaderActivity finished reading the clipboard
                 String text = intent.getStringExtra("text");
                 String source = intent.getStringExtra(ClipboardReaderActivity.EXTRA_SOURCE);
-                handleClipboardResult(text, source != null ? source : SOURCE_TAP);
+                boolean clicked = intent.getBooleanExtra(EXTRA_AUTOMATION_CLICKED, false);
+                handleClipboardResult(text, source != null ? source : SOURCE_TAP, clicked);
             }
         } catch (Throwable t) {
             CrashLog.log(this, "OverlayService.onStartCommand", t);
