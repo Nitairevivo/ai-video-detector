@@ -14,10 +14,10 @@ import { SelfCheck } from "./SelfCheck";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
-const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
+const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/uMv17W_2UE88oGGD7Y36IyMHFhbVLiDuj0DbvP3Dnz0.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.5.2";
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
