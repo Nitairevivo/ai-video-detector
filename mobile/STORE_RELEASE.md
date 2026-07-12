@@ -42,6 +42,37 @@ eas build --platform ios --profile production        # → .ipa
 
 ---
 
+## ⚠️ Google Play: use the `play` profile, not `production`
+
+Play policy rejects apps that use an AccessibilityService to automate other
+apps (our Share → Copy Link automation inside TikTok). The **`play` profile**
+builds a compliant variant (`EXPO_PUBLIC_PLAY_BUILD=1`):
+
+- **No accessibility service at all** — not declared in the manifest, no
+  accessibility permission prompt, its diagnostics row hidden in the app.
+- The floating button is **always visible** while the overlay toggle is on
+  (there's no foreground-app signal without accessibility).
+- Tapping the button **captures a screen frame** (MediaProjection, user
+  consents per session) and analyzes what's on screen — it never trusts the
+  clipboard, so it can't answer for the wrong video.
+- Share-a-video / share-a-link / paste-a-link in the app work unchanged.
+
+```bash
+eas build --platform android --profile play       # → .aab for the Play Store
+eas build --platform android --profile play-apk   # → .apk to sideload-test the Play variant first
+```
+
+The full-automation variant (`preview`/`production` profiles) is unchanged —
+keep distributing that APK directly from the website as the "Pro" build.
+
+When filling the Play Console **App content → Permissions declarations**, you
+will still be asked about `SYSTEM_ALERT_WINDOW` (floating button — core
+feature) and foreground-service types `specialUse` (the button) and
+`mediaProjection` (on-demand frame capture for AI detection). There is nothing
+to declare for accessibility in the `play` build.
+
+---
+
 ## Uploading to the stores
 
 **Google Play:** Play Console → create the app → *Production* → upload the

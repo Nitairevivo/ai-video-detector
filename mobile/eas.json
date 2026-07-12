@@ -29,6 +29,26 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "play": {
+      "channel": "play",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_PLAY_BUILD": "1"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "play-apk": {
+      "distribution": "internal",
+      "channel": "play",
+      "env": {
+        "EXPO_PUBLIC_PLAY_BUILD": "1"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

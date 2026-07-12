@@ -480,6 +480,11 @@ function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: (
   );
 }
 
+// Google Play variant ships without the accessibility service (Play policy) —
+// hide its diagnostics row and don't count it toward "all set".
+// Inlined at build time from eas.json profile "play".
+const PLAY_BUILD = process.env.EXPO_PUBLIC_PLAY_BUILD === "1";
+
 // ─── Status (diagnostics) card — answers "why isn't the button working?" ──────
 function StatusCard({ status, overlayActive, onToggle, lang }: {
   status: OverlayStatus; overlayActive: boolean;
@@ -491,7 +496,7 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const { OverlayModule } = require("react-native").NativeModules;
 
-  const allGood = status.overlayPermission && status.accessibilityEnabled && overlayActive;
+  const allGood = status.overlayPermission && (PLAY_BUILD || status.accessibilityEnabled) && overlayActive;
 
   const Row = ({ ok, label, onFix }: { ok: boolean; label: string; onFix?: () => void }) => (
     <View style={[st.row, row]}>
@@ -526,11 +531,13 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
         label={t.statusOverlayPerm}
         onFix={() => OverlayModule?.requestPermission?.()}
       />
-      <Row
-        ok={status.accessibilityEnabled}
-        label={t.statusAccess}
-        onFix={() => OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings())}
-      />
+      {!PLAY_BUILD && (
+        <Row
+          ok={status.accessibilityEnabled}
+          label={t.statusAccess}
+          onFix={() => OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings())}
+        />
+      )}
       <Row ok={overlayActive} label={t.statusService} />
 
       {allGood && <Text style={[st.allGood, align]}>{t.statusAllGood}</Text>}

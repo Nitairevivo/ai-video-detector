@@ -10,6 +10,13 @@ const path = require("path");
 const PLUGIN_DIR = __dirname;
 const JAVA_DIR = PLUGIN_DIR;
 
+// Google Play variant: Play policy rejects AccessibilityService-driven
+// automation of other apps, so this build ships WITHOUT the accessibility
+// service (no manifest entry) and the floating button analyzes via screen
+// capture only. Set in eas.json (profile "play") so the same env var also
+// reaches the JS bundle as an EXPO_PUBLIC_ constant.
+const PLAY_BUILD = process.env.EXPO_PUBLIC_PLAY_BUILD === "1";
+
 function withOverlayManifest(config) {
   return withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults.manifest;
@@ -65,8 +72,10 @@ function withOverlayManifest(config) {
       });
     }
 
-    // Accessibility service
-    if (!existingServices.includes(".VerifAIAccessibilityService")) {
+    // Accessibility service — omitted entirely from the Play build. The Java
+    // class still compiles into the APK but without a manifest declaration it
+    // can never be bound or enabled.
+    if (!PLAY_BUILD && !existingServices.includes(".VerifAIAccessibilityService")) {
       app.service.push({
         $: {
           "android:name": ".VerifAIAccessibilityService",
@@ -153,7 +162,25 @@ function withOverlayJavaFiles(config) {
 
       fs.mkdirSync(javaDestDir, { recursive: true });
 
-      // Create accessibility service XML config
+      // Generated build flag consumed by the Java sources (OverlayService
+      // branches on it). Regenerated on every prebuild.
+      fs.writeFileSync(
+        path.join(javaDestDir, "BuildFlags.java"),
+        `package com.verifai.app;
+
+/** Generated at prebuild by withAndroidOverlay.js — do not edit. */
+public final class BuildFlags {
+    /** Google Play variant: no accessibility service; the floating button
+     *  analyzes via screen capture only. */
+    public static final boolean PLAY_BUILD = ${PLAY_BUILD};
+    private BuildFlags() {}
+}
+`
+      );
+
+      // Create accessibility service XML config (referenced from the manifest,
+      // which the Play build doesn't declare)
+      if (!PLAY_BUILD) {
       const xmlDir = path.join(projectRoot, "app/src/main/res/xml");
       fs.mkdirSync(xmlDir, { recursive: true });
       fs.writeFileSync(
@@ -167,6 +194,7 @@ function withOverlayJavaFiles(config) {
     android:description="@string/app_name"
     android:notificationTimeout="100" />`
       );
+      }
 
       // Copy the Java files
       for (const fname of [

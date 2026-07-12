@@ -102,9 +102,12 @@ public class OverlayService extends Service {
             startGalleryWatcher();
 
             // If the accessibility service already knows which app is in front,
-            // sync the button visibility immediately.
-            String fg = VerifAIAccessibilityService.getForegroundPackage();
-            if (fg != null) onForegroundApp(fg);
+            // sync the button visibility immediately. (Play build has no
+            // accessibility service — the button is simply always visible.)
+            if (!BuildFlags.PLAY_BUILD) {
+                String fg = VerifAIAccessibilityService.getForegroundPackage();
+                if (fg != null) onForegroundApp(fg);
+            }
         } catch (Throwable t) {
             // Never take the whole app process down — record and stop cleanly
             CrashLog.log(this, "OverlayService.onCreate", t);
@@ -251,7 +254,9 @@ public class OverlayService extends Service {
             .getInt("button_y", dp(140));
 
         attachDragAndTap(buttonView);
-        buttonView.setVisibility(View.GONE); // hidden until a supported app is foreground
+        // Without the accessibility service there is no foreground-app signal,
+        // so the Play build shows the button whenever the service is on.
+        buttonView.setVisibility(BuildFlags.PLAY_BUILD ? View.VISIBLE : View.GONE);
         windowManager.addView(buttonView, buttonParams);
     }
 
@@ -462,6 +467,13 @@ public class OverlayService extends Service {
             // reads as "stuck" — always give the user a way out.
             finishDetection();
             showToastResult("✋ הבדיקה בוטלה", "real", "לחץ שוב על הכפתור כדי לבדוק", 0);
+            return;
+        }
+        if (BuildFlags.PLAY_BUILD) {
+            // No accessibility automation here, and the clipboard can't be
+            // trusted on its own (a stale link would answer the WRONG video) —
+            // analyze what's actually on screen.
+            startScreenCaptureFallback();
             return;
         }
         detectionPending = true;
