@@ -863,8 +863,13 @@ const wn = StyleSheet.create({
 });
 
 export default function App() {
-  // Check for a live OTA update on every launch (silent; applies next launch).
-  useEffect(() => { checkForOta(); }, []);
+  // Check for a live OTA update AFTER the UI is up (deferred + fully guarded),
+  // never during the first paint — so the update system can never be on the
+  // startup-crash path.
+  useEffect(() => {
+    const t = setTimeout(() => { try { checkForOta(); } catch {} }, 2500);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <ErrorBoundary>
       <AppRouter />
