@@ -371,7 +371,7 @@ function AppInner() {
   const t = T[lang];
   const lastChecked = useRef<string>("");
 
-  const { overlayActive, startOverlay, stopOverlay } = useOverlay();
+  const { overlayActive, hasPermission, startOverlay, stopOverlay } = useOverlay();
 
   // NOTE: we deliberately do NOT auto-start the overlay on launch. Starting a
   // specialUse foreground service at app startup crashes the process on
@@ -582,9 +582,12 @@ function AppInner() {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.headerSub}>
-            {Platform.OS === "android" ? t.headerSub.android : t.headerSub.ios}
-          </Text>
+          <View style={styles.taglineRow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.headerSub}>
+              {lang === "he" ? "מזהה אם וידאו או תמונה נוצרו ב-AI — קורא את הקוד מאחורי הקובץ" : "Detects if a video or image is AI-made — reads the code behind the file"}
+            </Text>
+          </View>
 
           {/* Stats row */}
           {history.length > 0 && (
@@ -661,6 +664,28 @@ function AppInner() {
                 thumbColor={overlayActive ? "#7c6cff" : "#374151"}
               />
             </View>
+
+            {/* Permission status — reflects the LIVE state so the user is never
+                told to "grant permission" after they already granted it. */}
+            {!overlayActive && (
+              <View style={styles.permRow}>
+                {hasPermission === true ? (
+                  <>
+                    <Text style={styles.permOk}>{lang === "he" ? "✓ ההרשאה כבר פעילה" : "✓ Permission granted"}</Text>
+                    <TouchableOpacity style={styles.permBtn} onPress={startOverlay} activeOpacity={0.85}>
+                      <Text style={styles.permBtnText}>{lang === "he" ? "הפעל כפתור צף" : "Turn on"}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.permMuted}>{lang === "he" ? "דורש הרשאת \"הצג מעל אפליקציות\"" : "Needs \"display over other apps\""}</Text>
+                    <TouchableOpacity style={styles.permBtn} onPress={startOverlay} activeOpacity={0.85}>
+                      <Text style={styles.permBtnText}>{lang === "he" ? "אפשר הרשאה" : "Grant"}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
 
             {overlayActive && (
               <View style={styles.stepsWrap}>
@@ -1035,6 +1060,13 @@ const styles = StyleSheet.create({
   howIcon: { fontSize: 17, width: 24, textAlign: "center" },
   howRowText: { color: "#b6b7cc", fontSize: 13, lineHeight: 19, flex: 1 },
 
+  // Overlay permission status row
+  permRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10 },
+  permOk: { color: "#34e0a1", fontSize: 12.5, fontWeight: "700", flex: 1 },
+  permMuted: { color: "#8b8ca7", fontSize: 12.5, flex: 1 },
+  permBtn: { backgroundColor: "rgba(124,108,255,0.15)", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: "rgba(124,108,255,0.4)" },
+  permBtnText: { color: "#c9c3ff", fontWeight: "700", fontSize: 13 },
+
   // Banner
   banner: {
     position: "absolute", top: 52, left: 10, right: 10, zIndex: 9999,
@@ -1062,17 +1094,19 @@ const styles = StyleSheet.create({
   bannerCloseText: { color: "#555", fontSize: 14 },
 
   // Header
-  header: { paddingTop: 4, gap: 12 },
+  header: { paddingTop: 6, gap: 14 },
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   logoMark: {
-    width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#6d5cf0",
-    shadowColor: "#7c6cff", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
+    width: 50, height: 50, borderRadius: 16, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#6d5cf0", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)",
+    shadowColor: "#7c6cff", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.6, shadowRadius: 16, elevation: 10,
   },
-  logoMarkText: { color: "#fff", fontSize: 22, fontWeight: "900", letterSpacing: -1 },
-  headerEyebrow: { color: "#7c6cff", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginTop: 1 },
-  headerTitle: { color: "#fff", fontSize: 28, fontWeight: "900", letterSpacing: -1 },
-  headerSub: { color: "#4b5563", fontSize: 13, lineHeight: 20 },
+  logoMarkText: { color: "#fff", fontSize: 25, fontWeight: "900", letterSpacing: -1 },
+  headerEyebrow: { color: "#8b8ca7", fontSize: 9.5, fontWeight: "700", letterSpacing: 2, marginTop: 2 },
+  headerTitle: { color: "#fff", fontSize: 30, fontWeight: "900", letterSpacing: -1.2 },
+  headerSub: { color: "#8b8ca7", fontSize: 13, lineHeight: 19, flex: 1 },
+  taglineRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#34e0a1" },
   langBtn: { backgroundColor: "#0e0e1a", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#ffffff12" },
   langBtnText: { color: "#6b7280", fontSize: 11, fontWeight: "700" },
   proBtn: { backgroundColor: "#140e2e", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "#6d5cf044" },
