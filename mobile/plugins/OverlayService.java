@@ -96,6 +96,11 @@ public class OverlayService extends Service {
         super.onCreate();
         instance = this;
         try {
+            // Load the user's apps-mode preference before any visibility logic.
+            VerifAIAccessibilityService.setAppsMode(
+                getSharedPreferences("verifai_overlay", MODE_PRIVATE)
+                    .getString("apps_mode", "all"));
+
             startForegroundService();
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             showButton();
@@ -106,7 +111,14 @@ public class OverlayService extends Service {
             // accessibility service — the button is simply always visible.)
             if (!BuildFlags.PLAY_BUILD) {
                 String fg = VerifAIAccessibilityService.getForegroundPackage();
-                if (fg != null) onForegroundApp(fg);
+                if (fg != null) {
+                    onForegroundApp(fg);
+                } else if (buttonView != null) {
+                    // Accessibility isn't reporting (disabled or not connected
+                    // yet): show the button everywhere rather than nowhere —
+                    // an enabled overlay that never appears looks broken.
+                    buttonView.setVisibility(View.VISIBLE);
+                }
             }
         } catch (Throwable t) {
             // Never take the whole app process down — record and stop cleanly
@@ -123,11 +135,27 @@ public class OverlayService extends Service {
         if (s != null) s.onForegroundApp(pkg);
     }
 
+    private volatile String lastForegroundPkg = null;
+
     private void onForegroundApp(String pkg) {
-        final boolean show = VerifAIAccessibilityService.SUPPORTED_PACKAGES.contains(pkg);
+        lastForegroundPkg = pkg;
+        final boolean show = VerifAIAccessibilityService.isMonitoredApp(pkg, getPackageName());
         mainHandler.post(() -> {
             if (buttonView != null) buttonView.setVisibility(show ? View.VISIBLE : View.GONE);
         });
+    }
+
+    /** Re-evaluate button visibility after the user changes the apps mode. */
+    public static void resyncVisibility() {
+        OverlayService s = instance;
+        if (s == null) return;
+        String pkg = s.lastForegroundPkg;
+        if (pkg != null) {
+            s.onForegroundApp(pkg);
+        } else if (VerifAIAccessibilityService.getForegroundPackage() == null) {
+            // No accessibility tracking at all — keep the button always visible
+            // (see onCreate); nothing to re-evaluate.
+        }
     }
 
     private void startGalleryWatcher() {
@@ -166,7 +194,7 @@ public class OverlayService extends Service {
         }
         Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("VerifAI active")
-            .setContentText("The 🔍 button appears inside TikTok, Instagram, YouTube…")
+            .setContentText("The VerifAI button is watching for fake media")
             .setSmallIcon(android.R.drawable.ic_menu_search)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build();
@@ -574,8 +602,13 @@ public class OverlayService extends Service {
                 renderResult(result);
 
             } catch (Exception e) {
-                mainHandler.post(this::finishDetection);
-                showToastResult("❌ Error: " + e.getMessage(), "real", "Check your connection", 0);
+                // The URL path can fail for reasons out of our control (YouTube
+                // blocks datacenter downloads, dead link, geo-wall). Instead of
+                // a dead-end error, analyze what's actually on screen — the
+                // frame path works for ANY app and has its own error handling.
+                // detectionPending stays true across the handoff (a later
+                // finishDetection here would race the fallback's own timeout).
+                startScreenCaptureFallback();
             }
         });
     }
