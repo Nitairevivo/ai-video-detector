@@ -28,6 +28,7 @@ const GRAD_START = { x: 0, y: 0 };
 const GRAD_END = { x: 1, y: 1 };
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
+const GUIDE_SEEN_KEY = "verifai_guide_seen";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -608,9 +609,25 @@ const GUIDE = {
     enableBtn: "הפעל את הכפתור הצף",
     disableBtn: "כבה את הכפתור הצף",
     enabledBadge: "הכפתור הצף פעיל ✓",
+    // iOS — Apple forbids floating overlays, so we give the two native paths.
+    iosTitle: "בדיקה תוך כדי גלילה (iPhone)",
+    iosSub: "ל-iPhone אין כפתור צף (אפל אוסרת) — אבל יש שתי דרכים מצוינות:",
+    iosShareTitle: "1. שתף → VerifAI (הכי פשוט)",
+    iosShareSub: "בכל אפליקציה: לחץ ‘שתף’ על הסרטון ובחר VerifAI. תשובה מיידית, בלי לצאת. עובד תמיד.",
+    iosTapTitle: "2. מחווה אחת: הקשה כפולה על גב הטלפון",
+    iosTapSub: "הגדרה חד-פעמית של ~2 דקות, ואז הקשה כפולה על גב האייפון בודקת מיד את מה שאתה רואה:",
+    iosTapSteps: [
+      "פתח את אפליקציית ‘Shortcuts’ (קיצורים) → צור קיצור חדש (+).",
+      "הוסף פעולה: ‘Take Screenshot’ (צלם מסך).",
+      "הוסף ‘Get Contents of URL’ — לחץ למטה על ‘העתק כתובת’ והדבק; Method = POST; Request Body = Form; הוסף שדה מסוג File בשם file עם ה-Screenshot.",
+      "הוסף ‘Show Notification’ שמציג את התוצאה.",
+      "שמור בשם ‘VerifAI’. ואז: הגדרות → נגישות → מגע → הקשה מאחור → הקשה כפולה → בחר ‘VerifAI’.",
+    ],
+    copyApi: "העתק כתובת API",
+    apiCopied: "הועתק ✓",
     evidenceTitle: "איך VerifAI יודע?",
     back: "חזרה",
-    tip: "טיפ: הדרך הכי אמינה תמיד היא ‘שתף → VerifAI’ — כי היא מעלה את הקובץ עצמו.",
+    tip: "טיפ: הדרך הכי אמינה תמיד היא ‘שתף → VerifAI’ — כי היא מעלה את הקובץ המלא.",
   },
   en: {
     title: "How it works",
@@ -633,9 +650,24 @@ const GUIDE = {
     enableBtn: "Enable the floating button",
     disableBtn: "Turn off the floating button",
     enabledBadge: "Floating button is on ✓",
+    iosTitle: "Check while scrolling (iPhone)",
+    iosSub: "iPhone has no floating button (Apple forbids overlays) — but there are two great ways:",
+    iosShareTitle: "1. Share → VerifAI (simplest)",
+    iosShareSub: "In any app: tap ‘Share’ on the video and pick VerifAI. Instant answer, no leaving. Always works.",
+    iosTapTitle: "2. One gesture: double-tap the back of your phone",
+    iosTapSub: "A one-time ~2-minute setup, then a double-tap on the back of your iPhone instantly checks what you’re watching:",
+    iosTapSteps: [
+      "Open the ‘Shortcuts’ app → create a new shortcut (+).",
+      "Add action: ‘Take Screenshot’.",
+      "Add ‘Get Contents of URL’ — tap ‘Copy API URL’ below and paste it; Method = POST; Request Body = Form; add a File field named file set to the Screenshot.",
+      "Add ‘Show Notification’ to display the result.",
+      "Save it as ‘VerifAI’. Then: Settings → Accessibility → Touch → Back Tap → Double Tap → choose ‘VerifAI’.",
+    ],
+    copyApi: "Copy API URL",
+    apiCopied: "Copied ✓",
     evidenceTitle: "How does VerifAI know?",
     back: "Back",
-    tip: "Tip: the most reliable path is always ‘Share → VerifAI’ — it uploads the file itself.",
+    tip: "Tip: the most reliable path is always ‘Share → VerifAI’ — it uploads the full file.",
   },
 } as const;
 
@@ -650,6 +682,14 @@ function GuideScreen({
   const rtl = lang === "he";
   const align = { textAlign: rtl ? "right" : "left" } as const;
   const row = { flexDirection: rtl ? "row-reverse" : "row" } as const;
+  const [copied, setCopied] = useState(false);
+  const copyApi = async () => {
+    try {
+      await Clipboard.setStringAsync(`${API}/detect`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {}
+  };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -684,32 +724,63 @@ function GuideScreen({
             </View>
           ))}
 
-          {/* floating button */}
-          <Text style={[gd.section, align]}>{g.floatTitle}</Text>
-          <Text style={[gd.subtle, align]}>{g.floatSub}</Text>
-          {g.floatSteps.map((step, i) => (
-            <View key={i} style={[gd.numRow, row]}>
-              <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
-                <Text style={gd.numText}>{i + 1}</Text>
-              </LinearGradient>
-              <Text style={[gd.numStep, align]}>{step}</Text>
-            </View>
-          ))}
-          {Platform.OS === "android" && (
-            overlayActive ? (
-              <View style={gd.enabledBadge}><Text style={gd.enabledText}>{g.enabledBadge}</Text></View>
-            ) : (
-              <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={() => onToggle(true)}>
+          {/* Mid-scroll checking — platform specific */}
+          {Platform.OS === "android" ? (
+            <>
+              <Text style={[gd.section, align]}>{g.floatTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.floatSub}</Text>
+              {g.floatSteps.map((step, i) => (
+                <View key={i} style={[gd.numRow, row]}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
+                    <Text style={gd.numText}>{i + 1}</Text>
+                  </LinearGradient>
+                  <Text style={[gd.numStep, align]}>{step}</Text>
+                </View>
+              ))}
+              {overlayActive ? (
+                <View style={gd.enabledBadge}><Text style={gd.enabledText}>{g.enabledBadge}</Text></View>
+              ) : (
+                <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={() => onToggle(true)}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.enableBtn}>
+                    <Text style={gd.enableText}>✨  {g.enableBtn}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+              {overlayActive && (
+                <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
+                  <Text style={gd.offText}>{g.disableBtn}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={[gd.section, align]}>{g.iosTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.iosSub}</Text>
+              {/* Method 1 — Share */}
+              <View style={[gd.stepCard, row]}>
+                <View style={gd.stepIconWrap}><Text style={gd.stepIcon}>📤</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[gd.stepTitle, align]}>{g.iosShareTitle}</Text>
+                  <Text style={[gd.stepDesc, align]}>{g.iosShareSub}</Text>
+                </View>
+              </View>
+              {/* Method 2 — Back Tap shortcut */}
+              <Text style={[gd.stepTitle, align, { marginTop: 20 }]}>{g.iosTapTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.iosTapSub}</Text>
+              {g.iosTapSteps.map((step, i) => (
+                <View key={i} style={[gd.numRow, row]}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
+                    <Text style={gd.numText}>{i + 1}</Text>
+                  </LinearGradient>
+                  <Text style={[gd.numStep, align]}>{step}</Text>
+                </View>
+              ))}
+              <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={copyApi}>
                 <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.enableBtn}>
-                  <Text style={gd.enableText}>✨  {g.enableBtn}</Text>
+                  <Text style={gd.enableText}>{copied ? g.apiCopied : `📋  ${g.copyApi}`}</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            )
-          )}
-          {Platform.OS === "android" && overlayActive && (
-            <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
-              <Text style={gd.offText}>{g.disableBtn}</Text>
-            </TouchableOpacity>
+            </>
           )}
 
           {/* evidence */}
@@ -776,6 +847,16 @@ function AppInner() {
         }
       } catch {}
       setHistoryLoaded(true);
+      // First launch ever: auto-open the platform-specific setup guide once, so
+      // an iPhone user sees the iPhone steps and an Android user sees the
+      // floating-button steps — without hunting for them.
+      try {
+        const seen = await SecureStore.getItemAsync(GUIDE_SEEN_KEY);
+        if (!seen) {
+          SecureStore.setItemAsync(GUIDE_SEEN_KEY, "1").catch(() => {});
+          setTimeout(() => setShowGuide(true), 600);
+        }
+      } catch {}
     })();
   }, []);
 
@@ -1163,7 +1244,11 @@ function AppInner() {
           </LinearGradient>
           <View style={{ flex: 1 }}>
             <Text style={[s.cardTitle, align]}>💡 {t.howTitle}</Text>
-            <Text style={[s.guideSub, align]}>{rtl ? "מדריך מלא, שלב אחר שלב — כולל הפעלת הכפתור הצף" : "Full step-by-step guide — including the floating button"}</Text>
+            <Text style={[s.guideSub, align]}>{
+              Platform.OS === "ios"
+                ? (rtl ? "מדריך מלא ל-iPhone, שלב אחר שלב" : "Full iPhone guide, step by step")
+                : (rtl ? "מדריך מלא, שלב אחר שלב — כולל הכפתור הצף" : "Full step-by-step guide — including the floating button")
+            }</Text>
           </View>
           <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
         </TouchableOpacity>
