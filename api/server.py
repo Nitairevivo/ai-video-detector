@@ -592,6 +592,44 @@ async def detect_frames(request: Request, files: list[UploadFile] = File(...)):
         g = None
 
     if g is None:
+        # Gemini unavailable (no key / rate-limited / error) — DON'T return
+        # "unknown". The whole point of the floating button is that a tap always
+        # yields a verdict, so fall back to the local pixel heuristics (FFT /
+        # texture / temporal) on the same captured frames. Pure code, no network.
+        try:
+            import base64 as _b64
+            from analyzer.frame_analyzer import decode_jpeg_frames, analyze_loaded_frames
+            arr = decode_jpeg_frames([_b64.standard_b64decode(fr) for fr in frames])
+            fr_res = analyze_loaded_frames(arr) if arr is not None else None
+        except Exception:
+            fr_res = None
+        # The local heuristics are only ONE corroborated vote in the full
+        # ensemble — alone they confuse low-texture real footage with AI. So
+        # from the burst-only fallback we surface a definitive "real" (high
+        # natural texture is a safe, low-false-positive signal) or, for AI, a
+        # non-committal "suspicious" that never asserts AI on its own. A user
+        # who taps the button gets an honest read instead of "unknown", without
+        # risking a confident false accusation on a real video.
+        if fr_res is not None and fr_res.verdict == "real":
+            return {
+                "is_ai_generated": False, "verdict": "real",
+                "confidence": round(fr_res.confidence, 4),
+                "confidence_pct": f"{fr_res.confidence * 100:.1f}%",
+                "ai_tool_detected": None,
+                "detection_method": f"Screen burst ({len(frames)} frames), local pixel analysis: {fr_res.method}",
+                "source": "frames", "frames_analyzed": len(frames),
+            }
+        if fr_res is not None and fr_res.verdict == "ai_generated":
+            return {
+                "is_ai_generated": False, "verdict": "suspicious",
+                "confidence": round(min(fr_res.confidence, 0.55), 4),
+                "confidence_pct": f"{min(fr_res.confidence, 0.55) * 100:.1f}%",
+                "ai_tool_detected": None,
+                "detection_method": (f"Screen burst ({len(frames)} frames): pixel heuristics flag "
+                                     f"possible AI ({fr_res.method}) — vision model was unavailable, "
+                                     f"re-check for a definitive verdict"),
+                "source": "frames", "frames_analyzed": len(frames),
+            }
         return {
             "is_ai_generated": False,
             "verdict": "unknown",
