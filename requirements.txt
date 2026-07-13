@@ -10,7 +10,7 @@ tqdm==4.66.4
 imageio-ffmpeg==0.5.1
 rich==13.7.1
 typer==0.12.3
-yt-dlp==2025.6.9
+yt-dlp>=2025.6.9   # unpinned floor: the YouTube extractor rots in months, every deploy should take the newest
 stripe==10.12.0
 slowapi==0.1.9
 anthropic>=0.40.0

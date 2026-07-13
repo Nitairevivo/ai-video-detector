@@ -5,6 +5,7 @@ import os
 import json
 import re
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -744,16 +745,58 @@ _INVIDIOUS_HOSTS = [
 
 def _mirror_instances():
     env = os.environ.get("VIDEO_MIRROR_INSTANCES", "").strip()
-    if not env:
-        return list(_PIPED_APIS), list(_INVIDIOUS_HOSTS)
+    if env:
+        piped, inv = [], []
+        for tok in env.split(","):
+            kind, _, host = tok.strip().partition(":")
+            if kind == "piped" and host:
+                piped.append(host)
+            elif kind == "invidious" and host:
+                inv.append(host)
+        return piped, inv
+
+    # Live discovery: both projects publish machine-readable lists of the
+    # instances that are currently up. A hardcoded list rots in weeks (YouTube
+    # actively hunts these mirrors); the live list is self-healing. Hardcoded
+    # hosts remain only as a fallback when discovery itself is unreachable.
     piped, inv = [], []
-    for tok in env.split(","):
-        kind, _, host = tok.strip().partition(":")
-        if kind == "piped" and host:
-            piped.append(host)
-        elif kind == "invidious" and host:
-            inv.append(host)
-    return piped, inv
+    try:
+        req = urllib.request.Request(
+            "https://api.invidious.io/instances.json?sort_by=health",
+            headers={"User-Agent": _pick_ua()})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read(1024 * 1024).decode("utf-8", errors="ignore"))
+        for _name, meta in data:
+            if not isinstance(meta, dict) or meta.get("type") != "https":
+                continue
+            if meta.get("api") is False:
+                continue
+            host = (meta.get("uri") or "").replace("https://", "").strip("/")
+            if host:
+                inv.append(host)
+            if len(inv) >= 8:
+                break
+    except Exception as e:
+        print(f"[mirror] invidious discovery failed: {e!r}")
+    try:
+        req = urllib.request.Request(
+            "https://piped-instances.kavin.rocks/",
+            headers={"User-Agent": _pick_ua()})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read(1024 * 1024).decode("utf-8", errors="ignore"))
+        for m in data:
+            host = (m.get("api_url") or "").replace("https://", "").strip("/")
+            if host:
+                piped.append(host)
+            if len(piped) >= 6:
+                break
+    except Exception as e:
+        print(f"[mirror] piped discovery failed: {e!r}")
+
+    piped += [h for h in _PIPED_APIS if h not in piped]
+    inv += [h for h in _INVIDIOUS_HOSTS if h not in inv]
+    print(f"[mirror] candidates: {len(piped)} piped, {len(inv)} invidious")
+    return piped[:8], inv[:10]
 
 
 def _download_youtube_via_mirror(url: str, tmp_path: str) -> bool:
@@ -774,7 +817,11 @@ def _download_youtube_via_mirror(url: str, tmp_path: str) -> bool:
             pass
         return False
 
+    deadline = time.time() + 75   # total budget — dead instances must not eat the request
+
     for host in piped:
+        if time.time() > deadline:
+            break
         try:
             req = urllib.request.Request(
                 f"https://{host}/streams/{vid}",
@@ -784,19 +831,27 @@ def _download_youtube_via_mirror(url: str, tmp_path: str) -> bool:
             streams = [s for s in (data.get("videoStreams") or [])
                        if s.get("url") and not s.get("videoOnly")
                        and "mp4" in (s.get("mimeType") or "")]
+            if not streams:
+                print(f"[mirror] piped {host}: no muxed mp4 streams")
             for s in streams[:2]:
                 if _download_direct(s["url"], tmp_path) and _accept():
+                    print(f"[mirror] SUCCESS via piped {host}")
                     return True
-        except Exception:
+        except Exception as e:
+            print(f"[mirror] piped {host}: {e!r}")
             continue
 
     for host in invidious:
+        if time.time() > deadline:
+            break
         for itag in ("18", "22"):   # muxed 360p / 720p mp4
             try:
                 u = f"https://{host}/latest_version?id={vid}&itag={itag}&local=true"
                 if _download_direct(u, tmp_path) and _accept():
+                    print(f"[mirror] SUCCESS via invidious {host} itag={itag}")
                     return True
-            except Exception:
+            except Exception as e:
+                print(f"[mirror] invidious {host} itag={itag}: {e!r}")
                 continue
     return False
 
