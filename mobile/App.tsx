@@ -8,6 +8,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
@@ -18,7 +19,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -62,6 +63,7 @@ const T = {
     pasteBtn: "הדבק",
     detectNow: "בדוק עכשיו",
     detectTip: "טיפ: אפשר גם לשתף סרטון או תמונה מכל אפליקציה אל VerifAI",
+    pickGallery: "בחר סרטון או תמונה מהגלריה",
     invalidLink: "הדבק קישור תקין שמתחיל ב-http",
     howKnowTitle: "איך VerifAI יודע?",
     howKnowRows: [
@@ -149,6 +151,7 @@ const T = {
     pasteBtn: "Paste",
     detectNow: "Detect now",
     detectTip: "Tip: you can also Share a video or image from any app to VerifAI",
+    pickGallery: "Pick a video or image from your gallery",
     invalidLink: "Paste a valid link that starts with http",
     howKnowTitle: "How VerifAI knows",
     howKnowRows: [
@@ -869,6 +872,34 @@ function AppInner() {
     }
   }, [lang, rtl]);
 
+  // Pick a video/image straight from the gallery — the primary input on iOS
+  // (which has no floating button), and a convenient one on Android too.
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          lang === "he" ? "צריך גישה לגלריה" : "Gallery access needed",
+          lang === "he"
+            ? "אפשר גישה לתמונות/וידאו כדי לבחור קובץ לבדיקה."
+            : "Allow photo/video access to pick a file to check."
+        );
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos", "images"],
+        quality: 1,
+        videoMaxDuration: 120,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      const mime = a.mimeType || (a.type === "video" ? "video/mp4" : "image/jpeg");
+      detectVideoFile(a.uri, mime);
+    } catch (e) {
+      Alert.alert(T[lang].error, e instanceof Error ? e.message : "");
+    }
+  }, [lang, detectVideoFile]);
+
   // Clipboard → gentle suggestion (never auto-runs). When the app opens or
   // returns to the foreground and a fresh video link is on the clipboard, we
   // OFFER it as a one-tap chip instead of silently scanning it — so opening the
@@ -1051,6 +1082,18 @@ function AppInner() {
             )}
            </LinearGradient>
           </TouchableOpacity>
+
+          {/* Gallery picker — the primary way to check a local file on iOS */}
+          <TouchableOpacity
+            style={[s.galleryBtn, row]}
+            onPress={pickFromGallery}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <Text style={s.galleryIcon}>🖼️</Text>
+            <Text style={s.galleryText}>{t.pickGallery}</Text>
+          </TouchableOpacity>
+
           <Text style={s.detectHint}>{t.detectTip}</Text>
         </View>
 
@@ -1402,6 +1445,15 @@ const s = StyleSheet.create({
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
   detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
+
+  // Gallery picker button
+  galleryBtn: {
+    alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8,
+    paddingVertical: 13, borderRadius: 15,
+    backgroundColor: "#ffffff0d", borderWidth: 1.5, borderColor: C.primary + "4d",
+  },
+  galleryIcon: { fontSize: 16 },
+  galleryText: { color: "#d8d2ff", fontSize: 14, fontWeight: "800" },
 
   // Copied-link suggestion chip
   clipHint: {
