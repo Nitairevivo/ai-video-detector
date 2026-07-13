@@ -50,6 +50,47 @@ export async function setTier(tier: Tier): Promise<void> {
   try { await SecureStore.setItemAsync(TIER_KEY, tier); } catch {}
 }
 
+// ─── Redeem codes ─────────────────────────────────────────────────────────────
+// Offline, checksum-validated unlock codes. Used for (a) the owner unlocking
+// Pro-Max permanently on his own devices, and (b) the manual "pay on Bit → get a
+// code" flow. Codes look like  VF-MAX-7K3P-9QF . Validation is local — a code is
+// a serial plus a checksum of (tier + serial + salt), so the app can verify any
+// code without a server or a stored list. Not cryptographically strong (the salt
+// ships in the bundle); good enough for a low-stakes consumer unlock, rotate the
+// salt if codes ever leak widely.
+const SALT = "VF-2026-mythos-x9";
+const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O/1/I/L
+
+function djb2(str: string): number {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function checksum(seed: string, len = 3): string {
+  let n = djb2(seed);
+  let out = "";
+  for (let i = 0; i < len; i++) { out = ALPHABET[n % ALPHABET.length] + out; n = Math.floor(n / ALPHABET.length); }
+  return out;
+}
+
+/** Validate a redeem code and return the tier it grants, or null if invalid. */
+export function tierForCode(raw: string): Tier | null {
+  const code = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const m = code.match(/^VF(PRO|MAX)([A-Z0-9]{4})([A-Z0-9]{3})$/);
+  if (!m) return null;
+  const [, seg, serial, check] = m;
+  if (checksum(seg + serial + SALT) !== check) return null;
+  return seg === "MAX" ? "promax" : "pro";
+}
+
+/** Redeem a code: on success persists the tier permanently and returns it. */
+export async function redeemCode(raw: string): Promise<Tier | null> {
+  const tier = tierForCode(raw);
+  if (tier) await setTier(tier);
+  return tier;
+}
+
 export async function getUsage(): Promise<Usage> {
   const period = currentPeriod();
   try {

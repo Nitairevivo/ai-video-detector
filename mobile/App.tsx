@@ -13,14 +13,14 @@ import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
 import { DemoReel } from "./components/DemoReel";
-import { Tier, TIERS, getTier, setTier as persistTier, getUsage, canScan, recordScan } from "./services/quota";
+import { Tier, TIERS, getTier, setTier as persistTier, getUsage, canScan, recordScan, redeemCode } from "./services/quota";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.1";
+const APP_VERSION = "1.7.2";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -425,20 +425,29 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
 }
 
 // ─── Premium Modal — Pro / Pro-Max plan picker ────────────────────────────────
-function PremiumModal({ visible, onClose, onChoose, lang }: {
-  visible: boolean; onClose: () => void; onChoose: (t: Tier) => void; lang: Lang;
+function PremiumModal({ visible, onClose, onChoose, onRedeem, lang }: {
+  visible: boolean; onClose: () => void; onChoose: (t: Tier) => void;
+  onRedeem: (code: string) => Promise<boolean>; lang: Lang;
 }) {
   const rtl = lang === "he";
   const slide = useRef(new Animated.Value(600)).current;
   const [plan, setPlan] = useState<Tier>("pro");
+  const [showCode, setShowCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeErr, setCodeErr] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setPlan("pro");
+      setPlan("pro"); setShowCode(false); setCode(""); setCodeErr(false);
       slide.setValue(600);
       Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 55, friction: 11 }).start();
     }
   }, [visible]);
+
+  const submitCode = async () => {
+    const ok = await onRedeem(code);
+    if (!ok) { setCodeErr(true); Vibration.vibrate(60); }
+  };
 
   const PLANS: { id: Tier; name: string; price: string; tagline: string; features: string[] }[] = rtl ? [
     { id: "pro", name: "Pro", price: "₪19", tagline: "לשימוש יומיומי",
@@ -498,6 +507,33 @@ function PremiumModal({ visible, onClose, onChoose, lang }: {
             </Text>
           </TouchableOpacity>
           <Text style={pm.trialNote}>{rtl ? "7 ימים חינם · ביטול בכל עת" : "7 days free · cancel anytime"}</Text>
+
+          {/* Redeem code — owner unlock + future 'pay on Bit → get a code' flow */}
+          {!showCode ? (
+            <TouchableOpacity onPress={() => setShowCode(true)} style={pm.redeemLink}>
+              <Text style={pm.redeemLinkText}>{rtl ? "יש לי קוד הפעלה" : "I have an activation code"}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={pm.redeemBox}>
+              <View style={[{ gap: 8 }, { flexDirection: rtl ? "row-reverse" : "row" }]}>
+                <TextInput
+                  style={[pm.redeemInput, { textAlign: rtl ? "right" : "left" }, codeErr && { borderColor: C.ai }]}
+                  value={code}
+                  onChangeText={(v) => { setCode(v); setCodeErr(false); }}
+                  placeholder={rtl ? "VF-MAX-XXXX-XXX" : "VF-MAX-XXXX-XXX"}
+                  placeholderTextColor={C.faint}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  onSubmitEditing={submitCode}
+                />
+                <TouchableOpacity style={pm.redeemBtn} onPress={submitCode}>
+                  <Text style={pm.redeemBtnText}>{rtl ? "הפעל" : "Unlock"}</Text>
+                </TouchableOpacity>
+              </View>
+              {codeErr && <Text style={pm.redeemErr}>{rtl ? "קוד לא תקין" : "Invalid code"}</Text>}
+            </View>
+          )}
+
           <TouchableOpacity onPress={onClose} style={pm.skip}>
             <Text style={pm.skipText}>{rtl ? "אולי מאוחר יותר" : "Maybe later"}</Text>
           </TouchableOpacity>
@@ -635,12 +671,20 @@ const GUIDE = {
     ],
     floatTitle: "הכפתור הצף האוטומטי",
     floatSub:
-      "כפתור קטן שמופיע מעל TikTok / Instagram / YouTube. לחיצה אחת עליו בודקת את מה שאתה צופה בו — בלי לצאת מהאפליקציה.",
+      "חשוב להבין: הכפתור הצף לא מופיע בתוך VerifAI — הוא מופיע מעל אפליקציות אחרות (TikTok, וואטסאפ, אינסטגרם וכו׳). לחיצה אחת עליו בודקת את מה שאתה צופה בו, בלי לצאת מהאפליקציה.",
     floatSteps: [
-      "אשר את ההרשאה ‘תצוגה מעל אפליקציות אחרות’ (פעם אחת בלבד).",
-      "חזור ל-VerifAI והדלק את המתג למטה.",
-      "פתח TikTok / Instagram / YouTube — הכפתור הצף יופיע. לחץ עליו כדי לבדוק את הסרטון על המסך.",
+      "הדלק את המתג ‘כפתור צף פעיל’ במרכז הבקרה — ואשר את ההרשאה ‘תצוגה מעל אפליקציות אחרות’.",
+      "הפעל את הנגישות: הגדרות → נגישות → VerifAI → הפעל. זה מה שמאפשר לכפתור להופיע בתוך אפליקציות אחרות.",
+      "עכשיו פתח TikTok / וואטסאפ / אינסטגרם — הכפתור יופיע שם (לא ב-VerifAI!). לחץ עליו כדי לבדוק את הסרטון.",
     ],
+    troubleTitle: "הכפתור לא מופיע? כך מתקנים",
+    troubleSteps: [
+      "ודא ששתי השורות במרכז הבקרה ירוקות: ‘הרשאת תצוגה’ ו‘זיהוי אוטומטי (נגישות)’. אם אחת אדומה — לחץ ‘תקן’ לידה.",
+      "הנגישות היא הכי חשובה: הגדרות → נגישות → אפליקציות מותקנות → VerifAI → הפעל את המתג. חלק מהטלפונים מבקשים אישור נוסף — אשר אותו.",
+      "זכור: הכפתור מופיע בתוך אפליקציות אחרות, לא בתוך VerifAI. פתח את TikTok כדי לראות אותו.",
+      "אם עדיין לא — כבה והדלק שוב את המתג ‘כפתור צף פעיל’, או הפעל מחדש את הטלפון.",
+    ],
+    troubleFallback: "לא מסתדר עם הכפתור? לא צריך אותו בכלל — פשוט העתק קישור לסרטון, או ‘שתף → VerifAI’ מכל אפליקציה. זה תמיד עובד.",
     enableBtn: "הפעל את הכפתור הצף",
     disableBtn: "כבה את הכפתור הצף",
     enabledBadge: "הכפתור הצף פעיל ✓",
@@ -660,12 +704,20 @@ const GUIDE = {
     ],
     floatTitle: "The automatic floating button",
     floatSub:
-      "A small button that appears over TikTok / Instagram / YouTube. One tap checks whatever you’re watching — without leaving the app.",
+      "Important: the button does NOT appear inside VerifAI — it appears over other apps (TikTok, WhatsApp, Instagram, etc.). One tap checks whatever you’re watching, without leaving the app.",
     floatSteps: [
-      "Grant the ‘Display over other apps’ permission (just once).",
-      "Come back to VerifAI and turn on the switch below.",
-      "Open TikTok / Instagram / YouTube — the floating button appears. Tap it to check the video on screen.",
+      "Turn on ‘Floating button’ in the control center — and grant ‘Display over other apps’.",
+      "Enable accessibility: Settings → Accessibility → VerifAI → On. That’s what lets the button appear inside other apps.",
+      "Now open TikTok / WhatsApp / Instagram — the button shows up there (not in VerifAI!). Tap it to check the video.",
     ],
+    troubleTitle: "Button not showing? Here’s the fix",
+    troubleSteps: [
+      "Make sure both rows in the control center are green: ‘Display permission’ and ‘Auto-detection (accessibility)’. If one is red, tap ‘Fix’ next to it.",
+      "Accessibility matters most: Settings → Accessibility → Installed apps → VerifAI → turn the switch on. Some phones ask for an extra confirm — accept it.",
+      "Remember: the button appears inside other apps, not inside VerifAI. Open TikTok to see it.",
+      "Still nothing? Toggle ‘Floating button’ off and on again, or restart your phone.",
+    ],
+    troubleFallback: "Can’t get the button working? You don’t need it — just copy a video link, or ‘Share → VerifAI’ from any app. That always works.",
     enableBtn: "Enable the floating button",
     disableBtn: "Turn off the floating button",
     enabledBadge: "Floating button is on ✓",
@@ -749,6 +801,27 @@ function GuideScreen({
             <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
               <Text style={gd.offText}>{g.disableBtn}</Text>
             </TouchableOpacity>
+          )}
+
+          {/* troubleshooting — the button isn't showing */}
+          {Platform.OS === "android" && (
+            <View style={gd.trouble}>
+              <Text style={[gd.troubleTitle, align]}>🛠️ {g.troubleTitle}</Text>
+              {g.troubleSteps.map((step, i) => (
+                <View key={i} style={[gd.troubleRow, row]}>
+                  <Text style={gd.troubleDot}>•</Text>
+                  <Text style={[gd.troubleText, align]}>{step}</Text>
+                </View>
+              ))}
+              <View style={gd.troubleNote}>
+                <Text style={[gd.troubleNoteText, align]}>{g.troubleFallback}</Text>
+              </View>
+              <TouchableOpacity style={gd.accessBtn} activeOpacity={0.85}
+                onPress={() => { const { OverlayModule } = require("react-native").NativeModules;
+                  OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings()); }}>
+                <Text style={gd.accessBtnText}>⚙️ {lang === "he" ? "פתח הגדרות נגישות" : "Open accessibility settings"}</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* evidence */}
@@ -1032,6 +1105,23 @@ function AppInner() {
   // here later; today it opens the hosted checkout page and (best-effort)
   // unlocks locally so the paid experience is testable end-to-end. The server
   // remains the source of truth for anything that costs us money to run.
+  // Redeem an activation code (owner Pro-Max unlock + future Bit-payment codes).
+  // Returns true on success so the modal can close / show its error inline.
+  const redeem = useCallback(async (codeStr: string): Promise<boolean> => {
+    const unlocked = await redeemCode(codeStr);
+    if (!unlocked) return false;
+    await applyTier(unlocked);
+    setShowPremium(false);
+    Vibration.vibrate(50);
+    Alert.alert(
+      lang === "he" ? "הופעל! 🎉" : "Activated! 🎉",
+      lang === "he"
+        ? `הטלפון הזה עכשיו ${unlocked === "promax" ? "Pro-Max" : "Pro"} — לתמיד.`
+        : `This device is now ${unlocked === "promax" ? "Pro-Max" : "Pro"} — forever.`
+    );
+    return true;
+  }, [applyTier, lang]);
+
   const startCheckout = useCallback(async (chosen: Tier) => {
     setShowPremium(false);
     try {
@@ -1077,6 +1167,7 @@ function AppInner() {
         visible={showPremium}
         onClose={() => setShowPremium(false)}
         onChoose={startCheckout}
+        onRedeem={redeem}
         lang={lang}
       />
       <GuideScreen
@@ -1651,6 +1742,16 @@ const gd = StyleSheet.create({
   offBtn: { alignItems: "center", paddingVertical: 14, marginTop: 4 },
   offText: { color: C.faint, fontSize: 13, fontWeight: "600" },
 
+  trouble: { marginTop: 18, backgroundColor: "#ffffff05", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, gap: 8 },
+  troubleTitle: { color: C.text, fontSize: 15, fontWeight: "800", marginBottom: 4 },
+  troubleRow: { alignItems: "flex-start", gap: 8 },
+  troubleDot: { color: C.violet, fontSize: 15, fontWeight: "800", lineHeight: 20 },
+  troubleText: { color: C.sub, fontSize: 13, lineHeight: 20, flex: 1 },
+  troubleNote: { backgroundColor: C.real + "14", borderRadius: 12, padding: 12, marginTop: 6, borderWidth: 1, borderColor: C.real + "33" },
+  troubleNoteText: { color: C.real, fontSize: 12.5, lineHeight: 18 },
+  accessBtn: { backgroundColor: C.primaryDeep, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 8 },
+  accessBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+
   evRow: { alignItems: "flex-start", gap: 11, marginTop: 11 },
   evIcon: { fontSize: 17, width: 24, textAlign: "center" },
   evText: { color: C.sub, fontSize: 13.5, lineHeight: 20, flex: 1 },
@@ -1752,6 +1853,16 @@ const pm = StyleSheet.create({
   },
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
   trialNote: { color: C.faint, fontSize: 11.5, textAlign: "center", marginTop: 10 },
+  redeemLink: { alignItems: "center", paddingVertical: 12 },
+  redeemLinkText: { color: C.violet, fontSize: 13, fontWeight: "700", textDecorationLine: "underline" },
+  redeemBox: { marginHorizontal: 18, marginTop: 8, gap: 6 },
+  redeemInput: {
+    flex: 1, backgroundColor: "#ffffff0d", borderRadius: 12, borderWidth: 1, borderColor: C.border,
+    paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontSize: 14, letterSpacing: 1,
+  },
+  redeemBtn: { backgroundColor: C.violet, borderRadius: 12, paddingHorizontal: 18, justifyContent: "center" },
+  redeemBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  redeemErr: { color: C.ai, fontSize: 12, textAlign: "center" },
   skip: { alignItems: "center", paddingVertical: 12 },
   skipText: { color: C.faint, fontSize: 14 },
 });
