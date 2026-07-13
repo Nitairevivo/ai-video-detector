@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.7.0",
+    "version": "1.7.2",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -35,7 +35,7 @@
         "backgroundColor": "#07070f"
       },
       "package": "com.verifai.app",
-      "versionCode": 18,
+      "versionCode": 19,
       "permissions": [
         "android.permission.READ_CLIPBOARD",
         "android.permission.READ_MEDIA_VIDEO",
@@ -138,8 +138,15 @@
             "NSExtensionActivationSupportsImageWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true
           },
-          "androidIntentFilters": ["text/*", "image/*", "video/*"],
-          "androidMultiIntentFilters": ["image/*", "video/*"]
+          "androidIntentFilters": [
+            "text/*",
+            "image/*",
+            "video/*"
+          ],
+          "androidMultiIntentFilters": [
+            "image/*",
+            "video/*"
+          ]
         }
       ]
     ],
