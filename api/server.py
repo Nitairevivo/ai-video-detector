@@ -722,6 +722,85 @@ def _download_youtube_innertube(url: str, tmp_path: str) -> bool:
     return False
 
 
+# Public YouTube mirror instances that PROXY the video bytes through their own
+# domain: Piped (`videoStreams[].url` on the instance's proxy host) and
+# Invidious (`/latest_version?...&local=true`). YouTube's bot-wall blocks
+# googlevideo.com from datacenter IPs — these instances fetch upstream
+# themselves and re-serve the bytes, so the download succeeds where every
+# direct strategy fails. Instance lists rot over time, so allow overriding
+# without a deploy via VIDEO_MIRROR_INSTANCES="piped:host1,invidious:host2".
+_PIPED_APIS = [
+    "pipedapi.kavin.rocks",
+    "pipedapi.adminforge.de",
+    "api.piped.private.coffee",
+]
+_INVIDIOUS_HOSTS = [
+    "inv.nadeko.net",
+    "yewtu.be",
+    "invidious.nerdvpn.de",
+    "iv.ggtyler.dev",
+]
+
+
+def _mirror_instances():
+    env = os.environ.get("VIDEO_MIRROR_INSTANCES", "").strip()
+    if not env:
+        return list(_PIPED_APIS), list(_INVIDIOUS_HOSTS)
+    piped, inv = [], []
+    for tok in env.split(","):
+        kind, _, host = tok.strip().partition(":")
+        if kind == "piped" and host:
+            piped.append(host)
+        elif kind == "invidious" and host:
+            inv.append(host)
+    return piped, inv
+
+
+def _download_youtube_via_mirror(url: str, tmp_path: str) -> bool:
+    """Download a YouTube video through a Piped/Invidious mirror proxy."""
+    m = _YT_ID_RE.search(url)
+    if not m:
+        return False
+    vid = m.group(1)
+    piped, invidious = _mirror_instances()
+
+    def _accept() -> bool:
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 10000 \
+                and _looks_like_video(tmp_path):
+            return True
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        return False
+
+    for host in piped:
+        try:
+            req = urllib.request.Request(
+                f"https://{host}/streams/{vid}",
+                headers={"User-Agent": _pick_ua()})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read(2 * 1024 * 1024).decode("utf-8", errors="ignore"))
+            streams = [s for s in (data.get("videoStreams") or [])
+                       if s.get("url") and not s.get("videoOnly")
+                       and "mp4" in (s.get("mimeType") or "")]
+            for s in streams[:2]:
+                if _download_direct(s["url"], tmp_path) and _accept():
+                    return True
+        except Exception:
+            continue
+
+    for host in invidious:
+        for itag in ("18", "22"):   # muxed 360p / 720p mp4
+            try:
+                u = f"https://{host}/latest_version?id={vid}&itag={itag}&local=true"
+                if _download_direct(u, tmp_path) and _accept():
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     """Use yt-dlp to download video. Tries multiple format strategies."""
     import subprocess, shutil
@@ -904,6 +983,12 @@ def download_video_from_url(url: str, tmp_path: str):
     # Strategy 2: yt-dlp
     if not ok and _is_platform_url(url):
         ok = _download_with_ytdlp(url, tmp_path)
+
+    # Strategy 2.5: YouTube mirror proxies (Piped / Invidious `local=true`).
+    # The bytes come from the mirror's own domain — works even when
+    # googlevideo.com refuses the datacenter IP outright.
+    if not ok and _host_matches(_host_of(url), ("youtube.com", "youtu.be")):
+        ok = _download_youtube_via_mirror(url, tmp_path)
 
     # Strategy 3: Direct HTTP
     if not ok:
