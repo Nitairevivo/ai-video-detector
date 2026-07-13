@@ -1,0 +1,73 @@
+name: Verify link→video download (datacenter IP)
+
+# Runs the REAL download_video_from_url chain on a GitHub runner — a datacenter
+# IP just like the production server — against live platform URLs. This is the
+# honest test of "paste a link → get a verdict": if it downloads here, it
+# downloads on Railway. Dispatch with any URL to reproduce a user report.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Video URL to test"
+        required: false
+        default: "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+  schedule:
+    - cron: "0 6 * * 1"   # weekly canary — catches mirror-instance rot
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+
+      - name: Install deps
+        run: pip install -r requirements.txt yt-dlp
+
+      - name: Run the real URL→file pipeline
+        env:
+          TEST_URL: ${{ github.event.inputs.url || 'https://www.youtube.com/watch?v=jNQXAC9IVRw' }}
+        run: |
+          python - <<'EOF'
+          import os, tempfile, time
+          from api.server import (download_video_from_url,
+                                  _download_youtube_innertube,
+                                  _download_with_ytdlp,
+                                  _download_youtube_via_mirror)
+
+          url = os.environ["TEST_URL"]
+          print(f"URL: {url}\n")
+
+          # Per-strategy breakdown so a failure names the broken layer.
+          for name, fn in [("innertube", _download_youtube_innertube),
+                           ("yt-dlp", _download_with_ytdlp),
+                           ("mirror-proxy", _download_youtube_via_mirror)]:
+              t = tempfile.mktemp(suffix=".mp4")
+              t0 = time.time()
+              try:
+                  ok = fn(url, t)
+              except Exception as e:
+                  ok = False
+                  print(f"  {name:14} EXC {e!r}")
+              size = os.path.getsize(t) if os.path.exists(t) else 0
+              print(f"  {name:14} ok={ok} size={size} ({time.time()-t0:.1f}s)")
+              if os.path.exists(t):
+                  os.unlink(t)
+
+          # The verdict that matters: the full production chain.
+          tmp = tempfile.mktemp(suffix=".mp4")
+          ok, aigc, info = download_video_from_url(url, tmp)
+          size = os.path.getsize(tmp) if os.path.exists(tmp) else 0
+          print(f"\nFULL CHAIN: ok={ok} aigc={aigc} info={info!r} size={size}")
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as f:
+                  f.write(f"## Link check\n- URL: `{url}`\n- ok: **{ok}** "
+                          f"(aigc={aigc}, {size} bytes)\n")
+          assert ok or aigc, "download failed via EVERY strategy"
+          print("PASS — a pasted link produces a real analyzable file.")
+          EOF
