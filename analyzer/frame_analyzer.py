@@ -153,6 +153,38 @@ def analyze_frames(video_path: str) -> FrameAnalysisResult:
     frames = _get_frames(video_path, n=16, size="128x72")
     if frames is None or len(frames) < 4:
         return FrameAnalysisResult("uncertain", 0.1, "Could not extract frames", {})
+    return analyze_loaded_frames(frames)
+
+
+def decode_jpeg_frames(jpeg_list, size=(128, 72)):
+    """Decode a list of JPEG byte strings into the (n, H, W) grayscale float
+    array that the heuristics below expect — lets the screen-capture burst path
+    (/detect-frames) reuse the exact same analysis as the video path."""
+    if not NUMPY:
+        return None
+    try:
+        from PIL import Image
+        import io
+        w, h = size
+        arrs = []
+        for jb in jpeg_list:
+            try:
+                im = Image.open(io.BytesIO(jb)).convert("L").resize((w, h))
+                arrs.append(np.asarray(im, dtype=np.float32))
+            except Exception:
+                continue
+        if len(arrs) < 3:
+            return None
+        return np.stack(arrs, axis=0)
+    except Exception:
+        return None
+
+
+def analyze_loaded_frames(frames: "np.ndarray") -> FrameAnalysisResult:
+    """Score an already-loaded (n, H, W) grayscale frame array. Shared by the
+    video path (analyze_frames) and the screen-burst path (/detect-frames)."""
+    if frames is None or len(frames) < 3:
+        return FrameAnalysisResult("uncertain", 0.1, "too few frames", {})
 
     # ── Compute all signals ────────────────────────────────────────────────────
     local_var = _local_block_variance(frames)
