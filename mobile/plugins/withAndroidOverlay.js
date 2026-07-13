@@ -227,11 +227,8 @@ public final class BuildFlags {
       );
       if (fs.existsSync(mainAppKt)) {
         let src = fs.readFileSync(mainAppKt, "utf8");
+        let changed = false;
         if (!src.includes("OverlayPackage")) {
-          src = src.replace(
-            "override fun getPackages(): List<ReactPackage>",
-            `override fun getPackages(): List<ReactPackage>`
-          );
           // Insert after "PackageList(this).packages" line
           src = src.replace(
             /val packages = PackageList\(this\)\.packages([^\n]*\n)/,
@@ -239,6 +236,29 @@ public final class BuildFlags {
               match +
               "          packages.add(com.verifai.app.OverlayPackage())\n"
           );
+          changed = true;
+        }
+        // Global uncaught-exception recorder: any native crash (e.g. while
+        // handling a shared video) is written to verifai_crash.txt, which the
+        // JS shows on the next launch — so we get the exact stack trace instead
+        // of only Android's opaque "can't open app" message. Re-raises after
+        // logging so behaviour is otherwise unchanged.
+        if (!src.includes("VerifAIUncaughtHandler")) {
+          src = src.replace(
+            /(super\.onCreate\(\)\n)/,
+            (m) =>
+              m +
+              "    // VerifAIUncaughtHandler\n" +
+              "    Thread.getDefaultUncaughtExceptionHandler().let { __prev ->\n" +
+              "      Thread.setDefaultUncaughtExceptionHandler { __t, __e ->\n" +
+              "        try { com.verifai.app.CrashLog.log(applicationContext, \"uncaught:\" + __t.name, __e) } catch (__ignored: Throwable) {}\n" +
+              "        __prev?.uncaughtException(__t, __e)\n" +
+              "      }\n" +
+              "    }\n"
+          );
+          changed = true;
+        }
+        if (changed) {
           fs.writeFileSync(mainAppKt, src);
           console.log("[withAndroidOverlay] Patched MainApplication.kt");
         }
@@ -270,6 +290,74 @@ public final class BuildFlags {
   ]);
 }
 
+// expo-share-intent@4.1.2's Android getFileInfo() uses hard `!!` assertions on
+// contentResolver.query()/getType() and drives MediaMetadataRetriever from a
+// content:// path — any of which throws (NPE / IllegalArgument / Security) for
+// a good number of shared videos, and the throw propagates up through the
+// share pipeline and crashes the app as it opens ("can't open app"). We wrap
+// the getFileInfo call sites so a failure degrades to the minimal file info JS
+// needs to upload the video, instead of taking down the process. Patches the
+// library source in node_modules before Gradle compiles it.
+function withShareIntentCrashFix(config) {
+  return withDangerousMod(config, [
+    "android",
+    (cfg) => {
+      const file = path.join(
+        cfg.modRequest.projectRoot,
+        "node_modules/expo-share-intent/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt"
+      );
+      try {
+        if (!fs.existsSync(file)) {
+          console.warn("[shareIntentCrashFix] module .kt not found — skipping");
+          return cfg;
+        }
+        let src = fs.readFileSync(file, "utf8");
+        if (src.includes("shareIntentCrashFix")) return cfg; // idempotent
+
+        // Minimal, always-safe file info: contentUri + a best-effort path, so
+        // the JS side can still POST the file to /detect.
+        const fallback =
+          'mapOf("contentUri" to it.toString(), "filePath" to (instance?.getAbsolutePath(it) ?: it.toString()), "fileName" to (it.lastPathSegment ?: "shared"), "mimeType" to (instance?.currentActivity?.contentResolver?.getType(it) ?: instance?.context?.contentResolver?.getType(it) ?: "video/mp4"))';
+
+        // A crash-proof wrapper around the library's getFileInfo. /* shareIntentCrashFix */
+        const helper =
+          "\n        private fun getFileInfoSafe(it: Uri): Map<String, String?> {\n" +
+          "            return try { getFileInfo(it) } catch (e: Throwable) {\n" +
+          "                try { com.verifai.app.CrashLog.log(instance?.context!!, \"getFileInfo\", e) } catch (ignored: Throwable) {}\n" +
+          "                " + fallback + "\n" +
+          "            }\n" +
+          "        } /* shareIntentCrashFix */\n";
+
+        // Route both call sites through the safe wrapper.
+        src = src.replace(
+          'notifyShareIntent(mapOf( "files" to arrayOf(getFileInfo(uri), "type" to "file")))',
+          'notifyShareIntent(mapOf( "files" to arrayOf(getFileInfoSafe(uri), "type" to "file")))'
+        );
+        src = src.replace(
+          "notifyShareIntent(mapOf( \"files\" to uris.map { getFileInfo(it) }, \"type\" to \"file\"))",
+          "notifyShareIntent(mapOf( \"files\" to uris.map { getFileInfoSafe(it) }, \"type\" to \"file\"))"
+        );
+
+        // Inject the helper just before the existing getFileInfo definition.
+        src = src.replace(
+          "        private fun getFileInfo(uri: Uri): Map<String, String?> {",
+          helper + "        private fun getFileInfo(uri: Uri): Map<String, String?> {"
+        );
+
+        fs.writeFileSync(file, src);
+        console.log("[shareIntentCrashFix] Patched ExpoShareIntentModule.kt");
+      } catch (e) {
+        console.warn("[shareIntentCrashFix] skipped:", e.message);
+      }
+      return cfg;
+    },
+  ]);
+}
+
 module.exports = function withAndroidOverlay(config) {
-  return withPlugins(config, [withOverlayManifest, withOverlayJavaFiles]);
+  return withPlugins(config, [
+    withOverlayManifest,
+    withOverlayJavaFiles,
+    withShareIntentCrashFix,
+  ]);
 };
