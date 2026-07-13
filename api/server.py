@@ -732,14 +732,22 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     base_args = [ytdlp, "--no-playlist", "--output", tmp_path,
                  "--no-warnings", "--quiet",
                  "--user-agent", _pick_ua(),
+                 # Ask yt-dlp to try the datacenter-friendlier player clients in
+                 # order — the mobile/TV/embedded clients still return
+                 # downloadable progressive URLs where the default web client
+                 # hits YouTube's bot wall. This is the single biggest lever on
+                 # YouTube success rate from a server IP.
+                 "--extractor-args",
+                 "youtube:player_client=android,ios,tv_embedded,web_embedded,web_safari",
                  "--add-header", "Referer:https://www.google.com/"]
 
     # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
     formats = [
+        "18",           # progressive muxed 360p mp4 (single file, no mux needed)
         "91",           # YouTube HLS 144p (always available, not blocked)
         "93",           # YouTube HLS 360p
-        "best[ext=mp4][filesize<10M]",
-        "best[filesize<10M]",
+        "best[ext=mp4][filesize<20M]",
+        "best[filesize<20M]",
         "worst",        # absolute fallback
     ]
 
