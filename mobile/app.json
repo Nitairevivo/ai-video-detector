@@ -138,7 +138,15 @@
             "NSExtensionActivationSupportsImageWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true
           },
-          "androidIntentFilters": ["text/*", "image/*", "video/*"]
+          "androidIntentFilters": [
+            "text/*",
+            "image/*",
+            "video/*"
+          ],
+          "androidMultiIntentFilters": [
+            "image/*",
+            "video/*"
+          ]
         }
       ]
     ],

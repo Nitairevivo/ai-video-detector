@@ -684,8 +684,8 @@ const GUIDE = {
       "VerifAI קורא את הראיות שאי אפשר לזייף — קרדנציית C2PA, תוויות ה-AI של הפלטפורמות, ומכלול ראייה מכויל — כדי להגיד לך תוך שניות אם סרטון אמיתי או נוצר ב-AI.",
     checkTitle: "3 דרכים לבדוק",
     checkSteps: [
-      ["🔗", "הדבק קישור", "העתק קישור מטיקטוק / יוטיוב / אינסטגרם / X, פתח את VerifAI ולחץ ‘בדוק’. אם העתקת קישור — נציע לך אותו אוטומטית בלחיצה אחת."],
-      ["📤", "שתף לאפליקציה", "בכל אפליקציה: לחץ ‘שתף’ על הסרטון או התמונה ובחר VerifAI. זו הדרך הכי אמינה — תמיד עובדת."],
+      ["🔗", "העתק קישור (הכי אמין)", "בפייסבוק / אינסטגרם / טיקטוק לחץ ‘העתק קישור’, ואז פתח את VerifAI — הוא יזהה את הקישור ויציע לך אותו אוטומטית בלחיצה אחת. עובד תמיד, גם כשאין ‘שתף’."],
+      ["📤", "שתף לאפליקציה", "בטיקטוק / יוטיוב / ווטסאפ / גלריה: לחץ ‘שתף’ ובחר VerifAI. בפייסבוק ואינסטגרם צריך קודם ‘More / עוד’ (הם מסתירים אפליקציות אחרות) — ואם VerifAI לא שם, פשוט ‘העתק קישור’."],
       ["🖼️", "מהגלריה", "פתח את הגלריה, שתף סרטון או תמונה, ובחר VerifAI."],
     ],
     floatTitle: "הכפתור הצף האוטומטי",
@@ -733,8 +733,8 @@ const GUIDE = {
       "VerifAI reads the evidence that can’t be faked — C2PA credentials, the platforms’ own AI labels, and a calibrated vision ensemble — to tell you in seconds whether a video is real or AI-generated.",
     checkTitle: "3 ways to check",
     checkSteps: [
-      ["🔗", "Paste a link", "Copy a link from TikTok / YouTube / Instagram / X, open VerifAI and tap ‘Detect’. If you copied a link, we’ll offer it to you in one tap."],
-      ["📤", "Share to the app", "In any app: tap ‘Share’ on the video or image and pick VerifAI. This is the most reliable way — it always works."],
+      ["🔗", "Copy link (most reliable)", "On Facebook / Instagram / TikTok tap ‘Copy link’, then open VerifAI — it detects the link and offers it to you in one tap. Always works, even when there’s no ‘Share’ target."],
+      ["📤", "Share to the app", "From TikTok / YouTube / WhatsApp / gallery: tap ‘Share’ and pick VerifAI. Facebook and Instagram need ‘More’ first (they hide other apps) — and if VerifAI isn’t there, just ‘Copy link’."],
       ["🖼️", "From the gallery", "Open your gallery, share a video or image, and choose VerifAI."],
     ],
     floatTitle: "The automatic floating button",

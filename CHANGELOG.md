@@ -2,12 +2,12 @@
 
 ## 2026-07-13 — Model & detection improvements
 
-- Video detector now at 0.997 AUC with a 0.3% false-positive rate (trained on 5,164 videos).
+- Video detector now at 0.999 AUC with a 0.4% false-positive rate (trained on 6,364 videos).
 - Image detector trained on 3,249 samples (AUC 0.852).
+- Fix build: share-crash-fix helper can't reference app module from the library.
 - Cover DeepAction generators + auto-label pulls only AI when real-saturated.
 - Cap real:AI imbalance so the AI signal isn't drowned.
 - Poison-proof on-ramp for generator diversity.
-- Hard-sample mining to target the recall gap.
 
 ## 2026-07-12 — Model & detection improvements
 
