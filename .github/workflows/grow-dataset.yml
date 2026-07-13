@@ -120,6 +120,18 @@ jobs:
                       print(f"- {k}: **{meta[k]:.4f}**")
           except Exception as e:
               print(f"- (no metrics: {e})")
+          # Hard-sample mining: which generators the model is weakest on.
+          try:
+              rep = json.load(open("data/hard_samples_report.json"))
+              rows = sorted(rep.get("repos", {}).items(), key=lambda kv: -kv[1].get("hard_rate", 0))
+              if rows:
+                  print("\n### Hard-sample rate by source (higher = model's blind spots)")
+                  print("| source | class | added | hard | hard-rate |")
+                  print("|---|---|---|---|---|")
+                  for name, r in rows:
+                      print(f"| {name} | {r['class']} | {r['added']} | {r['hard']} | **{r['hard_rate']*100:.0f}%** |")
+          except Exception:
+              pass
           EOF
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -129,6 +141,7 @@ jobs:
           git checkout -B auto-train
           # Artifacts + data only — keep code (classifier.py) out of the branch.
           git add data/training_samples.json data/seen_video_ids.json \
+                  data/hard_samples_report.json \
                   models/trained_model.joblib models/trained_model_meta.json \
                   models/frame_model.pkl 2>/dev/null || true
           if git diff --cached --quiet; then
