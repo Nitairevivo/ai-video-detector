@@ -104,6 +104,9 @@ public class OverlayModule extends ReactContextBaseJavaModule {
                 (enabled.contains(pkg + "/" + VerifAIAccessibilityService.class.getName())
                  || enabled.contains(pkg + "/.VerifAIAccessibilityService"));
             map.putBoolean("accessibilityEnabled", acc);
+            map.putString("appsMode", reactContext
+                .getSharedPreferences("verifai_overlay", android.content.Context.MODE_PRIVATE)
+                .getString("apps_mode", "all"));
             promise.resolve(map);
         } catch (Exception e) {
             promise.reject("STATUS_ERROR", e.getMessage());
@@ -123,6 +126,23 @@ public class OverlayModule extends ReactContextBaseJavaModule {
             promise.resolve(on);
         } catch (Exception e) {
             promise.resolve(false);
+        }
+    }
+
+    /** "all" = floating button in every app (minus exclusions); "recommended"
+     *  = curated social/messaging/dating/marketplace list. Applied live. */
+    @ReactMethod
+    public void setAppsMode(String mode, Promise promise) {
+        try {
+            String m = "recommended".equals(mode) ? "recommended" : "all";
+            reactContext
+                .getSharedPreferences("verifai_overlay", android.content.Context.MODE_PRIVATE)
+                .edit().putString("apps_mode", m).apply();
+            VerifAIAccessibilityService.setAppsMode(m);
+            OverlayService.resyncVisibility();
+            promise.resolve(m);
+        } catch (Exception e) {
+            promise.reject("APPS_MODE_ERROR", e.getMessage());
         }
     }
 
