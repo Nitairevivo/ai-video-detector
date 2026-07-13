@@ -394,14 +394,67 @@ public class OverlayService extends Service {
         return null;
     }
 
+    /** Resolve a YouTube watch/shorts/youtu.be URL to a directly-downloadable
+     *  progressive (muxed audio+video) MP4 URL, via the innertube ANDROID
+     *  client. Runs ON THE PHONE — a residential IP — where YouTube's
+     *  datacenter bot-wall does NOT apply, so we get the real file (and can
+     *  then read its actual code/metadata) without any proxy. */
+    private String resolveYouTubeCdnUrl(String pageUrl) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("(?:v=|youtu\\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})").matcher(pageUrl);
+        if (!m.find()) return null;
+        String vid = m.group(1);
+        try {
+            String body = "{\"context\":{\"client\":{\"clientName\":\"ANDROID\","
+                + "\"clientVersion\":\"19.44.38\",\"androidSdkVersion\":34,\"hl\":\"en\","
+                + "\"osName\":\"Android\",\"osVersion\":\"14\"}},\"videoId\":\"" + vid
+                + "\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
+            URL url = new URL("https://www.youtube.com/youtubei/v1/player?key="
+                + "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("User-Agent",
+                "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
+            try (OutputStream os = conn.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
+            if (conn.getResponseCode() != 200) return null;
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                String line; while ((line = br.readLine()) != null) sb.append(line);
+            }
+            JSONObject sd = new JSONObject(sb.toString()).optJSONObject("streamingData");
+            if (sd == null) return null;
+            JSONArray fmts = sd.optJSONArray("formats");   // progressive = muxed a+v
+            if (fmts == null) return null;
+            String best = null;
+            for (int i = 0; i < fmts.length(); i++) {
+                JSONObject f = fmts.getJSONObject(i);
+                String mime = f.optString("mimeType", "");
+                if (f.has("url") && mime.contains("mp4")) {   // has a direct (un-ciphered) URL
+                    if (f.optInt("itag") == 18) return f.getString("url");  // 360p, small
+                    if (best == null) best = f.optString("url", null);
+                }
+            }
+            return best;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private JSONObject detectViaPhoneDownload(String videoUrl) throws Exception {
-        // Step 1: If TikTok, resolve share URL to actual CDN video URL
+        // Step 1: resolve share/page URL to an actual downloadable CDN URL.
         String downloadUrl = videoUrl;
+        String referer = "https://www.google.com/";
         if (videoUrl.contains("tiktok.com") || videoUrl.contains("vm.tiktok")) {
             String cdnUrl = resolveTikTokCdnUrl(videoUrl);
-            if (cdnUrl != null) {
-                downloadUrl = cdnUrl;
-            }
+            if (cdnUrl != null) { downloadUrl = cdnUrl; referer = "https://www.tiktok.com/"; }
+        } else if (videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")) {
+            String cdnUrl = resolveYouTubeCdnUrl(videoUrl);
+            if (cdnUrl == null) throw new Exception("youtube resolve failed");
+            downloadUrl = cdnUrl; referer = "https://www.youtube.com/";
         }
 
         // Download video on phone (residential IP)
@@ -410,7 +463,7 @@ public class OverlayService extends Service {
             URL dlUrl = new URL(downloadUrl);
             HttpURLConnection dlConn = (HttpURLConnection) dlUrl.openConnection();
             dlConn.setRequestProperty("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15");
-            dlConn.setRequestProperty("Referer", "https://www.tiktok.com/");
+            dlConn.setRequestProperty("Referer", referer);
             dlConn.setConnectTimeout(15000);
             dlConn.setReadTimeout(30000);
             dlConn.setInstanceFollowRedirects(true);
@@ -567,9 +620,15 @@ public class OverlayService extends Service {
                 // bot-walls datacenter IPs, so it's slow and usually fails) —
                 // go straight to analyzing the pixels actually on screen. The
                 // button must always reach a verdict quickly.
-                boolean isTikTok = url.contains("tiktok.com") || url.contains("instagram.com") || url.contains("vm.tiktok");
-                if (!isTikTok) {
-                    startScreenCaptureFallback();
+                // Download on the PHONE (residential IP — NOT blocked like our
+                // server) for every platform we can resolve, so we get the real
+                // file and read its actual code/metadata. YouTube included: the
+                // phone's home IP clears the bot-wall that blocks the server.
+                boolean phoneDownloadable = url.contains("tiktok.com") || url.contains("vm.tiktok")
+                    || url.contains("instagram.com")
+                    || url.contains("youtube.com") || url.contains("youtu.be");
+                if (!phoneDownloadable) {
+                    startScreenCaptureFallback();   // unknown host → analyze pixels
                     return;
                 }
                 result = detectViaPhoneDownload(url);
