@@ -561,21 +561,25 @@ public class OverlayService extends Service {
             try {
                 JSONObject result;
 
-                // For TikTok/Instagram: download on PHONE (residential IP, not blocked)
-                // then upload file to API. For others: use server-side /detect-url.
+                // TikTok/Instagram download on the PHONE (residential IP, not
+                // blocked) then upload the file — fast and reliable. YouTube and
+                // everything else: DON'T wait on the server download (YouTube
+                // bot-walls datacenter IPs, so it's slow and usually fails) —
+                // go straight to analyzing the pixels actually on screen. The
+                // button must always reach a verdict quickly.
                 boolean isTikTok = url.contains("tiktok.com") || url.contains("instagram.com") || url.contains("vm.tiktok");
-                if (isTikTok) {
-                    result = detectViaPhoneDownload(url);
-                } else {
-                    result = detectViaServerUrl(url);
+                if (!isTikTok) {
+                    startScreenCaptureFallback();
+                    return;
                 }
-
-                if (result == null) throw new Exception("Detection failed");
+                result = detectViaPhoneDownload(url);
+                if (result == null) throw new Exception("no result");
                 renderResult(result);
 
             } catch (Exception e) {
-                mainHandler.post(this::finishDetection);
-                showToastResult("❌ Error: " + e.getMessage(), "real", "Check your connection", 0);
+                // Any failure on the URL path → fall back to the on-screen
+                // pixels rather than showing a dead end.
+                startScreenCaptureFallback();
             }
         });
     }
@@ -595,6 +599,8 @@ public class OverlayService extends Service {
             title = (tool != null && !tool.isEmpty()) ? "🤖 AI · " + tool : "🤖 AI Generated";
         } else if ("ai_edited".equals(verdict)) {
             title = (editTool != null && !editTool.isEmpty()) ? "✏️ Edited · " + editTool : "✏️ Real Video, AI-Edited";
+        } else if ("suspicious".equals(verdict)) {
+            title = "⚠️ חשוד — ייתכן AI";
         } else if ("unknown".equals(verdict)) {
             title = "❓ לא הצלחתי להכריע";
         } else {
@@ -768,6 +774,10 @@ public class OverlayService extends Service {
                 accentColor = Color.parseColor("#a855f7");
                 bgColor     = Color.parseColor("#0e0516");
                 badgeLabel  = "  AI EDITED";
+            } else if ("suspicious".equals(verdict) || "unknown".equals(verdict)) {
+                accentColor = Color.parseColor("#f59e0b");   // amber — not a clean bill of health
+                bgColor     = Color.parseColor("#1a1203");
+                badgeLabel  = "  INCONCLUSIVE";
             } else {
                 accentColor = Color.parseColor("#22c55e");
                 bgColor     = Color.parseColor("#031a0a");
