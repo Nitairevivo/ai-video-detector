@@ -4,10 +4,10 @@
 
 - Video detector now at 0.997 AUC with a 0.3% false-positive rate (trained on 5,164 videos).
 - Image detector trained on 3,249 samples (AUC 0.852).
-- Detect-url: never analyze a non-video download (false-positive guard).
-- Fix mobile OTA gate: expo export needs a project-relative output dir.
-- Fix 'everything is 6% real': restore Gemini's time budget.
-- Fix mobile startup crash: make OTA safe, not a brick vector.
+- Cover DeepAction generators + auto-label pulls only AI when real-saturated.
+- Cap real:AI imbalance so the AI signal isn't drowned.
+- Poison-proof on-ramp for generator diversity.
+- Hard-sample mining to target the recall gap.
 
 ## 2026-07-12 — Model & detection improvements
 
