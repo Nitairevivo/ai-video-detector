@@ -44,45 +44,6 @@
       ],
       "intentFilters": [
         {
-          "action": "android.intent.action.SEND",
-          "data": [
-            {
-              "mimeType": "video/*"
-            },
-            {
-              "mimeType": "image/*"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "data": [
-            {
-              "mimeType": "text/plain"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND_MULTIPLE",
-          "data": [
-            {
-              "mimeType": "video/*"
-            },
-            {
-              "mimeType": "image/*"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
-        {
           "action": "android.intent.action.VIEW",
           "autoVerify": true,
           "data": [
@@ -167,7 +128,19 @@
       ]
     },
     "plugins": [
-      "./plugins/withAndroidOverlay.js"
+      "./plugins/withAndroidOverlay.js",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*", "image/*", "video/*"]
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",

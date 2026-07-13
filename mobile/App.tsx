@@ -9,6 +9,7 @@ import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
+import { useShareIntent } from "expo-share-intent";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
@@ -921,19 +922,28 @@ function AppInner() {
     return () => sub.remove();
   }, [offerClipboard]);
 
-  // Video FILES shared from TikTok/Instagram (Share → VerifAI)
+  // Share → VerifAI, on BOTH platforms. On iOS this is the mid-scroll answer:
+  // while watching any app, tap Share → VerifAI and it lands here. Handles a
+  // shared file (video/image) or a shared link/text.
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({
+    debug: false,
+    resetOnBackground: true,
+  });
   useEffect(() => {
-    const { NativeModules } = require("react-native");
-    const IntentModule = NativeModules.IntentModule || NativeModules.RNIntentModule;
-    if (IntentModule?.getInitialIntent) {
-      IntentModule.getInitialIntent().then((intent: { uri?: string; type?: string }) => {
-        const mime = intent?.type || "";
-        if (intent?.uri && (mime.startsWith("video/") || mime.startsWith("image/"))) {
-          detectVideoFile(intent.uri, mime);
-        }
-      }).catch(() => {});
-    }
-  }, []);
+    if (!hasShareIntent) return;
+    try {
+      const files = shareIntent?.files;
+      if (files && files.length > 0 && files[0]?.path) {
+        const f = files[0];
+        const mime = f.mimeType || (String(f.mimeType).startsWith("image") ? "image/jpeg" : "video/mp4");
+        detectVideoFile(f.path, mime);
+      } else {
+        const shared = (shareIntent?.webUrl || shareIntent?.text || "").trim();
+        if (shared.startsWith("http")) detect(shared);
+      }
+    } catch {}
+    resetShareIntent();
+  }, [hasShareIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep links / shared URLs
   const handleIncomingUrl = useCallback((url: string | null) => {
