@@ -12,13 +12,14 @@ import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
+import { Tier, TIERS, getTier, setTier as persistTier, getUsage, canScan, recordScan } from "./services/quota";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.7.0";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -422,28 +423,32 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
   );
 }
 
-// ─── Premium Modal ────────────────────────────────────────────────────────────
-function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: () => void; lang: Lang }) {
+// ─── Premium Modal — Pro / Pro-Max plan picker ────────────────────────────────
+function PremiumModal({ visible, onClose, onChoose, lang }: {
+  visible: boolean; onClose: () => void; onChoose: (t: Tier) => void; lang: Lang;
+}) {
   const rtl = lang === "he";
-  const slide = useRef(new Animated.Value(500)).current;
+  const slide = useRef(new Animated.Value(600)).current;
+  const [plan, setPlan] = useState<Tier>("pro");
 
   useEffect(() => {
     if (visible) {
-      slide.setValue(500);
+      setPlan("pro");
+      slide.setValue(600);
       Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 55, friction: 11 }).start();
     }
   }, [visible]);
 
-  const FEATURES = rtl ? [
-    { icon: "⚡", title: "זיהוי מיידי", desc: "תוצאה תוך שנייה" },
-    { icon: "🔁", title: "סריקה אוטומטית", desc: "כל סרטון נבדק לבד בזמן גלילה" },
-    { icon: "📊", title: "דו״ח מפורט", desc: "כלי AI, שכבות ניתוח, חתימות" },
-    { icon: "♾️", title: "ללא הגבלה", desc: "בדיקות בלתי מוגבלות" },
+  const PLANS: { id: Tier; name: string; price: string; tagline: string; features: string[] }[] = rtl ? [
+    { id: "pro", name: "Pro", price: "₪19", tagline: "לשימוש יומיומי",
+      features: ["בדיקות ללא הגבלה", "כפתור צף — סריקה אוטומטית בכל אפליקציה", "דו״ח מלא: כלי AI, שכבות, חתימות C2PA"] },
+    { id: "promax", name: "Pro-Max", price: "₪49", tagline: "לעסקים ויוצרים",
+      features: ["כל מה שיש ב-Pro", "בדיקה מרובה — כמה סרטונים בבת אחת", "ניתוח מעמיק ועדיפות בתור", "בדיקת תמונות ללא הגבלה"] },
   ] : [
-    { icon: "⚡", title: "Instant detection", desc: "Results in one second" },
-    { icon: "🔁", title: "Auto-scan", desc: "Every video checked while you scroll" },
-    { icon: "📊", title: "Full report", desc: "AI tools, analysis layers, signatures" },
-    { icon: "♾️", title: "Unlimited", desc: "No daily limits" },
+    { id: "pro", name: "Pro", price: "₪19", tagline: "For everyday use",
+      features: ["Unlimited checks", "Floating button — auto-scan in every app", "Full report: AI tools, layers, C2PA"] },
+    { id: "promax", name: "Pro-Max", price: "₪49", tagline: "For creators & business",
+      features: ["Everything in Pro", "Batch — check many at once", "Deep analysis & priority queue", "Unlimited image checks"] },
   ];
 
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
@@ -454,35 +459,44 @@ function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: (
       <View style={pm.backdrop}>
         <Animated.View style={[pm.sheet, { transform: [{ translateY: slide }] }]}>
           <View style={pm.header}>
-            <View style={pm.crownWrap}><Text style={{ fontSize: 30 }}>👑</Text></View>
-            <Text style={pm.headerTitle}>VerifAI Pro</Text>
-            <Text style={pm.headerSub}>{rtl ? "זהה תוכן מזויף. בכל מקום. אוטומטית." : "Spot fake content. Everywhere. Automatically."}</Text>
+            <View style={pm.crownWrap}><Text style={{ fontSize: 28 }}>👑</Text></View>
+            <Text style={pm.headerTitle}>{rtl ? "שדרג את VerifAI" : "Upgrade VerifAI"}</Text>
+            <Text style={pm.headerSub}>{rtl ? "זהה תוכן מזויף. בכל מקום. ללא הגבלה." : "Spot fakes. Everywhere. Without limits."}</Text>
           </View>
 
-          <View style={pm.features}>
-            {FEATURES.map((f, i) => (
-              <View key={i} style={[pm.featureRow, row]}>
-                <View style={pm.featureIcon}><Text style={{ fontSize: 17 }}>{f.icon}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.featureTitle, align]}>{f.title}</Text>
-                  <Text style={[pm.featureDesc, align]}>{f.desc}</Text>
-                </View>
-                <Text style={pm.checkmark}>✓</Text>
-              </View>
-            ))}
+          <View style={pm.plans}>
+            {PLANS.map((p) => {
+              const active = plan === p.id;
+              return (
+                <TouchableOpacity key={p.id} activeOpacity={0.9} onPress={() => setPlan(p.id)}
+                  style={[pm.planCard, active && pm.planCardActive]}>
+                  <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+                    <Text style={[pm.planName, active && { color: C.text }]}>{p.name}</Text>
+                    <View style={[{ alignItems: "flex-end" }, row]}>
+                      <Text style={[pm.planPrice, active && { color: C.text }]}>{p.price}</Text>
+                      <Text style={pm.planPer}>/{rtl ? "חודש" : "mo"}</Text>
+                    </View>
+                  </View>
+                  <Text style={[pm.planTagline, align]}>{p.tagline}</Text>
+                  <View style={{ gap: 6, marginTop: 8 }}>
+                    {p.features.map((f, i) => (
+                      <View key={i} style={[{ alignItems: "flex-start", gap: 7 }, row]}>
+                        <Text style={pm.planCheck}>✓</Text>
+                        <Text style={[pm.planFeat, align, { flex: 1 }]}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <View style={[pm.priceRow, row]}>
-            <View style={{ flexDirection: rtl ? "row-reverse" : "row", alignItems: "flex-end", gap: 4 }}>
-              <Text style={pm.price}>₪19</Text>
-              <Text style={pm.pricePer}>/{rtl ? "חודש" : "mo"}</Text>
-            </View>
-            <View style={pm.badge}><Text style={pm.badgeText}>{rtl ? "7 ימים חינם" : "7 days free"}</Text></View>
-          </View>
-
-          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => { onClose(); Linking.openURL(PREMIUM_URL); }}>
-            <Text style={pm.ctaText}>{rtl ? "התחל ניסיון חינם" : "Start free trial"}</Text>
+          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => onChoose(plan)}>
+            <Text style={pm.ctaText}>
+              {rtl ? `המשך עם ${plan === "pro" ? "Pro" : "Pro-Max"}` : `Continue with ${plan === "pro" ? "Pro" : "Pro-Max"}`}
+            </Text>
           </TouchableOpacity>
+          <Text style={pm.trialNote}>{rtl ? "7 ימים חינם · ביטול בכל עת" : "7 days free · cancel anytime"}</Text>
           <TouchableOpacity onPress={onClose} style={pm.skip}>
             <Text style={pm.skipText}>{rtl ? "אולי מאוחר יותר" : "Maybe later"}</Text>
           </TouchableOpacity>
@@ -758,6 +772,8 @@ function AppInner() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
   const [scansTotal, setScansTotal] = useState(0);
+  const [tier, setTierState] = useState<Tier>("free");
+  const [usedThisMonth, setUsedThisMonth] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
   // A video link found in the clipboard — OFFERED as a one-tap suggestion,
   // never auto-run (auto-running on every launch felt like an uninvited scan).
@@ -780,8 +796,24 @@ function AppInner() {
     SecureStore.setItemAsync(LANG_KEY, l).catch(() => {});
   }, []);
 
+  const freeLimit = TIERS.free.monthlyScans;
+  const isPaid = tier !== "free";
+  const remaining = Math.max(0, freeLimit - usedThisMonth);
+
+  // Refresh tier + this-month usage from storage.
+  const refreshQuota = useCallback(async () => {
+    setTierState(await getTier());
+    setUsedThisMonth((await getUsage()).count);
+  }, []);
+
+  const applyTier = useCallback(async (next: Tier) => {
+    await persistTier(next);
+    await refreshQuota();
+  }, [refreshQuota]);
+
   // ── Persistence: history + language survive restarts ──
   useEffect(() => {
+    refreshQuota();
     (async () => {
       try {
         const l = await SecureStore.getItemAsync(LANG_KEY);
@@ -822,7 +854,17 @@ function AppInner() {
     }
   }, [scansTotal]);
 
+  // Gate a scan behind the monthly free allowance. Returns false (and opens the
+  // paywall) when the free user is out of scans; paid tiers always pass.
+  const gateScan = useCallback(async (): Promise<boolean> => {
+    if (await canScan()) return true;
+    setShowPremium(true);
+    Vibration.vibrate(40);
+    return false;
+  }, []);
+
   const detect = useCallback(async (url: string) => {
+    if (!(await gateScan())) return;
     setLoading(true);
     setSelected(null);
     Vibration.vibrate(30);
@@ -843,6 +885,7 @@ function AppInner() {
       setHistory((prev) => [item, ...prev.filter((h) => !h.loading).slice(0, 49)]);
       setSelected(item);
       setScansTotal((n) => n + 1);
+      recordScan().then((u) => setUsedThisMonth(u.count));
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch (e: unknown) {
       setHistory((prev) => prev.filter((h) => !h.loading));
@@ -862,9 +905,10 @@ function AppInner() {
     } finally {
       setLoading(false);
     }
-  }, [lang, rtl]);
+  }, [lang, rtl, gateScan]);
 
   const detectVideoFile = useCallback(async (uri: string, mimeType = "video/mp4") => {
+    if (!(await gateScan())) return;
     setLoading(true);
     setSelected(null);
     Vibration.vibrate(30);
@@ -886,13 +930,14 @@ function AppInner() {
       setHistory((prev) => [item, ...prev.filter((h) => !h.loading).slice(0, 49)]);
       setSelected(item);
       setScansTotal((n) => n + 1);
+      recordScan().then((u) => setUsedThisMonth(u.count));
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch {
       setHistory((prev) => prev.filter((h) => !h.loading));
     } finally {
       setLoading(false);
     }
-  }, [lang, rtl]);
+  }, [lang, rtl, gateScan]);
 
   // Clipboard → gentle suggestion (never auto-runs). When the app opens or
   // returns to the foreground and a fresh video link is on the clipboard, we
@@ -979,8 +1024,34 @@ function AppInner() {
     return { ai, edited, real };
   }, [history]);
 
+  // Start a checkout for the chosen tier. Real store/Paddle billing is wired in
+  // here later; today it opens the hosted checkout page and (best-effort)
+  // unlocks locally so the paid experience is testable end-to-end. The server
+  // remains the source of truth for anything that costs us money to run.
+  const startCheckout = useCallback(async (chosen: Tier) => {
+    setShowPremium(false);
+    try {
+      await Linking.openURL(`${PREMIUM_URL}?plan=${chosen}`);
+    } catch {}
+    // TODO(billing): replace with the store purchase result / webhook confirm.
+    await applyTier(chosen);
+    Alert.alert(
+      lang === "he" ? "השדרוג הופעל 🎉" : "Upgrade active 🎉",
+      lang === "he"
+        ? `אתה עכשיו ב-${chosen === "pro" ? "Pro" : "Pro-Max"} — בדיקות ללא הגבלה.`
+        : `You're on ${chosen === "pro" ? "Pro" : "Pro-Max"} — unlimited checks.`
+    );
+  }, [applyTier, lang]);
+
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
+
+  // Auto-scan (the floating button) is a paid feature. A free user flipping it
+  // on gets the paywall instead; turning it off is always allowed.
+  const onOverlayToggle = useCallback((v: boolean) => {
+    if (v && !isPaid) { setShowPremium(true); return; }
+    v ? startOverlay() : stopOverlay();
+  }, [isPaid, startOverlay, stopOverlay]);
 
   return (
     <SafeAreaView style={s.root}>
@@ -998,13 +1069,18 @@ function AppInner() {
       {selected && !selected.loading && (
         <ResultSheet item={selected} onClose={() => setSelected(null)} onRecheck={detect} lang={lang} />
       )}
-      <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} lang={lang} />
+      <PremiumModal
+        visible={showPremium}
+        onClose={() => setShowPremium(false)}
+        onChoose={startCheckout}
+        lang={lang}
+      />
       <GuideScreen
         visible={showGuide}
         onClose={() => setShowGuide(false)}
         lang={lang}
         overlayActive={overlayActive}
-        onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+        onToggle={onOverlayToggle}
       />
       <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
@@ -1025,12 +1101,32 @@ function AppInner() {
             <TouchableOpacity style={s.langBtn} onPress={() => setLang(lang === "he" ? "en" : "he")}>
               <Text style={s.langBtnText}>{lang === "he" ? "EN" : "עב"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.proBtn} onPress={() => setShowPremium(true)}>
-              <Text style={s.proBtnText}>👑 Pro</Text>
+            <TouchableOpacity style={[s.proBtn, isPaid && s.proBtnActive]} onPress={() => setShowPremium(true)}>
+              <Text style={s.proBtnText}>👑 {isPaid ? (tier === "promax" ? "Pro-Max" : "Pro") : "Pro"}</Text>
             </TouchableOpacity>
           </View>
         </View>
         <Text style={[s.tagline, align]}>{t.tagline}</Text>
+
+        {/* ── Free quota meter (hidden for paid tiers) ── */}
+        {!isPaid && (
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setShowPremium(true)} style={s.quotaCard}>
+            <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+              <Text style={[s.quotaLabel, align]}>
+                {remaining > 0
+                  ? (lang === "he" ? `${remaining} מתוך ${freeLimit} בדיקות חינם החודש` : `${remaining} of ${freeLimit} free checks left this month`)
+                  : (lang === "he" ? "נגמרו הבדיקות החינמיות החודש" : "No free checks left this month")}
+              </Text>
+              <Text style={s.quotaUpgrade}>{lang === "he" ? "שדרג ←" : "Upgrade →"}</Text>
+            </View>
+            <View style={s.quotaTrack}>
+              <View style={[s.quotaFill, {
+                width: `${Math.min(100, (usedThisMonth / freeLimit) * 100)}%`,
+                backgroundColor: remaining > 0 ? C.primary : C.ai,
+              }]} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* ── Detect card: paste a link → get an answer ── */}
         <View style={s.detectCard}>
@@ -1123,7 +1219,7 @@ function AppInner() {
           <StatusCard
             status={status}
             overlayActive={overlayActive}
-            onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+            onToggle={onOverlayToggle}
             lang={lang}
           />
         )}
@@ -1387,7 +1483,15 @@ const s = StyleSheet.create({
   langBtn: { backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: C.border },
   langBtnText: { color: C.sub, fontSize: 11, fontWeight: "700" },
   proBtn: { backgroundColor: "#171130", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.violet + "55" },
+  proBtnActive: { backgroundColor: C.violet + "33", borderColor: C.violet },
   proBtnText: { color: "#c4b5fd", fontSize: 12, fontWeight: "700" },
+
+  // Free quota meter
+  quotaCard: { backgroundColor: C.card, borderRadius: 16, padding: 14, gap: 10, borderWidth: 1, borderColor: C.border },
+  quotaLabel: { color: C.sub, fontSize: 13, fontWeight: "600", flex: 1 },
+  quotaUpgrade: { color: C.primary, fontSize: 12, fontWeight: "800" },
+  quotaTrack: { height: 6, borderRadius: 3, backgroundColor: "#ffffff10", overflow: "hidden" },
+  quotaFill: { height: 6, borderRadius: 3 },
 
   // Detect card (paste a link → answer)
   detectCard: {
@@ -1624,18 +1728,18 @@ const pm = StyleSheet.create({
   headerTitle: { color: "#fff", fontSize: 24, fontWeight: "900", letterSpacing: -0.5 },
   headerSub: { color: "#8b74e8", fontSize: 13, textAlign: "center", lineHeight: 18 },
 
-  features: { padding: 20, gap: 14 },
-  featureRow: { alignItems: "center", gap: 13 },
-  featureIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#1b1040", alignItems: "center", justifyContent: "center" },
-  featureTitle: { color: C.text, fontSize: 14, fontWeight: "700" },
-  featureDesc: { color: C.faint, fontSize: 12, marginTop: 1 },
-  checkmark: { color: C.violet, fontSize: 17, fontWeight: "800" },
-
-  priceRow: { justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 16 },
-  price: { color: "#fff", fontSize: 34, fontWeight: "900" },
-  pricePer: { color: C.faint, fontSize: 14, marginBottom: 7 },
-  badge: { backgroundColor: C.violet + "22", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: C.violet + "55" },
-  badgeText: { color: "#c4b5fd", fontSize: 13, fontWeight: "700" },
+  plans: { padding: 18, gap: 12 },
+  planCard: {
+    borderRadius: 18, padding: 16, gap: 4,
+    backgroundColor: "#ffffff06", borderWidth: 1.5, borderColor: C.border,
+  },
+  planCardActive: { borderColor: C.violet, backgroundColor: C.violet + "16" },
+  planName: { color: C.sub, fontSize: 18, fontWeight: "900" },
+  planPrice: { color: C.sub, fontSize: 22, fontWeight: "900" },
+  planPer: { color: C.faint, fontSize: 12, marginBottom: 3, marginHorizontal: 2 },
+  planTagline: { color: C.faint, fontSize: 12 },
+  planCheck: { color: C.violet, fontSize: 13, fontWeight: "800", lineHeight: 18 },
+  planFeat: { color: "#c9cae0", fontSize: 12.5, lineHeight: 18 },
 
   cta: {
     marginHorizontal: 18, borderRadius: 16, padding: 17, alignItems: "center",
@@ -1643,6 +1747,7 @@ const pm = StyleSheet.create({
     shadowColor: C.violet, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
   },
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  skip: { alignItems: "center", paddingVertical: 14 },
+  trialNote: { color: C.faint, fontSize: 11.5, textAlign: "center", marginTop: 10 },
+  skip: { alignItems: "center", paddingVertical: 12 },
   skipText: { color: C.faint, fontSize: 14 },
 });
