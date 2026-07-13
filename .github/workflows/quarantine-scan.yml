@@ -1,0 +1,62 @@
+name: Quarantine scan (verify a benchmark before ingesting)
+
+# Safely VETS a multi-generator AI-video benchmark before any of it can train.
+# For each repo it lists the video files (no download), classifies each by path,
+# and reports the AI / real / skipped split — so we can confirm the labels are
+# correct BEFORE flipping it live. This is the poison-proof on-ramp for
+# generator diversity: nothing here touches the training set.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: "Comma-separated HF dataset ids to scan (e.g. owner/name, owner/name2)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: master }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - name: Install deps
+        run: pip install huggingface_hub
+      - name: Dry-run scan each repo
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          IFS=',' read -ra R <<< "${{ github.event.inputs.repos }}"
+          for repo in "${R[@]}"; do
+            repo=$(echo "$repo" | xargs); [ -z "$repo" ] && continue
+            echo "::group::scan $repo"
+            python training/collect_hf.py --repo "$repo" --auto-label --dry-run || true
+            echo "::endgroup::"
+          done
+      - name: Summarize the split
+        if: always()
+        run: |
+          {
+            echo "## Quarantine scan — is each repo safe to ingest?"
+            python - <<'EOF'
+          import json, os
+          try:
+              rep = json.load(open("data/hf_quarantine_report.json"))
+          except Exception:
+              rep = {}
+          if not rep:
+              print("- (no repos scanned or none reachable)")
+          for repo, s in rep.items():
+              tot = s.get("total", 0)
+              print(f"\n### `{repo}` — {tot} videos")
+              print(f"- would add: **{s.get('ai',0)} AI**, **{s.get('real',0)} real**; skipped ambiguous: {s.get('skip',0)}")
+              for c in ("ai","real"):
+                  for e in s.get("examples",{}).get(c,[]):
+                      print(f"  - {c}: `{e}`")
+          EOF
+          } >> "$GITHUB_STEP_SUMMARY"
