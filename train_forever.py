@@ -205,6 +205,23 @@ def dataset_stats() -> tuple[int, int]:
     return ai, real
 
 
+# A starved AI class drowns in real footage: at 400 AI / 4760 real the model
+# just learns "say real", capping recall. Never let real outnumber AI by more
+# than this — once we're there, MORE real is not improvement, it's noise, so the
+# real collectors stop and we wait for diverse AI instead.
+REAL_TO_AI_CAP = float(os.environ.get("REAL_TO_AI_CAP", "3.0"))
+
+
+def real_class_saturated() -> bool:
+    """True when the real class already dwarfs the AI class — the signal that
+    collecting more real would only worsen the imbalance."""
+    try:
+        ai, real = dataset_stats()
+    except Exception:
+        return False
+    return ai >= 15 and real >= REAL_TO_AI_CAP * ai
+
+
 QUERY_MUTATORS = ["", "2026", "new", "latest", "#shorts", "demo", "4k", "compilation"]
 
 
@@ -506,13 +523,20 @@ def run(batch: int, max_samples: int, once: bool, rounds: int = 0):
                 print(f"    ✓ AI   {f.name[:55]}")
         print(f"       added {added_ai} AI samples")
 
-        # ── Download Real ─────────────────────────────────────────────────────
-        print(f"\n  [Real] {real_q}")
-        real_files = download_yt(real_q, REAL_DIR, n_per_query, seen)
-        print(f"         {len(real_files)} new files downloaded")
+        # ── Download Real (only while the classes are still balanced) ─────────
+        if real_class_saturated():
+            ai_n, real_n = dataset_stats()
+            print(f"\n  [Real] skipped — real class saturated "
+                  f"({real_n} real vs {ai_n} AI, cap {REAL_TO_AI_CAP}x). "
+                  f"Need diverse AI, not more real.")
+            real_files = []
+        else:
+            print(f"\n  [Real] {real_q}")
+            real_files = download_yt(real_q, REAL_DIR, n_per_query, seen)
+            print(f"         {len(real_files)} new files downloaded")
 
         # Supplement with Pexels if key available
-        if pexels_key and len(real_files) < 3:
+        if not real_class_saturated() and pexels_key and len(real_files) < 3:
             pq = pexels_searches.pop(0) if pexels_searches else random.choice(PEXELS_REAL_SEARCHES)
             if not pexels_searches:
                 pexels_searches = PEXELS_REAL_SEARCHES.copy()

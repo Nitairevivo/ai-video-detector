@@ -8,6 +8,8 @@ import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
+import { useShareIntent } from "expo-share-intent";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
@@ -20,7 +22,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.4";
+const APP_VERSION = "1.7.5";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -28,6 +30,7 @@ const GRAD_START = { x: 0, y: 0 };
 const GRAD_END = { x: 1, y: 1 };
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
+const GUIDE_SEEN_KEY = "verifai_guide_seen";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -71,6 +74,7 @@ const T = {
     detectTip: "הדבקת קישור עובדת לקישורים ישירים ולסרטונים מתויגי-AI. יוטיוב/טיקטוק לפעמים חוסמים הורדה — אז לזה יש דרך טובה יותר ↓",
     reliableTitle: "הדרך שתמיד עובדת",
     reliableBody: "פתח את הסרטון באפליקציה (TikTok / YouTube / וואטסאפ) → לחץ ‘שתף’ → בחר VerifAI. ככה מעלים את הקובץ עצמו, בלי הורדה — ותמיד מקבלים תשובה.",
+    pickGallery: "בחר סרטון או תמונה מהגלריה",
     invalidLink: "הדבק קישור תקין שמתחיל ב-http",
     howKnowTitle: "איך VerifAI יודע?",
     howKnowRows: [
@@ -167,6 +171,7 @@ const T = {
     detectTip: "Pasting works for direct links and AI-labeled videos. YouTube/TikTok sometimes block downloads — for those there's a better way ↓",
     reliableTitle: "The way that always works",
     reliableBody: "Open the video in its app (TikTok / YouTube / WhatsApp) → tap ‘Share’ → pick VerifAI. This uploads the file itself, no download — so it always gets an answer.",
+    pickGallery: "Pick a video or image from your gallery",
     invalidLink: "Paste a valid link that starts with http",
     howKnowTitle: "How VerifAI knows",
     howKnowRows: [
@@ -702,9 +707,25 @@ const GUIDE = {
     enableBtn: "הפעל את הכפתור הצף",
     disableBtn: "כבה את הכפתור הצף",
     enabledBadge: "הכפתור הצף פעיל ✓",
+    // iOS — Apple forbids floating overlays, so we give the two native paths.
+    iosTitle: "בדיקה תוך כדי גלילה (iPhone)",
+    iosSub: "גם באייפון VerifAI קורא את הקוד האמיתי מאחורי הסרטון — C2PA, מטא-דאטה ותוויות AI — בדיוק כמו באנדרואיד. פשוט אין כפתור צף (אפל אוסרת overlay), אז נותנים לו את הסרטון במחווה אחת:",
+    iosShareTitle: "1. שתף → VerifAI (קורא את הקוד המלא)",
+    iosShareSub: "בכל אפליקציה לחץ ‘שתף’ על הסרטון ובחר VerifAI. השרת מוריד את הסרטון המקורי מהקישור וקורא את הקוד עצמו — C2PA, מטא-דאטה ותוויות AI — בדיוק כמו האנדרואיד. זו הבדיקה החזקה והמלאה.",
+    iosTapTitle: "2. הקשה כפולה על הגב — קיצור שקורא את הקוד",
+    iosTapSub: "הגדרה חד-פעמית של ~2 דקות. אחר כך: העתק את קישור הסרטון (‘Copy Link’), הקשה כפולה על גב האייפון — והקיצור שולח את הקישור ל-VerifAI, שקורא את הקוד ומחזיר תשובה בהתראה:",
+    iosTapSteps: [
+      "פתח את אפליקציית ‘Shortcuts’ (קיצורים) → צור קיצור חדש (+).",
+      "הוסף פעולה ‘Get Clipboard’ (קבל לוח) — לשם יגיע קישור הסרטון שהעתקת.",
+      "הוסף ‘Get Contents of URL’ — לחץ למטה על ‘העתק כתובת API’ והדבק; Method = POST; Request Body = JSON; הוסף שדה טקסט בשם url וקבע אותו ל-Clipboard.",
+      "הוסף ‘Show Notification’ שמציג את התוצאה.",
+      "שמור בשם ‘VerifAI’. ואז: הגדרות → נגישות → מגע → הקשה מאחור → הקשה כפולה → בחר ‘VerifAI’. עכשיו: העתק קישור → הקשה כפולה → תשובה.",
+    ],
+    copyApi: "העתק כתובת API",
+    apiCopied: "הועתק ✓",
     evidenceTitle: "איך VerifAI יודע?",
     back: "חזרה",
-    tip: "טיפ: הדרך הכי אמינה תמיד היא ‘שתף → VerifAI’ — כי היא מעלה את הקובץ עצמו.",
+    tip: "טיפ: ‘שתף → VerifAI’ תמיד קורא את הקוד המלא של הסרטון. הדבר היחיד שאי-אפשר באייפון הוא בדיקה בלי שום מגע ברקע — אפל חוסמת גישה לאפליקציות אחרות, וזה לא קשור לחשבון.",
   },
   en: {
     title: "How it works",
@@ -735,9 +756,24 @@ const GUIDE = {
     enableBtn: "Enable the floating button",
     disableBtn: "Turn off the floating button",
     enabledBadge: "Floating button is on ✓",
+    iosTitle: "Check while scrolling (iPhone)",
+    iosSub: "On iPhone too, VerifAI reads the real code behind the video — C2PA, metadata and AI labels — exactly like Android. There’s just no floating button (Apple forbids overlays), so you hand it the video in one gesture:",
+    iosShareTitle: "1. Share → VerifAI (reads the full code)",
+    iosShareSub: "In any app, tap ‘Share’ on the video and pick VerifAI. The server downloads the original from the link and reads the code itself — C2PA, metadata and AI labels — exactly like Android. This is the strongest, fullest check.",
+    iosTapTitle: "2. Double-tap the back — a Shortcut that reads the code",
+    iosTapSub: "A one-time ~2-minute setup. Then: copy the video’s link (‘Copy Link’), double-tap the back of your iPhone — the Shortcut sends the link to VerifAI, which reads the code and returns the verdict as a notification:",
+    iosTapSteps: [
+      "Open the ‘Shortcuts’ app → create a new shortcut (+).",
+      "Add ‘Get Clipboard’ — this is where the link you copied lands.",
+      "Add ‘Get Contents of URL’ — tap ‘Copy API URL’ below and paste it; Method = POST; Request Body = JSON; add a text field named url set to the Clipboard.",
+      "Add ‘Show Notification’ to display the result.",
+      "Save it as ‘VerifAI’. Then: Settings → Accessibility → Touch → Back Tap → Double Tap → choose ‘VerifAI’. Now: copy a link → double-tap → verdict.",
+    ],
+    copyApi: "Copy API URL",
+    apiCopied: "Copied ✓",
     evidenceTitle: "How does VerifAI know?",
     back: "Back",
-    tip: "Tip: the most reliable path is always ‘Share → VerifAI’ — it uploads the file itself.",
+    tip: "Tip: ‘Share → VerifAI’ always reads the video’s full code. The only thing impossible on iPhone is a zero-touch background check — Apple blocks access to other apps, and that’s not about your account.",
   },
 } as const;
 
@@ -752,6 +788,14 @@ function GuideScreen({
   const rtl = lang === "he";
   const align = { textAlign: rtl ? "right" : "left" } as const;
   const row = { flexDirection: rtl ? "row-reverse" : "row" } as const;
+  const [copied, setCopied] = useState(false);
+  const copyApi = async () => {
+    try {
+      await Clipboard.setStringAsync(`${API}/detect-url`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {}
+  };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -789,32 +833,63 @@ function GuideScreen({
             </View>
           ))}
 
-          {/* floating button */}
-          <Text style={[gd.section, align]}>{g.floatTitle}</Text>
-          <Text style={[gd.subtle, align]}>{g.floatSub}</Text>
-          {g.floatSteps.map((step, i) => (
-            <View key={i} style={[gd.numRow, row]}>
-              <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
-                <Text style={gd.numText}>{i + 1}</Text>
-              </LinearGradient>
-              <Text style={[gd.numStep, align]}>{step}</Text>
-            </View>
-          ))}
-          {Platform.OS === "android" && (
-            overlayActive ? (
-              <View style={gd.enabledBadge}><Text style={gd.enabledText}>{g.enabledBadge}</Text></View>
-            ) : (
-              <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={() => onToggle(true)}>
+          {/* Mid-scroll checking — platform specific */}
+          {Platform.OS === "android" ? (
+            <>
+              <Text style={[gd.section, align]}>{g.floatTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.floatSub}</Text>
+              {g.floatSteps.map((step, i) => (
+                <View key={i} style={[gd.numRow, row]}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
+                    <Text style={gd.numText}>{i + 1}</Text>
+                  </LinearGradient>
+                  <Text style={[gd.numStep, align]}>{step}</Text>
+                </View>
+              ))}
+              {overlayActive ? (
+                <View style={gd.enabledBadge}><Text style={gd.enabledText}>{g.enabledBadge}</Text></View>
+              ) : (
+                <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={() => onToggle(true)}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.enableBtn}>
+                    <Text style={gd.enableText}>✨  {g.enableBtn}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+              {overlayActive && (
+                <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
+                  <Text style={gd.offText}>{g.disableBtn}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={[gd.section, align]}>{g.iosTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.iosSub}</Text>
+              {/* Method 1 — Share */}
+              <View style={[gd.stepCard, row]}>
+                <View style={gd.stepIconWrap}><Text style={gd.stepIcon}>📤</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[gd.stepTitle, align]}>{g.iosShareTitle}</Text>
+                  <Text style={[gd.stepDesc, align]}>{g.iosShareSub}</Text>
+                </View>
+              </View>
+              {/* Method 2 — Back Tap shortcut */}
+              <Text style={[gd.stepTitle, align, { marginTop: 20 }]}>{g.iosTapTitle}</Text>
+              <Text style={[gd.subtle, align]}>{g.iosTapSub}</Text>
+              {g.iosTapSteps.map((step, i) => (
+                <View key={i} style={[gd.numRow, row]}>
+                  <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
+                    <Text style={gd.numText}>{i + 1}</Text>
+                  </LinearGradient>
+                  <Text style={[gd.numStep, align]}>{step}</Text>
+                </View>
+              ))}
+              <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={copyApi}>
                 <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.enableBtn}>
-                  <Text style={gd.enableText}>✨  {g.enableBtn}</Text>
+                  <Text style={gd.enableText}>{copied ? g.apiCopied : `📋  ${g.copyApi}`}</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            )
-          )}
-          {Platform.OS === "android" && overlayActive && (
-            <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
-              <Text style={gd.offText}>{g.disableBtn}</Text>
-            </TouchableOpacity>
+            </>
           )}
 
           {/* troubleshooting — the button isn't showing */}
@@ -920,6 +995,16 @@ function AppInner() {
         }
       } catch {}
       setHistoryLoaded(true);
+      // First launch ever: auto-open the platform-specific setup guide once, so
+      // an iPhone user sees the iPhone steps and an Android user sees the
+      // floating-button steps — without hunting for them.
+      try {
+        const seen = await SecureStore.getItemAsync(GUIDE_SEEN_KEY);
+        if (!seen) {
+          SecureStore.setItemAsync(GUIDE_SEEN_KEY, "1").catch(() => {});
+          setTimeout(() => setShowGuide(true), 600);
+        }
+      } catch {}
     })();
   }, []);
 
@@ -1030,6 +1115,34 @@ function AppInner() {
     }
   }, [lang, rtl, gateScan]);
 
+  // Pick a video/image straight from the gallery — the primary input on iOS
+  // (which has no floating button), and a convenient one on Android too.
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          lang === "he" ? "צריך גישה לגלריה" : "Gallery access needed",
+          lang === "he"
+            ? "אפשר גישה לתמונות/וידאו כדי לבחור קובץ לבדיקה."
+            : "Allow photo/video access to pick a file to check."
+        );
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos", "images"],
+        quality: 1,
+        videoMaxDuration: 120,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      const mime = a.mimeType || (a.type === "video" ? "video/mp4" : "image/jpeg");
+      detectVideoFile(a.uri, mime);
+    } catch (e) {
+      Alert.alert(T[lang].error, e instanceof Error ? e.message : "");
+    }
+  }, [lang, detectVideoFile]);
+
   // Clipboard → gentle suggestion (never auto-runs). When the app opens or
   // returns to the foreground and a fresh video link is on the clipboard, we
   // OFFER it as a one-tap chip instead of silently scanning it — so opening the
@@ -1051,19 +1164,28 @@ function AppInner() {
     return () => sub.remove();
   }, [offerClipboard]);
 
-  // Video FILES shared from TikTok/Instagram (Share → VerifAI)
+  // Share → VerifAI, on BOTH platforms. On iOS this is the mid-scroll answer:
+  // while watching any app, tap Share → VerifAI and it lands here. Handles a
+  // shared file (video/image) or a shared link/text.
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({
+    debug: false,
+    resetOnBackground: true,
+  });
   useEffect(() => {
-    const { NativeModules } = require("react-native");
-    const IntentModule = NativeModules.IntentModule || NativeModules.RNIntentModule;
-    if (IntentModule?.getInitialIntent) {
-      IntentModule.getInitialIntent().then((intent: { uri?: string; type?: string }) => {
-        const mime = intent?.type || "";
-        if (intent?.uri && (mime.startsWith("video/") || mime.startsWith("image/"))) {
-          detectVideoFile(intent.uri, mime);
-        }
-      }).catch(() => {});
-    }
-  }, []);
+    if (!hasShareIntent) return;
+    try {
+      const files = shareIntent?.files;
+      if (files && files.length > 0 && files[0]?.path) {
+        const f = files[0];
+        const mime = f.mimeType || (String(f.mimeType).startsWith("image") ? "image/jpeg" : "video/mp4");
+        detectVideoFile(f.path, mime);
+      } else {
+        const shared = (shareIntent?.webUrl || shareIntent?.text || "").trim();
+        if (shared.startsWith("http")) detect(shared);
+      }
+    } catch {}
+    resetShareIntent();
+  }, [hasShareIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep links / shared URLs
   const handleIncomingUrl = useCallback((url: string | null) => {
@@ -1305,6 +1427,18 @@ function AppInner() {
             )}
            </LinearGradient>
           </TouchableOpacity>
+
+          {/* Gallery picker — the primary way to check a local file on iOS */}
+          <TouchableOpacity
+            style={[s.galleryBtn, row]}
+            onPress={pickFromGallery}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <Text style={s.galleryIcon}>🖼️</Text>
+            <Text style={s.galleryText}>{t.pickGallery}</Text>
+          </TouchableOpacity>
+
           <Text style={s.detectHint}>{t.detectTip}</Text>
         </View>
 
@@ -1364,7 +1498,11 @@ function AppInner() {
           </LinearGradient>
           <View style={{ flex: 1 }}>
             <Text style={[s.cardTitle, align]}>▶️ {rtl ? "צפה איך זה עובד" : "See how it works"}</Text>
-            <Text style={[s.guideSub, align]}>{rtl ? "הדגמה חיה + מדריך מלא שלב אחר שלב" : "Live demo + full step-by-step guide"}</Text>
+            <Text style={[s.guideSub, align]}>{
+              Platform.OS === "ios"
+                ? (rtl ? "הדגמה חיה + מדריך מלא ל-iPhone" : "Live demo + full iPhone guide")
+                : (rtl ? "הדגמה חיה + מדריך מלא — כולל הכפתור הצף" : "Live demo + full guide — including the floating button")
+            }</Text>
           </View>
           <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
         </TouchableOpacity>
@@ -1676,6 +1814,15 @@ const s = StyleSheet.create({
   shareHeroCta: { marginTop: 14, backgroundColor: "#ffffff12", borderRadius: 13, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: C.border },
   shareHeroCtaText: { color: C.text, fontSize: 14, fontWeight: "800" },
   orLabel: { color: C.faint, fontSize: 12, fontWeight: "700", marginTop: 2, marginBottom: -6 },
+
+  // Gallery picker button
+  galleryBtn: {
+    alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8,
+    paddingVertical: 13, borderRadius: 15,
+    backgroundColor: "#ffffff0d", borderWidth: 1.5, borderColor: C.primary + "4d",
+  },
+  galleryIcon: { fontSize: 16 },
+  galleryText: { color: "#d8d2ff", fontSize: 14, fontWeight: "800" },
 
   // Copied-link suggestion chip
   clipHint: {

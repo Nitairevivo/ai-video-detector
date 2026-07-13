@@ -21,6 +21,14 @@ from models.classifier import get_classifier
 
 def collect(per_query: int, retrain_every: int = 100) -> int:
     from tests.collect_cloud_benchmark import collect_archive_org, collect_wikimedia
+    from train_forever import real_class_saturated, dataset_stats
+
+    # Don't worsen a starved AI class — more real footage past the cap is noise.
+    if real_class_saturated():
+        ai, real = dataset_stats()
+        print(f"[freesrc] skipped — real class saturated ({real} real vs {ai} AI). "
+              f"Waiting for diverse AI instead of piling on real.")
+        return 0
 
     classifier = get_classifier()
     seen = _trained_sources()

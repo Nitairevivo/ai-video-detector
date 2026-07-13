@@ -26,8 +26,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from train_forever import label_file, retrain, _trained_sources  # reuse the vetted path
-from models.classifier import get_classifier
+# NOTE: the heavy training stack (train_forever → analyzer → numpy/cv) is imported
+# LAZILY inside the collectors, so the lightweight --dry-run scan (which only
+# needs huggingface_hub + path_labeler) runs without the full ML dependencies.
 
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".3gp", ".ogv")
 
@@ -68,6 +69,96 @@ def _iter_repo_videos(repo_id: str, limit: int, seen: set):
         got += 1
 
 
+def _list_repo_video_paths(repo_id: str):
+    """Full relative paths of every video file in a repo — no download. Used to
+    classify class-by-path cheaply before deciding what (if anything) to pull."""
+    from huggingface_hub import HfApi
+    api = HfApi()
+    token = os.environ.get("HF_TOKEN") or None
+    try:
+        files = api.list_repo_files(repo_id, repo_type="dataset", token=token)
+    except Exception as e:
+        print(f"[hf] cannot list {repo_id}: {e}")
+        return []
+    return [f for f in files if f.lower().endswith(VIDEO_EXTS)]
+
+
+def dry_run_repo(repo_id: str) -> dict:
+    """QUARANTINE scan: report the class split a repo WOULD contribute, by path,
+    without downloading or training on anything. This is how we verify a
+    multi-generator benchmark is safe to ingest before it can ever touch the
+    model."""
+    from training.path_labeler import classify
+    paths = _list_repo_video_paths(repo_id)
+    split = {"ai": 0, "real": 0, "skip": 0, "total": len(paths)}
+    ex = {"ai": [], "real": []}
+    for f in paths:
+        c = classify(f)
+        if c is None:
+            split["skip"] += 1
+        else:
+            split[c] += 1
+            if len(ex[c]) < 3:
+                ex[c].append(f)
+    split["examples"] = ex
+    return split
+
+
+def collect_auto(repo_id: str, limit: int, retrain_every: int = 200) -> dict:
+    """Ingest a MULTI-CLASS benchmark safely: classify each file by path, pull
+    only the confidently-labeled ones, skip everything ambiguous. Returns the
+    class counts actually added."""
+    from training.path_labeler import classify
+    from train_forever import (real_class_saturated, label_file, retrain,
+                               _trained_sources)
+    from models.classifier import get_classifier
+    from huggingface_hub import hf_hub_download
+    classifier = get_classifier()
+    seen = _trained_sources()
+    token = os.environ.get("HF_TOKEN") or None
+    counts = {"ai": 0, "real": 0, "skip": 0}
+    # When the real class is already saturated, only pull the AI half — the whole
+    # point of ingesting a benchmark right now is to un-starve the AI class.
+    skip_real = real_class_saturated()
+    for f in _list_repo_video_paths(repo_id):
+        if counts["ai"] + counts["real"] >= limit:
+            break
+        cls = classify(f)
+        if cls is None:
+            counts["skip"] += 1
+            continue
+        if cls == "real" and skip_real:
+            continue
+        tag = f"hf:{repo_id}:{f}"
+        stored = tag.replace("/", "_").replace(":", "_")
+        if stored in seen or tag in seen:
+            continue
+        try:
+            local = Path(hf_hub_download(repo_id, f, repo_type="dataset", token=token))
+        except Exception as e:
+            print(f"    ✗ download {f}: {e}")
+            continue
+        try:
+            renamed = local.with_name(stored)
+            os.replace(local, renamed)
+            local = renamed
+        except Exception:
+            pass
+        if label_file(local, is_ai=(cls == "ai"), classifier=classifier):
+            counts[cls] += 1
+            if (counts["ai"] + counts["real"]) % retrain_every == 0:
+                retrain(classifier)
+        try:
+            os.unlink(local)
+        except Exception:
+            pass
+    if counts["ai"] + counts["real"]:
+        retrain(classifier)
+    print(f"[hf-auto] {repo_id}: +{counts['ai']} AI / +{counts['real']} real "
+          f"({counts['skip']} skipped as ambiguous)")
+    return counts
+
+
 def _record_hard_stats(repo_id: str, is_ai: bool, added: int, hard: int):
     """Append this repo's hard-sample rate to data/hard_samples_report.json so we
     can SEE which generators the model is weakest on and steer future collection
@@ -92,6 +183,8 @@ def _record_hard_stats(repo_id: str, is_ai: bool, added: int, hard: int):
 
 
 def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> int:
+    from train_forever import label_file, retrain, _trained_sources
+    from models.classifier import get_classifier
     classifier = get_classifier()
     seen = _trained_sources()
     added = 0
@@ -137,9 +230,40 @@ def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True, help="Hugging Face dataset repo id")
-    ap.add_argument("--label", required=True, choices=["ai", "real"])
+    ap.add_argument("--label", choices=["ai", "real"],
+                    help="Force a single class for the whole repo (single-class repos)")
+    ap.add_argument("--auto-label", action="store_true",
+                    help="Multi-class benchmark: classify each file by path, skip ambiguous")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="With --auto-label: report the class split by path, download/train nothing")
     ap.add_argument("--limit", type=int, default=500)
     args = ap.parse_args()
+
+    if args.dry_run:
+        import json
+        split = dry_run_repo(args.repo)
+        print(f"[dry-run] {args.repo}: {json.dumps({k: v for k, v in split.items() if k != 'examples'})}")
+        for c in ("ai", "real"):
+            for e in split["examples"][c]:
+                print(f"    {c}: {e}")
+        # accumulate a quarantine report for the workflow to surface
+        rp = Path(__file__).parent.parent / "data" / "hf_quarantine_report.json"
+        try:
+            rep = json.loads(rp.read_text()) if rp.exists() else {}
+        except Exception:
+            rep = {}
+        rep[args.repo] = split
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text(json.dumps(rep, indent=2))
+        return
+
+    if args.auto_label:
+        c = collect_auto(args.repo, limit=args.limit)
+        print(f"done: +{c['ai']} AI / +{c['real']} real")
+        return
+
+    if not args.label:
+        ap.error("provide --label, or --auto-label (optionally with --dry-run)")
     n = collect(args.repo, is_ai=(args.label == "ai"), limit=args.limit)
     print(f"done: +{n}")
 

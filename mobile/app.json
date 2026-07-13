@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.7.4",
+    "version": "1.7.5",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -35,52 +35,14 @@
         "backgroundColor": "#07070f"
       },
       "package": "com.verifai.app",
-      "versionCode": 17,
+      "versionCode": 25,
       "permissions": [
         "android.permission.READ_CLIPBOARD",
         "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "intentFilters": [
-        {
-          "action": "android.intent.action.SEND",
-          "data": [
-            {
-              "mimeType": "video/*"
-            },
-            {
-              "mimeType": "image/*"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "data": [
-            {
-              "mimeType": "text/plain"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND_MULTIPLE",
-          "data": [
-            {
-              "mimeType": "video/*"
-            },
-            {
-              "mimeType": "image/*"
-            }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT"
-          ]
-        },
         {
           "action": "android.intent.action.VIEW",
           "autoVerify": true,
@@ -166,7 +128,19 @@
       ]
     },
     "plugins": [
-      "./plugins/withAndroidOverlay.js"
+      "./plugins/withAndroidOverlay.js",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*", "image/*", "video/*"]
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://ai-video-detector-production-a305.up.railway.app",
