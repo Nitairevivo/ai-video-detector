@@ -99,8 +99,17 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
         layers["metadata"] = meta_conf
         votes.append((0.5 + meta_conf, 0.4))
 
-    # Frame-ML classifier: only in its informative region (tiny training set)
-    if ml_prob is not None and (ml_prob >= 0.70 or ml_prob <= 0.30):
+    # Frame-ML classifier: only in its informative region (tiny training set),
+    # and NEVER on a metadata-stripped file. The code-first vector is built
+    # largely from container/metadata tags; when a platform (TikTok, Instagram,
+    # Facebook) re-encodes and strips them, the vector is degenerate and a
+    # confident score is spurious. Worse: a spurious "real" here becomes an
+    # `oppose_real` witness that suppresses a *correct* Gemini AI verdict via
+    # the single-witness rule below — the exact way obvious AI reels read as
+    # "real". On a stripped file the classifier abstains and the vision layers
+    # decide.
+    metadata_stripped = bool(meta_result.signals.get("metadata_is_stripped"))
+    if ml_prob is not None and not metadata_stripped and (ml_prob >= 0.70 or ml_prob <= 0.30):
         layers["frame_ml"] = round(ml_prob, 3)
         votes.append((ml_prob, 0.45))
 
