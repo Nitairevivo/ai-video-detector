@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",

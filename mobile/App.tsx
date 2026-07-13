@@ -18,7 +18,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -81,7 +81,9 @@ const T = {
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
-    statusAllGood: "הכל מוגדר — הכפתור יופיע בתוך TikTok, Instagram ו-YouTube",
+    statusAllGood: "הכל מוגדר — הכפתור הצף פעיל ומוכן",
+    statusAllApps: "הצג בכל האפליקציות",
+    statusAllAppsSub: "כבוי = רק רשתות חברתיות, הודעות, היכרויות ומרקטפלייס",
     howTitle: "איך זה עובד?",
     howSteps: [
       "פתח TikTok / Instagram / YouTube — כפתור VerifAI יופיע בצד",
@@ -168,7 +170,9 @@ const T = {
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
-    statusAllGood: "All set — the button shows up inside TikTok, Instagram & YouTube",
+    statusAllGood: "All set — the floating button is live",
+    statusAllApps: "Show in all apps",
+    statusAllAppsSub: "Off = only social, messaging, dating & marketplace apps",
     howTitle: "How it works",
     howSteps: [
       "Open TikTok / Instagram / YouTube — the VerifAI button appears",
@@ -504,6 +508,9 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const { OverlayModule } = require("react-native").NativeModules;
 
+  const [allApps, setAllApps] = useState(status.appsMode !== "recommended");
+  useEffect(() => { setAllApps(status.appsMode !== "recommended"); }, [status.appsMode]);
+
   const allGood = status.overlayPermission && (PLAY_BUILD || status.accessibilityEnabled) && overlayActive;
 
   const Row = ({ ok, label, onFix }: { ok: boolean; label: string; onFix?: () => void }) => (
@@ -547,6 +554,24 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
         />
       )}
       <Row ok={overlayActive} label={t.statusService} />
+
+      {!PLAY_BUILD && overlayActive && (
+        <View style={[st.row, row, { marginTop: 2 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[st.rowLabel, align]}>{t.statusAllApps}</Text>
+            <Text style={[st.rowSub, align]}>{t.statusAllAppsSub}</Text>
+          </View>
+          <Switch
+            value={allApps}
+            onValueChange={(v) => {
+              setAllApps(v); // optimistic — confirmed on next getStatus refresh
+              OverlayModule?.setAppsMode?.(v ? "all" : "recommended").catch(() => setAllApps(!v));
+            }}
+            trackColor={{ false: "#1c1e36", true: C.primaryDeep }}
+            thumbColor={allApps ? C.primary : "#3a3f58"}
+          />
+        </View>
+      )}
 
       {allGood && <Text style={[st.allGood, align]}>{t.statusAllGood}</Text>}
     </View>
@@ -1531,6 +1556,7 @@ const st = StyleSheet.create({
   row: { alignItems: "center", gap: 10, paddingVertical: 7 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   rowLabel: { color: C.sub, fontSize: 13 },
+  rowSub: { color: C.faint, fontSize: 10.5, marginTop: 2 },
   okText: { color: C.real, fontSize: 12, fontWeight: "700" },
   offText: { color: C.faint, fontSize: 12 },
   fixBtn: { backgroundColor: C.primaryDeep, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 },

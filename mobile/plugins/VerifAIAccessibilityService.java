@@ -16,7 +16,8 @@ import java.util.Set;
 
 public class VerifAIAccessibilityService extends AccessibilityService {
 
-    /** Apps where the floating button is allowed to appear. */
+    /** Apps with public share links — where Share→Copy Link automation works.
+     *  Everywhere else the button falls back to screen-frame analysis. */
     public static final Set<String> SUPPORTED_PACKAGES = new HashSet<>(Arrays.asList(
         "com.zhiliaoapp.musically",   // TikTok
         "com.ss.android.ugc.trill",   // TikTok (some regions)
@@ -26,6 +27,78 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         "com.twitter.android",         // Twitter/X
         "com.reddit.frontpage"         // Reddit
     ));
+
+    /** Curated list for "recommended" mode: social + messaging + dating +
+     *  marketplaces — the places people actually get scammed. */
+    public static final Set<String> RECOMMENDED_PACKAGES = new HashSet<>(Arrays.asList(
+        // link apps
+        "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+        "com.instagram.android", "com.google.android.youtube",
+        "com.facebook.katana", "com.twitter.android", "com.reddit.frontpage",
+        // messaging (frame-capture path)
+        "com.whatsapp", "com.whatsapp.w4b",
+        "org.telegram.messenger", "org.telegram.messenger.web",
+        "com.facebook.orca",           // Messenger
+        "com.snapchat.android",
+        "jp.naver.line.android",
+        "com.viber.voip",
+        "com.discord",
+        // dating
+        "com.tinder", "com.bumble.app", "com.badoo.mobile",
+        "com.okcupid.okcupid", "com.grindrapp.android",
+        // marketplaces / classifieds
+        "com.gindi.yad2",              // Yad2 (IL)
+        "com.facebook.marketplace",
+        "com.ebay.mobile", "com.alibaba.aliexpresshd",
+        "com.depop", "com.vinted",
+        // other video/social
+        "com.pinterest", "com.linkedin.android",
+        "com.twitch.android.app", "com.kwai.video", "video.like"
+    ));
+
+    // Where the button must NEVER appear, even in "all apps" mode: our own
+    // windows, system surfaces, keyboards, launchers, phone, and payment/banking
+    // apps (user trust + Play policy).
+    private static final Set<String> NEVER_SHOW_PACKAGES = new HashSet<>(Arrays.asList(
+        "com.google.android.apps.walletnfcrel", // Google Wallet
+        "com.google.android.gms",
+        "com.ideomobile.hapoalim",   // Bank Hapoalim
+        "com.leumi.leumiwallet",     // Bank Leumi
+        "com.bnhp.payments.paymentsapp", // Bit
+        "com.payboxapp",             // PayBox
+        "il.co.mizrahi.MizrahiTefahot",
+        "com.isracard.hai",
+        "com.max.mobile",
+        "com.onezero.bank"
+    ));
+
+    /** "all" = show in every app except exclusions; "recommended" = curated list. */
+    private static volatile String appsMode = "all";
+
+    public static void setAppsMode(String mode) {
+        appsMode = "recommended".equals(mode) ? "recommended" : "all";
+    }
+
+    public static String getAppsMode() { return appsMode; }
+
+    private static boolean isExcludedEverywhere(String pkg, String ownPkg) {
+        if (pkg == null || pkg.isEmpty()) return true;
+        if (pkg.equals(ownPkg)) return true;
+        if (NEVER_SHOW_PACKAGES.contains(pkg)) return true;
+        if (pkg.equals("android") || pkg.startsWith("com.android.")) return true; // systemui, settings, dialer, vending…
+        if (pkg.contains("inputmethod") || pkg.contains("keyboard")) return true;
+        if (pkg.contains("launcher") || pkg.endsWith(".home")) return true;
+        if (pkg.contains("dialer") || pkg.contains("incallui")) return true;
+        if (pkg.startsWith("com.samsung.android.app.")) return true; // Samsung system apps
+        return false;
+    }
+
+    /** Should the floating button be visible while `pkg` is in the foreground? */
+    public static boolean isMonitoredApp(String pkg, String ownPkg) {
+        if (isExcludedEverywhere(pkg, ownPkg)) return false;
+        if ("recommended".equals(appsMode)) return RECOMMENDED_PACKAGES.contains(pkg);
+        return true; // "all" mode
+    }
 
     // Windows that must NOT change the button visibility (transient system UI,
     // share sheets, keyboards, and our own overlay/clipboard-reader windows).
