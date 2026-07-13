@@ -26,8 +26,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from train_forever import label_file, retrain, _trained_sources  # reuse the vetted path
-from models.classifier import get_classifier
+# NOTE: the heavy training stack (train_forever → analyzer → numpy/cv) is imported
+# LAZILY inside the collectors, so the lightweight --dry-run scan (which only
+# needs huggingface_hub + path_labeler) runs without the full ML dependencies.
 
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".3gp", ".ogv")
 
@@ -108,7 +109,9 @@ def collect_auto(repo_id: str, limit: int, retrain_every: int = 200) -> dict:
     only the confidently-labeled ones, skip everything ambiguous. Returns the
     class counts actually added."""
     from training.path_labeler import classify
-    from train_forever import real_class_saturated
+    from train_forever import (real_class_saturated, label_file, retrain,
+                               _trained_sources)
+    from models.classifier import get_classifier
     from huggingface_hub import hf_hub_download
     classifier = get_classifier()
     seen = _trained_sources()
@@ -180,6 +183,8 @@ def _record_hard_stats(repo_id: str, is_ai: bool, added: int, hard: int):
 
 
 def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> int:
+    from train_forever import label_file, retrain, _trained_sources
+    from models.classifier import get_classifier
     classifier = get_classifier()
     seen = _trained_sources()
     added = 0
