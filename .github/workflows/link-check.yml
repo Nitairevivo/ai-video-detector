@@ -31,6 +31,7 @@ jobs:
       - name: Run the real URL→file pipeline
         env:
           TEST_URL: ${{ github.event.inputs.url || 'https://www.youtube.com/watch?v=jNQXAC9IVRw' }}
+          DB_PATH: ${{ runner.temp }}/aivd.db   # api.server import runs init_db(); /data only exists on Railway
         run: |
           python - <<'EOF'
           import os, tempfile, time
