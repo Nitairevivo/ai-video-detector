@@ -22,7 +22,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.6";
+const APP_VERSION = "1.7.7";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -150,6 +150,21 @@ const T = {
     clipboardError: "לא ניתן לקרוא את הלוח",
     premiumBannerTitle: "VerifAI Pro",
     premiumBannerSub: "סריקה אוטומטית · ללא הגבלה · 7 ימים חינם",
+    bizTitle: "VerifAI לעסקים",
+    bizSub: "חבר את הזיהוי לאפליקציה או לאתר שלך — API",
+    bizHeading: "אותה טכנולוגיה, בתוך המוצר שלך",
+    bizIntro: "יש לך אפליקציה, אתר או פלטפורמה עם תוכן של משתמשים? חבר את מנוע הזיהוי של VerifAI ועצור סרטונים ותמונות מזויפים לפני שהם פוגעים במשתמשים שלך.",
+    bizHow: [
+      ["🔌", "API פשוט — שולחים סרטון, תמונה או קישור, מקבלים תשובה תוך שניות"],
+      ["🔏", "שלוש שכבות ראיה: חתימות C2PA בקובץ, תוויות הפלטפורמות, וניתוח ויזואלי מכויל"],
+      ["🧾", "כל תשובה מגיעה עם הסבר מלא (explanation) — מתאים לרגולציה ולאודיט"],
+      ["🛡️", "בנוי לאפס אזעקות שווא — תוכן אמיתי לא נחסם"],
+    ],
+    bizUses: "מתאים ל: אפליקציות היכרויות · מרקטפלייסים · חדשות · רשתות חברתיות · ביטוח · אימות זהות",
+    bizCta: "דברו איתנו על שילוב",
+    bizDocs: "תיעוד ה-API למפתחים",
+    bizMailSubject: "שילוב VerifAI במוצר שלנו",
+    bizMailBody: "היי, אני מעוניין לשלב את VerifAI. קצת על המוצר שלנו: ",
     downloadText: "הורד את VerifAI לטלפון נוסף",
     resultFor: "נבדק",
     platformFile: "קובץ וידאו",
@@ -247,6 +262,21 @@ const T = {
     clipboardError: "Could not read the clipboard",
     premiumBannerTitle: "VerifAI Pro",
     premiumBannerSub: "Auto-scan · Unlimited · 7 days free",
+    bizTitle: "VerifAI for Business",
+    bizSub: "Plug AI-detection into your app or site — API",
+    bizHeading: "The same technology, inside your product",
+    bizIntro: "Run an app, site or platform with user content? Plug in VerifAI's detection engine and stop fake videos and images before they reach your users.",
+    bizHow: [
+      ["🔌", "Simple API — send a video, image or link, get a verdict in seconds"],
+      ["🔏", "Three evidence layers: C2PA file signatures, platform AI labels, calibrated visual analysis"],
+      ["🧾", "Every verdict ships with a full explanation object — audit & compliance ready"],
+      ["🛡️", "Built for zero false alarms — real content never gets blocked"],
+    ],
+    bizUses: "Built for: dating apps · marketplaces · newsrooms · social platforms · insurance · KYC",
+    bizCta: "Talk to us about integrating",
+    bizDocs: "API docs for developers",
+    bizMailSubject: "Integrating VerifAI into our product",
+    bizMailBody: "Hi, I want to integrate VerifAI. About our product: ",
     downloadText: "Get VerifAI on another phone",
     resultFor: "Checked",
     platformFile: "Video file",
@@ -442,6 +472,78 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
     </Modal>
   );
 }
+
+// ─── Business Modal — "plug VerifAI into your own app" (B2B API pitch) ────────
+const BIZ_EMAIL = "nitaizx123@gmail.com";
+
+function BusinessModal({ visible, onClose, lang }: {
+  visible: boolean; onClose: () => void; lang: Lang;
+}) {
+  const t = T[lang];
+  const rtl = lang === "he";
+  const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
+  const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
+
+  const openMail = () => {
+    const url = `mailto:${BIZ_EMAIL}?subject=${encodeURIComponent(t.bizMailSubject)}&body=${encodeURIComponent(t.bizMailBody)}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={bz.backdrop}>
+        <View style={bz.sheet}>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+              <Text style={[bz.heading, align]}>🤝 {t.bizHeading}</Text>
+              <TouchableOpacity onPress={onClose} style={bz.close}><Text style={bz.closeText}>✕</Text></TouchableOpacity>
+            </View>
+            <Text style={[bz.intro, align]}>{t.bizIntro}</Text>
+
+            {t.bizHow.map(([icon, txt], i) => (
+              <View key={i} style={[bz.row, row]}>
+                <Text style={bz.rowIcon}>{icon}</Text>
+                <Text style={[bz.rowText, align]}>{txt}</Text>
+              </View>
+            ))}
+
+            <Text style={[bz.uses, align]}>{t.bizUses}</Text>
+
+            <TouchableOpacity onPress={openMail} activeOpacity={0.85}>
+              <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={bz.cta}>
+                <Text style={bz.ctaText}>✉️ {t.bizCta}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={bz.docsBtn} onPress={() => Linking.openURL(`${API}/docs`)}>
+              <Text style={bz.docsText}>{`{ } `}{t.bizDocs}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const bz = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" },
+  sheet: {
+    backgroundColor: "#0d0b1e", borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    padding: 22, paddingBottom: 34, maxHeight: "88%",
+    borderWidth: 1, borderColor: "rgba(124,108,255,0.25)",
+  },
+  heading: { color: "#fff", fontSize: 19, fontWeight: "800", flex: 1 },
+  close: { padding: 6 },
+  closeText: { color: "#8b8ca7", fontSize: 16 },
+  intro: { color: "#b6b7cc", fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 14 },
+  row: { alignItems: "flex-start", gap: 10, marginBottom: 11 },
+  rowIcon: { fontSize: 16, width: 24, textAlign: "center" },
+  rowText: { color: "#c9c3e6", fontSize: 13, lineHeight: 19, flex: 1 },
+  uses: { color: "#7f6bd6", fontSize: 11.5, lineHeight: 17, marginTop: 6, marginBottom: 16 },
+  cta: { borderRadius: 16, paddingVertical: 14, alignItems: "center" },
+  ctaText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  docsBtn: { alignItems: "center", paddingVertical: 13 },
+  docsText: { color: "#8b8ca7", fontSize: 12.5, fontWeight: "600" },
+});
 
 // ─── Premium Modal — Pro / Pro-Max plan picker ────────────────────────────────
 function PremiumModal({ visible, onClose, onChoose, onRedeem, lang }: {
@@ -937,6 +1039,7 @@ function AppInner() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
+  const [showBiz, setShowBiz] = useState(false);
   const [scansTotal, setScansTotal] = useState(0);
   const [tier, setTierState] = useState<Tier>("free");
   const [usedThisMonth, setUsedThisMonth] = useState(0);
@@ -1306,6 +1409,11 @@ function AppInner() {
         onRedeem={redeem}
         lang={lang}
       />
+      <BusinessModal
+        visible={showBiz}
+        onClose={() => setShowBiz(false)}
+        lang={lang}
+      />
       <GuideScreen
         visible={showGuide}
         onClose={() => setShowGuide(false)}
@@ -1516,6 +1624,18 @@ function AppInner() {
           <View style={s.premiumArrow}>
             <Text style={{ color: "#fff", fontSize: 13 }}>{rtl ? "←" : "→"}</Text>
           </View>
+        </TouchableOpacity>
+
+        {/* ── Business / API integration ── */}
+        <TouchableOpacity style={[s.guideCard, row]} onPress={() => setShowBiz(true)} activeOpacity={0.85}>
+          <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.guideIcon}>
+            <Text style={{ fontSize: 20 }}>🤝</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.cardTitle, align]}>{t.bizTitle}</Text>
+            <Text style={[s.guideSub, align]}>{t.bizSub}</Text>
+          </View>
+          <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
         </TouchableOpacity>
 
         {/* ── History ── */}
