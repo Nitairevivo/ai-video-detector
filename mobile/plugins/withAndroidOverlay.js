@@ -323,7 +323,7 @@ function withShareIntentCrashFix(config) {
         const helper =
           "\n        private fun getFileInfoSafe(it: Uri): Map<String, String?> {\n" +
           "            return try { getFileInfo(it) } catch (e: Throwable) {\n" +
-          "                try { com.verifai.app.CrashLog.log(instance?.context!!, \"getFileInfo\", e) } catch (ignored: Throwable) {}\n" +
+          "                android.util.Log.e(\"VerifAI\", \"getFileInfo failed, using fallback\", e)\n" +
           "                " + fallback + "\n" +
           "            }\n" +
           "        } /* shareIntentCrashFix */\n";
