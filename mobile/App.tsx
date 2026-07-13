@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.7.3";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -62,8 +62,10 @@ const T = {
     detectSub: "הדבק קישור מטיקטוק / יוטיוב / אינסטגרם / X",
     pastePlaceholder: "הדבק כאן קישור…",
     pasteBtn: "הדבק",
-    detectNow: "בדוק עכשיו",
-    detectTip: "טיפ: אפשר גם לשתף סרטון או תמונה מכל אפליקציה אל VerifAI",
+    detectNow: "בדוק קישור",
+    detectTip: "הדבקת קישור עובדת לקישורים ישירים ולסרטונים מתויגי-AI. יוטיוב/טיקטוק לפעמים חוסמים הורדה — אז לזה יש דרך טובה יותר ↓",
+    reliableTitle: "הדרך שתמיד עובדת",
+    reliableBody: "פתח את הסרטון באפליקציה (TikTok / YouTube / וואטסאפ) → לחץ ‘שתף’ → בחר VerifAI. ככה מעלים את הקובץ עצמו, בלי הורדה — ותמיד מקבלים תשובה.",
     invalidLink: "הדבק קישור תקין שמתחיל ב-http",
     howKnowTitle: "איך VerifAI יודע?",
     howKnowRows: [
@@ -151,8 +153,10 @@ const T = {
     detectSub: "Paste a TikTok / YouTube / Instagram / X link",
     pastePlaceholder: "Paste a link here…",
     pasteBtn: "Paste",
-    detectNow: "Detect now",
-    detectTip: "Tip: you can also Share a video or image from any app to VerifAI",
+    detectNow: "Check link",
+    detectTip: "Pasting works for direct links and AI-labeled videos. YouTube/TikTok sometimes block downloads — for those there's a better way ↓",
+    reliableTitle: "The way that always works",
+    reliableBody: "Open the video in its app (TikTok / YouTube / WhatsApp) → tap ‘Share’ → pick VerifAI. This uploads the file itself, no download — so it always gets an answer.",
     invalidLink: "Paste a valid link that starts with http",
     howKnowTitle: "How VerifAI knows",
     howKnowRows: [
@@ -1268,6 +1272,12 @@ function AppInner() {
            </LinearGradient>
           </TouchableOpacity>
           <Text style={s.detectHint}>{t.detectTip}</Text>
+
+          {/* The bulletproof method — Share uploads the actual file, no download. */}
+          <View style={s.reliableBox}>
+            <Text style={[s.reliableTitle, align]}>✅ {t.reliableTitle}</Text>
+            <Text style={[s.reliableBody, align]}>{t.reliableBody}</Text>
+          </View>
         </View>
 
         {/* ── Copied-link suggestion (one tap, never auto-runs) ── */}
@@ -1625,7 +1635,10 @@ const s = StyleSheet.create({
   },
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
-  detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
+  detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2, lineHeight: 16 },
+  reliableBox: { backgroundColor: C.real + "12", borderRadius: 14, padding: 13, marginTop: 6, borderWidth: 1, borderColor: C.real + "33", gap: 4 },
+  reliableTitle: { color: C.real, fontSize: 13.5, fontWeight: "800" },
+  reliableBody: { color: C.sub, fontSize: 12.5, lineHeight: 19 },
 
   // Copied-link suggestion chip
   clipHint: {
