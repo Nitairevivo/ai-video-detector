@@ -611,23 +611,23 @@ const GUIDE = {
     enabledBadge: "הכפתור הצף פעיל ✓",
     // iOS — Apple forbids floating overlays, so we give the two native paths.
     iosTitle: "בדיקה תוך כדי גלילה (iPhone)",
-    iosSub: "ל-iPhone אין כפתור צף (אפל אוסרת) — אבל יש שתי דרכים מצוינות:",
-    iosShareTitle: "1. שתף → VerifAI (הכי פשוט)",
-    iosShareSub: "בכל אפליקציה: לחץ ‘שתף’ על הסרטון ובחר VerifAI. תשובה מיידית, בלי לצאת. עובד תמיד.",
-    iosTapTitle: "2. מחווה אחת: הקשה כפולה על גב הטלפון",
-    iosTapSub: "הגדרה חד-פעמית של ~2 דקות, ואז הקשה כפולה על גב האייפון בודקת מיד את מה שאתה רואה:",
+    iosSub: "גם באייפון VerifAI קורא את הקוד האמיתי מאחורי הסרטון — C2PA, מטא-דאטה ותוויות AI — בדיוק כמו באנדרואיד. פשוט אין כפתור צף (אפל אוסרת overlay), אז נותנים לו את הסרטון במחווה אחת:",
+    iosShareTitle: "1. שתף → VerifAI (קורא את הקוד המלא)",
+    iosShareSub: "בכל אפליקציה לחץ ‘שתף’ על הסרטון ובחר VerifAI. השרת מוריד את הסרטון המקורי מהקישור וקורא את הקוד עצמו — C2PA, מטא-דאטה ותוויות AI — בדיוק כמו האנדרואיד. זו הבדיקה החזקה והמלאה.",
+    iosTapTitle: "2. הקשה כפולה על הגב — קיצור שקורא את הקוד",
+    iosTapSub: "הגדרה חד-פעמית של ~2 דקות. אחר כך: העתק את קישור הסרטון (‘Copy Link’), הקשה כפולה על גב האייפון — והקיצור שולח את הקישור ל-VerifAI, שקורא את הקוד ומחזיר תשובה בהתראה:",
     iosTapSteps: [
       "פתח את אפליקציית ‘Shortcuts’ (קיצורים) → צור קיצור חדש (+).",
-      "הוסף פעולה: ‘Take Screenshot’ (צלם מסך).",
-      "הוסף ‘Get Contents of URL’ — לחץ למטה על ‘העתק כתובת’ והדבק; Method = POST; Request Body = Form; הוסף שדה מסוג File בשם file עם ה-Screenshot.",
+      "הוסף פעולה ‘Get Clipboard’ (קבל לוח) — לשם יגיע קישור הסרטון שהעתקת.",
+      "הוסף ‘Get Contents of URL’ — לחץ למטה על ‘העתק כתובת API’ והדבק; Method = POST; Request Body = JSON; הוסף שדה טקסט בשם url וקבע אותו ל-Clipboard.",
       "הוסף ‘Show Notification’ שמציג את התוצאה.",
-      "שמור בשם ‘VerifAI’. ואז: הגדרות → נגישות → מגע → הקשה מאחור → הקשה כפולה → בחר ‘VerifAI’.",
+      "שמור בשם ‘VerifAI’. ואז: הגדרות → נגישות → מגע → הקשה מאחור → הקשה כפולה → בחר ‘VerifAI’. עכשיו: העתק קישור → הקשה כפולה → תשובה.",
     ],
     copyApi: "העתק כתובת API",
     apiCopied: "הועתק ✓",
     evidenceTitle: "איך VerifAI יודע?",
     back: "חזרה",
-    tip: "טיפ: הדרך הכי אמינה תמיד היא ‘שתף → VerifAI’ — כי היא מעלה את הקובץ המלא.",
+    tip: "טיפ: ‘שתף → VerifAI’ תמיד קורא את הקוד המלא של הסרטון. הדבר היחיד שאי-אפשר באייפון הוא בדיקה בלי שום מגע ברקע — אפל חוסמת גישה לאפליקציות אחרות, וזה לא קשור לחשבון.",
   },
   en: {
     title: "How it works",
@@ -651,23 +651,23 @@ const GUIDE = {
     disableBtn: "Turn off the floating button",
     enabledBadge: "Floating button is on ✓",
     iosTitle: "Check while scrolling (iPhone)",
-    iosSub: "iPhone has no floating button (Apple forbids overlays) — but there are two great ways:",
-    iosShareTitle: "1. Share → VerifAI (simplest)",
-    iosShareSub: "In any app: tap ‘Share’ on the video and pick VerifAI. Instant answer, no leaving. Always works.",
-    iosTapTitle: "2. One gesture: double-tap the back of your phone",
-    iosTapSub: "A one-time ~2-minute setup, then a double-tap on the back of your iPhone instantly checks what you’re watching:",
+    iosSub: "On iPhone too, VerifAI reads the real code behind the video — C2PA, metadata and AI labels — exactly like Android. There’s just no floating button (Apple forbids overlays), so you hand it the video in one gesture:",
+    iosShareTitle: "1. Share → VerifAI (reads the full code)",
+    iosShareSub: "In any app, tap ‘Share’ on the video and pick VerifAI. The server downloads the original from the link and reads the code itself — C2PA, metadata and AI labels — exactly like Android. This is the strongest, fullest check.",
+    iosTapTitle: "2. Double-tap the back — a Shortcut that reads the code",
+    iosTapSub: "A one-time ~2-minute setup. Then: copy the video’s link (‘Copy Link’), double-tap the back of your iPhone — the Shortcut sends the link to VerifAI, which reads the code and returns the verdict as a notification:",
     iosTapSteps: [
       "Open the ‘Shortcuts’ app → create a new shortcut (+).",
-      "Add action: ‘Take Screenshot’.",
-      "Add ‘Get Contents of URL’ — tap ‘Copy API URL’ below and paste it; Method = POST; Request Body = Form; add a File field named file set to the Screenshot.",
+      "Add ‘Get Clipboard’ — this is where the link you copied lands.",
+      "Add ‘Get Contents of URL’ — tap ‘Copy API URL’ below and paste it; Method = POST; Request Body = JSON; add a text field named url set to the Clipboard.",
       "Add ‘Show Notification’ to display the result.",
-      "Save it as ‘VerifAI’. Then: Settings → Accessibility → Touch → Back Tap → Double Tap → choose ‘VerifAI’.",
+      "Save it as ‘VerifAI’. Then: Settings → Accessibility → Touch → Back Tap → Double Tap → choose ‘VerifAI’. Now: copy a link → double-tap → verdict.",
     ],
     copyApi: "Copy API URL",
     apiCopied: "Copied ✓",
     evidenceTitle: "How does VerifAI know?",
     back: "Back",
-    tip: "Tip: the most reliable path is always ‘Share → VerifAI’ — it uploads the full file.",
+    tip: "Tip: ‘Share → VerifAI’ always reads the video’s full code. The only thing impossible on iPhone is a zero-touch background check — Apple blocks access to other apps, and that’s not about your account.",
   },
 } as const;
 
@@ -685,7 +685,7 @@ function GuideScreen({
   const [copied, setCopied] = useState(false);
   const copyApi = async () => {
     try {
-      await Clipboard.setStringAsync(`${API}/detect`);
+      await Clipboard.setStringAsync(`${API}/detect-url`);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {}
