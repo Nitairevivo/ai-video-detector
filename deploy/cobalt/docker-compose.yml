@@ -1,0 +1,35 @@
+# VerifAI's private cobalt instance — the "read the code behind the video from a
+# link" bridge. cobalt fetches the ORIGINAL file from a URL and tunnels the
+# bytes back through its own host, so VerifAI can then read the real
+# metadata/C2PA/AIGC signals — exactly what our detection is built on.
+#
+# Deploy this ANYWHERE with Docker (a $4/mo VPS, Fly.io, Railway, a home
+# server). Then on the MAIN VerifAI app set:
+#     COBALT_INSTANCES = <your-cobalt-host>        (e.g. cobalt.mydomain.com)
+#     COBALT_API_KEY   = <the key you put below>
+#
+# TikTok / Instagram / X / Reddit / most platforms work out of the box.
+# YouTube specifically also needs cookies (see README) because Google blocks
+# datacenter IPs — drop a cookies.txt next to this file and it's picked up.
+
+services:
+  cobalt-api:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      API_URL: "${COBALT_PUBLIC_URL}"          # e.g. https://cobalt.mydomain.com
+      # Require callers to present this key. Generate one with:
+      #   python3 -c "import secrets;print(secrets.token_hex(24))"
+      # then set the SAME value as COBALT_API_KEY on the VerifAI app.
+      API_KEY_URL: "file:///keys/keys.json"
+      # YouTube-from-datacenter needs a logged-in session. Mount cookies.txt
+      # (Netscape format, exported from a browser) and cobalt uses it.
+      COOKIE_PATH: "/cookies/cookies.json"
+      RATELIMIT_MAX: "60"
+      DURATION_LIMIT: "10800"
+    volumes:
+      - ./keys.json:/keys/keys.json:ro
+      - ./cookies.json:/cookies/cookies.json:ro
