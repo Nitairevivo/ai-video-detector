@@ -1,12 +1,20 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { NativeModules, Platform, AppState } from "react-native";
+import * as SecureStore from "expo-secure-store";
 
 const { OverlayModule } = NativeModules;
+
+// Survives process death: Android often kills the app while the user is in
+// the Settings grant screen, losing the in-memory pendingStart intent — the
+// classic "I granted the permission and came back to nothing" loop.
+const PENDING_START_KEY = "verifai_overlay_pending_start";
 
 export type OverlayStatus = {
   overlayPermission: boolean;
   accessibilityEnabled: boolean;
   serviceRunning: boolean;
+  /** "all" (default) or "recommended" — which apps show the floating button */
+  appsMode?: string;
 };
 
 const EMPTY_STATUS: OverlayStatus = {
@@ -56,6 +64,7 @@ export function useOverlay() {
       await OverlayModule.start();
       setOverlayActive(true);
       pendingStart.current = false;
+      SecureStore.deleteItemAsync(PENDING_START_KEY).catch(() => {});
       refreshStatus();
       return true;
     } catch (e) {
@@ -68,20 +77,28 @@ export function useOverlay() {
   const startOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     // If the permission is already granted, just start — never bounce the user
-    // to Settings again.
-    if (await checkPermission(1)) {
+    // to Settings again. (Two checks: the grant can be slow to propagate.)
+    if (await checkPermission(2)) {
       await actuallyStart();
       return;
     }
-    // Otherwise remember the intent and open the grant screen; the AppState
-    // listener finishes the start when they return.
+    // Otherwise remember the intent (persisted — Settings often kills us) and
+    // open the grant screen; the AppState listener finishes the start on return.
     pendingStart.current = true;
-    try { await OverlayModule.requestPermission(); } catch (e) { console.warn(e); }
+    SecureStore.setItemAsync(PENDING_START_KEY, "1").catch(() => {});
+    try {
+      // requestPermission returns true when the permission turns out to be
+      // ALREADY granted (stale first check) — in that case no Settings screen
+      // opened and no AppState change will come: start right here.
+      const alreadyGranted = await OverlayModule.requestPermission();
+      if (alreadyGranted) await actuallyStart();
+    } catch (e) { console.warn(e); }
   }, [checkPermission, actuallyStart]);
 
   const stopOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     pendingStart.current = false;
+    SecureStore.deleteItemAsync(PENDING_START_KEY).catch(() => {});
     try {
       await OverlayModule.stop();
       setOverlayActive(false);
@@ -99,10 +116,24 @@ export function useOverlay() {
   useEffect(() => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     refreshStatus();
+    // Finish a start the user began before the process was killed in Settings
+    // (persisted intent + permission now granted = complete it, don't make the
+    // user "start over as if nothing happened"). App is foreground at mount,
+    // so starting the FGS here is allowed on Android 14+.
+    (async () => {
+      try {
+        const pending = await SecureStore.getItemAsync(PENDING_START_KEY);
+        if (pending === "1") {
+          pendingStart.current = true;
+          if (await checkPermission(3)) await actuallyStart();
+        }
+      } catch {}
+    })();
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
       if (pendingStart.current) {
-        const granted = await checkPermission(4);
+        // Generous polling — some OEMs take seconds to reflect the grant.
+        const granted = await checkPermission(6);
         if (granted) {
           await actuallyStart();
           return;

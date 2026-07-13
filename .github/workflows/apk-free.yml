@@ -22,7 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          # Build whatever ref the workflow was dispatched on (master by
+          # default, a feature branch when testing pre-merge builds).
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
