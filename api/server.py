@@ -856,6 +856,48 @@ def _download_youtube_via_mirror(url: str, tmp_path: str) -> bool:
     return False
 
 
+def _download_via_cobalt(url: str, tmp_path: str) -> bool:
+    """Download ANY supported URL through a cobalt instance (the modern,
+    actively-maintained successor to youtube-dl-as-a-service). Cobalt fetches
+    the media upstream itself and 'tunnels' the bytes back through its own
+    domain, so it works from a datacenter IP that YouTube/TikTok would refuse.
+    Instances are overridable via COBALT_INSTANCES="host1,host2" (a self-hosted
+    instance with an API key is the bulletproof option — set COBALT_API_KEY)."""
+    env = os.environ.get("COBALT_INSTANCES", "").strip()
+    hosts = [h.strip() for h in env.split(",") if h.strip()] or [
+        "cobalt-api.kwiatekmiki.com",
+        "capi.oei.moe",
+        "co.otomir23.me",
+    ]
+    api_key = os.environ.get("COBALT_API_KEY", "").strip()
+    body = json.dumps({"url": url, "videoQuality": "360",
+                       "filenameStyle": "basic"}).encode()
+    for host in hosts:
+        try:
+            headers = {"Accept": "application/json",
+                       "Content-Type": "application/json",
+                       "User-Agent": _pick_ua()}
+            if api_key:
+                headers["Authorization"] = f"Api-Key {api_key}"
+            req = urllib.request.Request(f"https://{host}/", data=body,
+                                         headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read(512 * 1024).decode("utf-8", errors="ignore"))
+            status = data.get("status")
+            media = data.get("url")
+            if status in ("tunnel", "redirect", "stream") and media:
+                if _download_direct(media, tmp_path) and os.path.exists(tmp_path) \
+                        and os.path.getsize(tmp_path) > 10000 and _looks_like_video(tmp_path):
+                    print(f"[cobalt] SUCCESS via {host}")
+                    return True
+            else:
+                print(f"[cobalt] {host}: status={status} err={data.get('error')}")
+        except Exception as e:
+            print(f"[cobalt] {host}: {e!r}")
+            continue
+    return False
+
+
 def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
     """Use yt-dlp to download video. Tries multiple format strategies."""
     import subprocess, shutil
@@ -1045,6 +1087,11 @@ def download_video_from_url(url: str, tmp_path: str):
     if not ok and _host_matches(_host_of(url), ("youtube.com", "youtu.be")):
         ok = _download_youtube_via_mirror(url, tmp_path)
 
+    # Strategy 2.7: cobalt tunnel — works for YouTube, TikTok, Instagram, X…
+    # from a datacenter IP by proxying the bytes through the cobalt instance.
+    if not ok and _is_platform_url(url):
+        ok = _download_via_cobalt(url, tmp_path)
+
     # Strategy 3: Direct HTTP
     if not ok:
         ok = _download_direct(url, tmp_path)
@@ -1103,7 +1150,13 @@ async def detect_url(request: Request, url: str = Body(..., embed=True), deep: b
             }
 
         if not ok:
-            raise HTTPException(400, "Could not download video. Check the URL or try uploading the file directly.")
+            _yt = _host_matches(_host_of(url), ("youtube.com", "youtu.be"))
+            raise HTTPException(400,
+                "Couldn't fetch this video from the server"
+                + (" — YouTube blocks server downloads especially hard. "
+                   "Download it and drag the file in, or try a TikTok/Instagram link."
+                   if _yt else
+                   ". Try uploading the file directly, or share it to the app."))
 
         # If TikTok itself labeled this as AIGC — that's definitive
         if aigc_from_page:
