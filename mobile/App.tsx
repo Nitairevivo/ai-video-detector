@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.3";
+const APP_VERSION = "1.7.4";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -58,8 +58,13 @@ const T = {
     tagline: "גלה מה אמיתי. תוך שניות.",
     scanBtn: "בדוק סרטון",
     scanHint: "מעתיק קישור? פשוט חזור לכאן — נזהה אותו לבד",
+    shareHeroTitle: "הדרך הכי מהירה ובטוחה",
+    shareHeroSub: "פתח סרטון בכל אפליקציה → שתף → VerifAI. התוצאה תוך שניות, תמיד עובד.",
+    shareHeroSteps: ["פתח סרטון ב-TikTok / YouTube / וואטסאפ", "לחץ על ‘שתף’ (Share)", "בחר VerifAI מהרשימה"],
+    shareHeroCta: "ראה הדגמה חיה",
+    orPaste: "או — הדבק קישור",
     detectTitle: "בדוק סרטון או תמונה",
-    detectSub: "הדבק קישור מטיקטוק / יוטיוב / אינסטגרם / X",
+    detectSub: "עובד לקישורים ישירים ולסרטונים מתויגי-AI",
     pastePlaceholder: "הדבק כאן קישור…",
     pasteBtn: "הדבק",
     detectNow: "בדוק קישור",
@@ -149,8 +154,13 @@ const T = {
     tagline: "Know what's real. In seconds.",
     scanBtn: "Check video",
     scanHint: "Copied a link? Just come back here — we'll catch it",
+    shareHeroTitle: "The fastest, most reliable way",
+    shareHeroSub: "Open a video in any app → Share → VerifAI. An answer in seconds, always works.",
+    shareHeroSteps: ["Open a video in TikTok / YouTube / WhatsApp", "Tap ‘Share’", "Pick VerifAI from the list"],
+    shareHeroCta: "See a live demo",
+    orPaste: "Or — paste a link",
     detectTitle: "Check a video or image",
-    detectSub: "Paste a TikTok / YouTube / Instagram / X link",
+    detectSub: "Works for direct links and AI-labeled videos",
     pastePlaceholder: "Paste a link here…",
     pasteBtn: "Paste",
     detectNow: "Check link",
@@ -1227,9 +1237,33 @@ function AppInner() {
           </TouchableOpacity>
         )}
 
-        {/* ── Detect card: paste a link → get an answer ── */}
+        {/* ── PRIMARY method: Share → VerifAI (uploads the file, always works) ── */}
+        <LinearGradient colors={["#1c1140", "#140b2e"]} start={GRAD_START} end={GRAD_END} style={s.shareHero}>
+          <View style={[{ alignItems: "center", gap: 10 }, row]}>
+            <View style={s.shareHeroIcon}><Text style={{ fontSize: 22 }}>📤</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.shareHeroTitle, align]}>{t.shareHeroTitle}</Text>
+              <Text style={[s.shareHeroSub, align]}>{t.shareHeroSub}</Text>
+            </View>
+          </View>
+          <View style={{ gap: 8, marginTop: 12 }}>
+            {t.shareHeroSteps.map((step, i) => (
+              <View key={i} style={[{ alignItems: "center", gap: 10 }, row]}>
+                <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.shareHeroNum}>
+                  <Text style={s.shareHeroNumText}>{i + 1}</Text>
+                </LinearGradient>
+                <Text style={[s.shareHeroStep, align, { flex: 1 }]}>{step}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={s.shareHeroCta} activeOpacity={0.85} onPress={() => setShowGuide(true)}>
+            <Text style={s.shareHeroCtaText}>▶️  {t.shareHeroCta}</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* ── Secondary: paste a link ── */}
+        <Text style={[s.orLabel, align]}>{t.orPaste}</Text>
         <View style={s.detectCard}>
-          <Text style={[s.detectTitle, align]}>{t.detectTitle}</Text>
           <Text style={[s.detectSub, align]}>{t.detectSub}</Text>
           <View style={[s.inputRow, row]}>
             <TextInput
@@ -1272,12 +1306,6 @@ function AppInner() {
            </LinearGradient>
           </TouchableOpacity>
           <Text style={s.detectHint}>{t.detectTip}</Text>
-
-          {/* The bulletproof method — Share uploads the actual file, no download. */}
-          <View style={s.reliableBox}>
-            <Text style={[s.reliableTitle, align]}>✅ {t.reliableTitle}</Text>
-            <Text style={[s.reliableBody, align]}>{t.reliableBody}</Text>
-          </View>
         </View>
 
         {/* ── Copied-link suggestion (one tap, never auto-runs) ── */}
@@ -1636,9 +1664,18 @@ const s = StyleSheet.create({
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
   detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2, lineHeight: 16 },
-  reliableBox: { backgroundColor: C.real + "12", borderRadius: 14, padding: 13, marginTop: 6, borderWidth: 1, borderColor: C.real + "33", gap: 4 },
-  reliableTitle: { color: C.real, fontSize: 13.5, fontWeight: "800" },
-  reliableBody: { color: C.sub, fontSize: 12.5, lineHeight: 19 },
+
+  // Share hero (primary method)
+  shareHero: { borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.violet + "44" },
+  shareHeroIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.violet + "26", alignItems: "center", justifyContent: "center" },
+  shareHeroTitle: { color: C.text, fontSize: 17, fontWeight: "800" },
+  shareHeroSub: { color: C.sub, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
+  shareHeroNum: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  shareHeroNumText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  shareHeroStep: { color: C.text, fontSize: 13.5, lineHeight: 19 },
+  shareHeroCta: { marginTop: 14, backgroundColor: "#ffffff12", borderRadius: 13, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: C.border },
+  shareHeroCtaText: { color: C.text, fontSize: 14, fontWeight: "800" },
+  orLabel: { color: C.faint, fontSize: 12, fontWeight: "700", marginTop: 2, marginBottom: -6 },
 
   // Copied-link suggestion chip
   clipHint: {
