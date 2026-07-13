@@ -7,6 +7,8 @@ export type OverlayStatus = {
   overlayPermission: boolean;
   accessibilityEnabled: boolean;
   serviceRunning: boolean;
+  /** "all" (default) or "recommended" — which apps show the floating button */
+  appsMode?: string;
 };
 
 const EMPTY_STATUS: OverlayStatus = {

@@ -14,13 +14,15 @@ import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
+import { DemoReel } from "./components/DemoReel";
+import { Tier, TIERS, getTier, setTier as persistTier, getUsage, canScan, recordScan, redeemCode } from "./services/quota";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.5";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -59,12 +61,19 @@ const T = {
     tagline: "גלה מה אמיתי. תוך שניות.",
     scanBtn: "בדוק סרטון",
     scanHint: "מעתיק קישור? פשוט חזור לכאן — נזהה אותו לבד",
+    shareHeroTitle: "הדרך הכי מהירה ובטוחה",
+    shareHeroSub: "פתח סרטון בכל אפליקציה → שתף → VerifAI. התוצאה תוך שניות, תמיד עובד.",
+    shareHeroSteps: ["פתח סרטון ב-TikTok / YouTube / וואטסאפ", "לחץ על ‘שתף’ (Share)", "בחר VerifAI מהרשימה"],
+    shareHeroCta: "ראה הדגמה חיה",
+    orPaste: "או — הדבק קישור",
     detectTitle: "בדוק סרטון או תמונה",
-    detectSub: "הדבק קישור מטיקטוק / יוטיוב / אינסטגרם / X",
+    detectSub: "עובד לקישורים ישירים ולסרטונים מתויגי-AI",
     pastePlaceholder: "הדבק כאן קישור…",
     pasteBtn: "הדבק",
-    detectNow: "בדוק עכשיו",
-    detectTip: "טיפ: אפשר גם לשתף סרטון או תמונה מכל אפליקציה אל VerifAI",
+    detectNow: "בדוק קישור",
+    detectTip: "הדבקת קישור עובדת לקישורים ישירים ולסרטונים מתויגי-AI. יוטיוב/טיקטוק לפעמים חוסמים הורדה — אז לזה יש דרך טובה יותר ↓",
+    reliableTitle: "הדרך שתמיד עובדת",
+    reliableBody: "פתח את הסרטון באפליקציה (TikTok / YouTube / וואטסאפ) → לחץ ‘שתף’ → בחר VerifAI. ככה מעלים את הקובץ עצמו, בלי הורדה — ותמיד מקבלים תשובה.",
     pickGallery: "בחר סרטון או תמונה מהגלריה",
     invalidLink: "הדבק קישור תקין שמתחיל ב-http",
     howKnowTitle: "איך VerifAI יודע?",
@@ -85,7 +94,9 @@ const T = {
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
-    statusAllGood: "הכל מוגדר — הכפתור יופיע בתוך TikTok, Instagram ו-YouTube",
+    statusAllGood: "הכל מוגדר — הכפתור הצף פעיל ומוכן",
+    statusAllApps: "הצג בכל האפליקציות",
+    statusAllAppsSub: "כבוי = רק רשתות חברתיות, הודעות, היכרויות ומרקטפלייס",
     howTitle: "איך זה עובד?",
     howSteps: [
       "פתח TikTok / Instagram / YouTube — כפתור VerifAI יופיע בצד",
@@ -147,12 +158,19 @@ const T = {
     tagline: "Know what's real. In seconds.",
     scanBtn: "Check video",
     scanHint: "Copied a link? Just come back here — we'll catch it",
+    shareHeroTitle: "The fastest, most reliable way",
+    shareHeroSub: "Open a video in any app → Share → VerifAI. An answer in seconds, always works.",
+    shareHeroSteps: ["Open a video in TikTok / YouTube / WhatsApp", "Tap ‘Share’", "Pick VerifAI from the list"],
+    shareHeroCta: "See a live demo",
+    orPaste: "Or — paste a link",
     detectTitle: "Check a video or image",
-    detectSub: "Paste a TikTok / YouTube / Instagram / X link",
+    detectSub: "Works for direct links and AI-labeled videos",
     pastePlaceholder: "Paste a link here…",
     pasteBtn: "Paste",
-    detectNow: "Detect now",
-    detectTip: "Tip: you can also Share a video or image from any app to VerifAI",
+    detectNow: "Check link",
+    detectTip: "Pasting works for direct links and AI-labeled videos. YouTube/TikTok sometimes block downloads — for those there's a better way ↓",
+    reliableTitle: "The way that always works",
+    reliableBody: "Open the video in its app (TikTok / YouTube / WhatsApp) → tap ‘Share’ → pick VerifAI. This uploads the file itself, no download — so it always gets an answer.",
     pickGallery: "Pick a video or image from your gallery",
     invalidLink: "Paste a valid link that starts with http",
     howKnowTitle: "How VerifAI knows",
@@ -173,7 +191,9 @@ const T = {
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
-    statusAllGood: "All set — the button shows up inside TikTok, Instagram & YouTube",
+    statusAllGood: "All set — the floating button is live",
+    statusAllApps: "Show in all apps",
+    statusAllAppsSub: "Off = only social, messaging, dating & marketplace apps",
     howTitle: "How it works",
     howSteps: [
       "Open TikTok / Instagram / YouTube — the VerifAI button appears",
@@ -423,28 +443,41 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
   );
 }
 
-// ─── Premium Modal ────────────────────────────────────────────────────────────
-function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: () => void; lang: Lang }) {
+// ─── Premium Modal — Pro / Pro-Max plan picker ────────────────────────────────
+function PremiumModal({ visible, onClose, onChoose, onRedeem, lang }: {
+  visible: boolean; onClose: () => void; onChoose: (t: Tier) => void;
+  onRedeem: (code: string) => Promise<boolean>; lang: Lang;
+}) {
   const rtl = lang === "he";
-  const slide = useRef(new Animated.Value(500)).current;
+  const slide = useRef(new Animated.Value(600)).current;
+  const [plan, setPlan] = useState<Tier>("pro");
+  const [showCode, setShowCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeErr, setCodeErr] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      slide.setValue(500);
+      setPlan("pro"); setShowCode(false); setCode(""); setCodeErr(false);
+      slide.setValue(600);
       Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 55, friction: 11 }).start();
     }
   }, [visible]);
 
-  const FEATURES = rtl ? [
-    { icon: "⚡", title: "זיהוי מיידי", desc: "תוצאה תוך שנייה" },
-    { icon: "🔁", title: "סריקה אוטומטית", desc: "כל סרטון נבדק לבד בזמן גלילה" },
-    { icon: "📊", title: "דו״ח מפורט", desc: "כלי AI, שכבות ניתוח, חתימות" },
-    { icon: "♾️", title: "ללא הגבלה", desc: "בדיקות בלתי מוגבלות" },
+  const submitCode = async () => {
+    const ok = await onRedeem(code);
+    if (!ok) { setCodeErr(true); Vibration.vibrate(60); }
+  };
+
+  const PLANS: { id: Tier; name: string; price: string; tagline: string; features: string[] }[] = rtl ? [
+    { id: "pro", name: "Pro", price: "₪19", tagline: "לשימוש יומיומי",
+      features: ["בדיקות ללא הגבלה", "כפתור צף — סריקה אוטומטית בכל אפליקציה", "דו״ח מלא: כלי AI, שכבות, חתימות C2PA"] },
+    { id: "promax", name: "Pro-Max", price: "₪49", tagline: "לעסקים ויוצרים",
+      features: ["כל מה שיש ב-Pro", "בדיקה מרובה — כמה סרטונים בבת אחת", "ניתוח מעמיק ועדיפות בתור", "בדיקת תמונות ללא הגבלה"] },
   ] : [
-    { icon: "⚡", title: "Instant detection", desc: "Results in one second" },
-    { icon: "🔁", title: "Auto-scan", desc: "Every video checked while you scroll" },
-    { icon: "📊", title: "Full report", desc: "AI tools, analysis layers, signatures" },
-    { icon: "♾️", title: "Unlimited", desc: "No daily limits" },
+    { id: "pro", name: "Pro", price: "₪19", tagline: "For everyday use",
+      features: ["Unlimited checks", "Floating button — auto-scan in every app", "Full report: AI tools, layers, C2PA"] },
+    { id: "promax", name: "Pro-Max", price: "₪49", tagline: "For creators & business",
+      features: ["Everything in Pro", "Batch — check many at once", "Deep analysis & priority queue", "Unlimited image checks"] },
   ];
 
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
@@ -455,35 +488,71 @@ function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: (
       <View style={pm.backdrop}>
         <Animated.View style={[pm.sheet, { transform: [{ translateY: slide }] }]}>
           <View style={pm.header}>
-            <View style={pm.crownWrap}><Text style={{ fontSize: 30 }}>👑</Text></View>
-            <Text style={pm.headerTitle}>VerifAI Pro</Text>
-            <Text style={pm.headerSub}>{rtl ? "זהה תוכן מזויף. בכל מקום. אוטומטית." : "Spot fake content. Everywhere. Automatically."}</Text>
+            <View style={pm.crownWrap}><Text style={{ fontSize: 28 }}>👑</Text></View>
+            <Text style={pm.headerTitle}>{rtl ? "שדרג את VerifAI" : "Upgrade VerifAI"}</Text>
+            <Text style={pm.headerSub}>{rtl ? "זהה תוכן מזויף. בכל מקום. ללא הגבלה." : "Spot fakes. Everywhere. Without limits."}</Text>
           </View>
 
-          <View style={pm.features}>
-            {FEATURES.map((f, i) => (
-              <View key={i} style={[pm.featureRow, row]}>
-                <View style={pm.featureIcon}><Text style={{ fontSize: 17 }}>{f.icon}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.featureTitle, align]}>{f.title}</Text>
-                  <Text style={[pm.featureDesc, align]}>{f.desc}</Text>
-                </View>
-                <Text style={pm.checkmark}>✓</Text>
-              </View>
-            ))}
+          <View style={pm.plans}>
+            {PLANS.map((p) => {
+              const active = plan === p.id;
+              return (
+                <TouchableOpacity key={p.id} activeOpacity={0.9} onPress={() => setPlan(p.id)}
+                  style={[pm.planCard, active && pm.planCardActive]}>
+                  <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+                    <Text style={[pm.planName, active && { color: C.text }]}>{p.name}</Text>
+                    <View style={[{ alignItems: "flex-end" }, row]}>
+                      <Text style={[pm.planPrice, active && { color: C.text }]}>{p.price}</Text>
+                      <Text style={pm.planPer}>/{rtl ? "חודש" : "mo"}</Text>
+                    </View>
+                  </View>
+                  <Text style={[pm.planTagline, align]}>{p.tagline}</Text>
+                  <View style={{ gap: 6, marginTop: 8 }}>
+                    {p.features.map((f, i) => (
+                      <View key={i} style={[{ alignItems: "flex-start", gap: 7 }, row]}>
+                        <Text style={pm.planCheck}>✓</Text>
+                        <Text style={[pm.planFeat, align, { flex: 1 }]}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <View style={[pm.priceRow, row]}>
-            <View style={{ flexDirection: rtl ? "row-reverse" : "row", alignItems: "flex-end", gap: 4 }}>
-              <Text style={pm.price}>₪19</Text>
-              <Text style={pm.pricePer}>/{rtl ? "חודש" : "mo"}</Text>
-            </View>
-            <View style={pm.badge}><Text style={pm.badgeText}>{rtl ? "7 ימים חינם" : "7 days free"}</Text></View>
-          </View>
-
-          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => { onClose(); Linking.openURL(PREMIUM_URL); }}>
-            <Text style={pm.ctaText}>{rtl ? "התחל ניסיון חינם" : "Start free trial"}</Text>
+          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => onChoose(plan)}>
+            <Text style={pm.ctaText}>
+              {rtl ? `המשך עם ${plan === "pro" ? "Pro" : "Pro-Max"}` : `Continue with ${plan === "pro" ? "Pro" : "Pro-Max"}`}
+            </Text>
           </TouchableOpacity>
+          <Text style={pm.trialNote}>{rtl ? "7 ימים חינם · ביטול בכל עת" : "7 days free · cancel anytime"}</Text>
+
+          {/* Redeem code — owner unlock + future 'pay on Bit → get a code' flow */}
+          {!showCode ? (
+            <TouchableOpacity onPress={() => setShowCode(true)} style={pm.redeemLink}>
+              <Text style={pm.redeemLinkText}>{rtl ? "יש לי קוד הפעלה" : "I have an activation code"}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={pm.redeemBox}>
+              <View style={[{ gap: 8 }, { flexDirection: rtl ? "row-reverse" : "row" }]}>
+                <TextInput
+                  style={[pm.redeemInput, { textAlign: rtl ? "right" : "left" }, codeErr && { borderColor: C.ai }]}
+                  value={code}
+                  onChangeText={(v) => { setCode(v); setCodeErr(false); }}
+                  placeholder={rtl ? "VF-MAX-XXXX-XXX" : "VF-MAX-XXXX-XXX"}
+                  placeholderTextColor={C.faint}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  onSubmitEditing={submitCode}
+                />
+                <TouchableOpacity style={pm.redeemBtn} onPress={submitCode}>
+                  <Text style={pm.redeemBtnText}>{rtl ? "הפעל" : "Unlock"}</Text>
+                </TouchableOpacity>
+              </View>
+              {codeErr && <Text style={pm.redeemErr}>{rtl ? "קוד לא תקין" : "Invalid code"}</Text>}
+            </View>
+          )}
+
           <TouchableOpacity onPress={onClose} style={pm.skip}>
             <Text style={pm.skipText}>{rtl ? "אולי מאוחר יותר" : "Maybe later"}</Text>
           </TouchableOpacity>
@@ -508,6 +577,9 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const { OverlayModule } = require("react-native").NativeModules;
+
+  const [allApps, setAllApps] = useState(status.appsMode !== "recommended");
+  useEffect(() => { setAllApps(status.appsMode !== "recommended"); }, [status.appsMode]);
 
   const allGood = status.overlayPermission && (PLAY_BUILD || status.accessibilityEnabled) && overlayActive;
 
@@ -552,6 +624,24 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
         />
       )}
       <Row ok={overlayActive} label={t.statusService} />
+
+      {!PLAY_BUILD && overlayActive && (
+        <View style={[st.row, row, { marginTop: 2 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[st.rowLabel, align]}>{t.statusAllApps}</Text>
+            <Text style={[st.rowSub, align]}>{t.statusAllAppsSub}</Text>
+          </View>
+          <Switch
+            value={allApps}
+            onValueChange={(v) => {
+              setAllApps(v); // optimistic — confirmed on next getStatus refresh
+              OverlayModule?.setAppsMode?.(v ? "all" : "recommended").catch(() => setAllApps(!v));
+            }}
+            trackColor={{ false: "#1c1e36", true: C.primaryDeep }}
+            thumbColor={allApps ? C.primary : "#3a3f58"}
+          />
+        </View>
+      )}
 
       {allGood && <Text style={[st.allGood, align]}>{t.statusAllGood}</Text>}
     </View>
@@ -600,12 +690,20 @@ const GUIDE = {
     ],
     floatTitle: "הכפתור הצף האוטומטי",
     floatSub:
-      "כפתור קטן שמופיע מעל TikTok / Instagram / YouTube. לחיצה אחת עליו בודקת את מה שאתה צופה בו — בלי לצאת מהאפליקציה.",
+      "חשוב להבין: הכפתור הצף לא מופיע בתוך VerifAI — הוא מופיע מעל אפליקציות אחרות (TikTok, וואטסאפ, אינסטגרם וכו׳). לחיצה אחת עליו בודקת את מה שאתה צופה בו, בלי לצאת מהאפליקציה.",
     floatSteps: [
-      "אשר את ההרשאה ‘תצוגה מעל אפליקציות אחרות’ (פעם אחת בלבד).",
-      "חזור ל-VerifAI והדלק את המתג למטה.",
-      "פתח TikTok / Instagram / YouTube — הכפתור הצף יופיע. לחץ עליו כדי לבדוק את הסרטון על המסך.",
+      "הדלק את המתג ‘כפתור צף פעיל’ במרכז הבקרה — ואשר את ההרשאה ‘תצוגה מעל אפליקציות אחרות’.",
+      "הפעל את הנגישות: הגדרות → נגישות → VerifAI → הפעל. זה מה שמאפשר לכפתור להופיע בתוך אפליקציות אחרות.",
+      "עכשיו פתח TikTok / וואטסאפ / אינסטגרם — הכפתור יופיע שם (לא ב-VerifAI!). לחץ עליו כדי לבדוק את הסרטון.",
     ],
+    troubleTitle: "הכפתור לא מופיע? כך מתקנים",
+    troubleSteps: [
+      "ודא ששתי השורות במרכז הבקרה ירוקות: ‘הרשאת תצוגה’ ו‘זיהוי אוטומטי (נגישות)’. אם אחת אדומה — לחץ ‘תקן’ לידה.",
+      "הנגישות היא הכי חשובה: הגדרות → נגישות → אפליקציות מותקנות → VerifAI → הפעל את המתג. חלק מהטלפונים מבקשים אישור נוסף — אשר אותו.",
+      "זכור: הכפתור מופיע בתוך אפליקציות אחרות, לא בתוך VerifAI. פתח את TikTok כדי לראות אותו.",
+      "אם עדיין לא — כבה והדלק שוב את המתג ‘כפתור צף פעיל’, או הפעל מחדש את הטלפון.",
+    ],
+    troubleFallback: "לא מסתדר עם הכפתור? לא צריך אותו בכלל — פשוט העתק קישור לסרטון, או ‘שתף → VerifAI’ מכל אפליקציה. זה תמיד עובד.",
     enableBtn: "הפעל את הכפתור הצף",
     disableBtn: "כבה את הכפתור הצף",
     enabledBadge: "הכפתור הצף פעיל ✓",
@@ -641,12 +739,20 @@ const GUIDE = {
     ],
     floatTitle: "The automatic floating button",
     floatSub:
-      "A small button that appears over TikTok / Instagram / YouTube. One tap checks whatever you’re watching — without leaving the app.",
+      "Important: the button does NOT appear inside VerifAI — it appears over other apps (TikTok, WhatsApp, Instagram, etc.). One tap checks whatever you’re watching, without leaving the app.",
     floatSteps: [
-      "Grant the ‘Display over other apps’ permission (just once).",
-      "Come back to VerifAI and turn on the switch below.",
-      "Open TikTok / Instagram / YouTube — the floating button appears. Tap it to check the video on screen.",
+      "Turn on ‘Floating button’ in the control center — and grant ‘Display over other apps’.",
+      "Enable accessibility: Settings → Accessibility → VerifAI → On. That’s what lets the button appear inside other apps.",
+      "Now open TikTok / WhatsApp / Instagram — the button shows up there (not in VerifAI!). Tap it to check the video.",
     ],
+    troubleTitle: "Button not showing? Here’s the fix",
+    troubleSteps: [
+      "Make sure both rows in the control center are green: ‘Display permission’ and ‘Auto-detection (accessibility)’. If one is red, tap ‘Fix’ next to it.",
+      "Accessibility matters most: Settings → Accessibility → Installed apps → VerifAI → turn the switch on. Some phones ask for an extra confirm — accept it.",
+      "Remember: the button appears inside other apps, not inside VerifAI. Open TikTok to see it.",
+      "Still nothing? Toggle ‘Floating button’ off and on again, or restart your phone.",
+    ],
+    troubleFallback: "Can’t get the button working? You don’t need it — just copy a video link, or ‘Share → VerifAI’ from any app. That always works.",
     enableBtn: "Enable the floating button",
     disableBtn: "Turn off the floating button",
     enabledBadge: "Floating button is on ✓",
@@ -711,6 +817,9 @@ function GuideScreen({
         <ScrollView contentContainerStyle={gd.scroll} showsVerticalScrollIndicator={false}>
           <Text style={[gd.h1, align]}>{g.title}</Text>
           <Text style={[gd.intro, align]}>{g.intro}</Text>
+
+          {/* Animated demo — the in-app "how it works" video */}
+          <DemoReel lang={lang} />
 
           {/* 3 ways to check */}
           <Text style={[gd.section, align]}>{g.checkTitle}</Text>
@@ -783,6 +892,27 @@ function GuideScreen({
             </>
           )}
 
+          {/* troubleshooting — the button isn't showing */}
+          {Platform.OS === "android" && (
+            <View style={gd.trouble}>
+              <Text style={[gd.troubleTitle, align]}>🛠️ {g.troubleTitle}</Text>
+              {g.troubleSteps.map((step, i) => (
+                <View key={i} style={[gd.troubleRow, row]}>
+                  <Text style={gd.troubleDot}>•</Text>
+                  <Text style={[gd.troubleText, align]}>{step}</Text>
+                </View>
+              ))}
+              <View style={gd.troubleNote}>
+                <Text style={[gd.troubleNoteText, align]}>{g.troubleFallback}</Text>
+              </View>
+              <TouchableOpacity style={gd.accessBtn} activeOpacity={0.85}
+                onPress={() => { const { OverlayModule } = require("react-native").NativeModules;
+                  OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings()); }}>
+                <Text style={gd.accessBtnText}>⚙️ {lang === "he" ? "פתח הגדרות נגישות" : "Open accessibility settings"}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* evidence */}
           <Text style={[gd.section, align]}>{g.evidenceTitle}</Text>
           {t.howKnowRows.map(([icon, text], i) => (
@@ -808,6 +938,8 @@ function AppInner() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
   const [scansTotal, setScansTotal] = useState(0);
+  const [tier, setTierState] = useState<Tier>("free");
+  const [usedThisMonth, setUsedThisMonth] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
   // A video link found in the clipboard — OFFERED as a one-tap suggestion,
   // never auto-run (auto-running on every launch felt like an uninvited scan).
@@ -830,8 +962,24 @@ function AppInner() {
     SecureStore.setItemAsync(LANG_KEY, l).catch(() => {});
   }, []);
 
+  const freeLimit = TIERS.free.monthlyScans;
+  const isPaid = tier !== "free";
+  const remaining = Math.max(0, freeLimit - usedThisMonth);
+
+  // Refresh tier + this-month usage from storage.
+  const refreshQuota = useCallback(async () => {
+    setTierState(await getTier());
+    setUsedThisMonth((await getUsage()).count);
+  }, []);
+
+  const applyTier = useCallback(async (next: Tier) => {
+    await persistTier(next);
+    await refreshQuota();
+  }, [refreshQuota]);
+
   // ── Persistence: history + language survive restarts ──
   useEffect(() => {
+    refreshQuota();
     (async () => {
       try {
         const l = await SecureStore.getItemAsync(LANG_KEY);
@@ -882,7 +1030,17 @@ function AppInner() {
     }
   }, [scansTotal]);
 
+  // Gate a scan behind the monthly free allowance. Returns false (and opens the
+  // paywall) when the free user is out of scans; paid tiers always pass.
+  const gateScan = useCallback(async (): Promise<boolean> => {
+    if (await canScan()) return true;
+    setShowPremium(true);
+    Vibration.vibrate(40);
+    return false;
+  }, []);
+
   const detect = useCallback(async (url: string) => {
+    if (!(await gateScan())) return;
     setLoading(true);
     setSelected(null);
     Vibration.vibrate(30);
@@ -903,6 +1061,7 @@ function AppInner() {
       setHistory((prev) => [item, ...prev.filter((h) => !h.loading).slice(0, 49)]);
       setSelected(item);
       setScansTotal((n) => n + 1);
+      recordScan().then((u) => setUsedThisMonth(u.count));
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch (e: unknown) {
       setHistory((prev) => prev.filter((h) => !h.loading));
@@ -922,9 +1081,10 @@ function AppInner() {
     } finally {
       setLoading(false);
     }
-  }, [lang, rtl]);
+  }, [lang, rtl, gateScan]);
 
   const detectVideoFile = useCallback(async (uri: string, mimeType = "video/mp4") => {
+    if (!(await gateScan())) return;
     setLoading(true);
     setSelected(null);
     Vibration.vibrate(30);
@@ -946,13 +1106,14 @@ function AppInner() {
       setHistory((prev) => [item, ...prev.filter((h) => !h.loading).slice(0, 49)]);
       setSelected(item);
       setScansTotal((n) => n + 1);
+      recordScan().then((u) => setUsedThisMonth(u.count));
       Vibration.vibrate(data.is_ai_generated ? [0, 80, 60, 80] : 50);
     } catch {
       setHistory((prev) => prev.filter((h) => !h.loading));
     } finally {
       setLoading(false);
     }
-  }, [lang, rtl]);
+  }, [lang, rtl, gateScan]);
 
   // Pick a video/image straight from the gallery — the primary input on iOS
   // (which has no floating button), and a convenient one on Android too.
@@ -1076,8 +1237,51 @@ function AppInner() {
     return { ai, edited, real };
   }, [history]);
 
+  // Start a checkout for the chosen tier. Real store/Paddle billing is wired in
+  // here later; today it opens the hosted checkout page and (best-effort)
+  // unlocks locally so the paid experience is testable end-to-end. The server
+  // remains the source of truth for anything that costs us money to run.
+  // Redeem an activation code (owner Pro-Max unlock + future Bit-payment codes).
+  // Returns true on success so the modal can close / show its error inline.
+  const redeem = useCallback(async (codeStr: string): Promise<boolean> => {
+    const unlocked = await redeemCode(codeStr);
+    if (!unlocked) return false;
+    await applyTier(unlocked);
+    setShowPremium(false);
+    Vibration.vibrate(50);
+    Alert.alert(
+      lang === "he" ? "הופעל! 🎉" : "Activated! 🎉",
+      lang === "he"
+        ? `הטלפון הזה עכשיו ${unlocked === "promax" ? "Pro-Max" : "Pro"} — לתמיד.`
+        : `This device is now ${unlocked === "promax" ? "Pro-Max" : "Pro"} — forever.`
+    );
+    return true;
+  }, [applyTier, lang]);
+
+  const startCheckout = useCallback(async (chosen: Tier) => {
+    setShowPremium(false);
+    try {
+      await Linking.openURL(`${PREMIUM_URL}?plan=${chosen}`);
+    } catch {}
+    // TODO(billing): replace with the store purchase result / webhook confirm.
+    await applyTier(chosen);
+    Alert.alert(
+      lang === "he" ? "השדרוג הופעל 🎉" : "Upgrade active 🎉",
+      lang === "he"
+        ? `אתה עכשיו ב-${chosen === "pro" ? "Pro" : "Pro-Max"} — בדיקות ללא הגבלה.`
+        : `You're on ${chosen === "pro" ? "Pro" : "Pro-Max"} — unlimited checks.`
+    );
+  }, [applyTier, lang]);
+
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
+
+  // Auto-scan (the floating button) is a paid feature. A free user flipping it
+  // on gets the paywall instead; turning it off is always allowed.
+  const onOverlayToggle = useCallback((v: boolean) => {
+    if (v && !isPaid) { setShowPremium(true); return; }
+    v ? startOverlay() : stopOverlay();
+  }, [isPaid, startOverlay, stopOverlay]);
 
   return (
     <SafeAreaView style={s.root}>
@@ -1095,13 +1299,19 @@ function AppInner() {
       {selected && !selected.loading && (
         <ResultSheet item={selected} onClose={() => setSelected(null)} onRecheck={detect} lang={lang} />
       )}
-      <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} lang={lang} />
+      <PremiumModal
+        visible={showPremium}
+        onClose={() => setShowPremium(false)}
+        onChoose={startCheckout}
+        onRedeem={redeem}
+        lang={lang}
+      />
       <GuideScreen
         visible={showGuide}
         onClose={() => setShowGuide(false)}
         lang={lang}
         overlayActive={overlayActive}
-        onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+        onToggle={onOverlayToggle}
       />
       <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
@@ -1122,16 +1332,60 @@ function AppInner() {
             <TouchableOpacity style={s.langBtn} onPress={() => setLang(lang === "he" ? "en" : "he")}>
               <Text style={s.langBtnText}>{lang === "he" ? "EN" : "עב"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.proBtn} onPress={() => setShowPremium(true)}>
-              <Text style={s.proBtnText}>👑 Pro</Text>
+            <TouchableOpacity style={[s.proBtn, isPaid && s.proBtnActive]} onPress={() => setShowPremium(true)}>
+              <Text style={s.proBtnText}>👑 {isPaid ? (tier === "promax" ? "Pro-Max" : "Pro") : "Pro"}</Text>
             </TouchableOpacity>
           </View>
         </View>
         <Text style={[s.tagline, align]}>{t.tagline}</Text>
 
-        {/* ── Detect card: paste a link → get an answer ── */}
+        {/* ── Free quota meter (hidden for paid tiers) ── */}
+        {!isPaid && (
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setShowPremium(true)} style={s.quotaCard}>
+            <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+              <Text style={[s.quotaLabel, align]}>
+                {remaining > 0
+                  ? (lang === "he" ? `${remaining} מתוך ${freeLimit} בדיקות חינם החודש` : `${remaining} of ${freeLimit} free checks left this month`)
+                  : (lang === "he" ? "נגמרו הבדיקות החינמיות החודש" : "No free checks left this month")}
+              </Text>
+              <Text style={s.quotaUpgrade}>{lang === "he" ? "שדרג ←" : "Upgrade →"}</Text>
+            </View>
+            <View style={s.quotaTrack}>
+              <View style={[s.quotaFill, {
+                width: `${Math.min(100, (usedThisMonth / freeLimit) * 100)}%`,
+                backgroundColor: remaining > 0 ? C.primary : C.ai,
+              }]} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* ── PRIMARY method: Share → VerifAI (uploads the file, always works) ── */}
+        <LinearGradient colors={["#1c1140", "#140b2e"]} start={GRAD_START} end={GRAD_END} style={s.shareHero}>
+          <View style={[{ alignItems: "center", gap: 10 }, row]}>
+            <View style={s.shareHeroIcon}><Text style={{ fontSize: 22 }}>📤</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.shareHeroTitle, align]}>{t.shareHeroTitle}</Text>
+              <Text style={[s.shareHeroSub, align]}>{t.shareHeroSub}</Text>
+            </View>
+          </View>
+          <View style={{ gap: 8, marginTop: 12 }}>
+            {t.shareHeroSteps.map((step, i) => (
+              <View key={i} style={[{ alignItems: "center", gap: 10 }, row]}>
+                <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.shareHeroNum}>
+                  <Text style={s.shareHeroNumText}>{i + 1}</Text>
+                </LinearGradient>
+                <Text style={[s.shareHeroStep, align, { flex: 1 }]}>{step}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={s.shareHeroCta} activeOpacity={0.85} onPress={() => setShowGuide(true)}>
+            <Text style={s.shareHeroCtaText}>▶️  {t.shareHeroCta}</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* ── Secondary: paste a link ── */}
+        <Text style={[s.orLabel, align]}>{t.orPaste}</Text>
         <View style={s.detectCard}>
-          <Text style={[s.detectTitle, align]}>{t.detectTitle}</Text>
           <Text style={[s.detectSub, align]}>{t.detectSub}</Text>
           <View style={[s.inputRow, row]}>
             <TextInput
@@ -1232,7 +1486,7 @@ function AppInner() {
           <StatusCard
             status={status}
             overlayActive={overlayActive}
-            onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+            onToggle={onOverlayToggle}
             lang={lang}
           />
         )}
@@ -1243,11 +1497,11 @@ function AppInner() {
             <Text style={{ fontSize: 20 }}>📖</Text>
           </LinearGradient>
           <View style={{ flex: 1 }}>
-            <Text style={[s.cardTitle, align]}>💡 {t.howTitle}</Text>
+            <Text style={[s.cardTitle, align]}>▶️ {rtl ? "צפה איך זה עובד" : "See how it works"}</Text>
             <Text style={[s.guideSub, align]}>{
               Platform.OS === "ios"
-                ? (rtl ? "מדריך מלא ל-iPhone, שלב אחר שלב" : "Full iPhone guide, step by step")
-                : (rtl ? "מדריך מלא, שלב אחר שלב — כולל הכפתור הצף" : "Full step-by-step guide — including the floating button")
+                ? (rtl ? "הדגמה חיה + מדריך מלא ל-iPhone" : "Live demo + full iPhone guide")
+                : (rtl ? "הדגמה חיה + מדריך מלא — כולל הכפתור הצף" : "Live demo + full guide — including the floating button")
             }</Text>
           </View>
           <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
@@ -1500,7 +1754,15 @@ const s = StyleSheet.create({
   langBtn: { backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: C.border },
   langBtnText: { color: C.sub, fontSize: 11, fontWeight: "700" },
   proBtn: { backgroundColor: "#171130", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.violet + "55" },
+  proBtnActive: { backgroundColor: C.violet + "33", borderColor: C.violet },
   proBtnText: { color: "#c4b5fd", fontSize: 12, fontWeight: "700" },
+
+  // Free quota meter
+  quotaCard: { backgroundColor: C.card, borderRadius: 16, padding: 14, gap: 10, borderWidth: 1, borderColor: C.border },
+  quotaLabel: { color: C.sub, fontSize: 13, fontWeight: "600", flex: 1 },
+  quotaUpgrade: { color: C.primary, fontSize: 12, fontWeight: "800" },
+  quotaTrack: { height: 6, borderRadius: 3, backgroundColor: "#ffffff10", overflow: "hidden" },
+  quotaFill: { height: 6, borderRadius: 3 },
 
   // Detect card (paste a link → answer)
   detectCard: {
@@ -1539,7 +1801,19 @@ const s = StyleSheet.create({
   },
   detectBtnDisabled: { opacity: 0.4 },
   detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
-  detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
+  detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2, lineHeight: 16 },
+
+  // Share hero (primary method)
+  shareHero: { borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.violet + "44" },
+  shareHeroIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.violet + "26", alignItems: "center", justifyContent: "center" },
+  shareHeroTitle: { color: C.text, fontSize: 17, fontWeight: "800" },
+  shareHeroSub: { color: C.sub, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
+  shareHeroNum: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  shareHeroNumText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  shareHeroStep: { color: C.text, fontSize: 13.5, lineHeight: 19 },
+  shareHeroCta: { marginTop: 14, backgroundColor: "#ffffff12", borderRadius: 13, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: C.border },
+  shareHeroCtaText: { color: C.text, fontSize: 14, fontWeight: "800" },
+  orLabel: { color: C.faint, fontSize: 12, fontWeight: "700", marginTop: 2, marginBottom: -6 },
 
   // Gallery picker button
   galleryBtn: {
@@ -1665,6 +1939,16 @@ const gd = StyleSheet.create({
   offBtn: { alignItems: "center", paddingVertical: 14, marginTop: 4 },
   offText: { color: C.faint, fontSize: 13, fontWeight: "600" },
 
+  trouble: { marginTop: 18, backgroundColor: "#ffffff05", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, gap: 8 },
+  troubleTitle: { color: C.text, fontSize: 15, fontWeight: "800", marginBottom: 4 },
+  troubleRow: { alignItems: "flex-start", gap: 8 },
+  troubleDot: { color: C.violet, fontSize: 15, fontWeight: "800", lineHeight: 20 },
+  troubleText: { color: C.sub, fontSize: 13, lineHeight: 20, flex: 1 },
+  troubleNote: { backgroundColor: C.real + "14", borderRadius: 12, padding: 12, marginTop: 6, borderWidth: 1, borderColor: C.real + "33" },
+  troubleNoteText: { color: C.real, fontSize: 12.5, lineHeight: 18 },
+  accessBtn: { backgroundColor: C.primaryDeep, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 8 },
+  accessBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+
   evRow: { alignItems: "flex-start", gap: 11, marginTop: 11 },
   evIcon: { fontSize: 17, width: 24, textAlign: "center" },
   evText: { color: C.sub, fontSize: 13.5, lineHeight: 20, flex: 1 },
@@ -1678,6 +1962,7 @@ const st = StyleSheet.create({
   row: { alignItems: "center", gap: 10, paddingVertical: 7 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   rowLabel: { color: C.sub, fontSize: 13 },
+  rowSub: { color: C.faint, fontSize: 10.5, marginTop: 2 },
   okText: { color: C.real, fontSize: 12, fontWeight: "700" },
   offText: { color: C.faint, fontSize: 12 },
   fixBtn: { backgroundColor: C.primaryDeep, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 },
@@ -1745,18 +2030,18 @@ const pm = StyleSheet.create({
   headerTitle: { color: "#fff", fontSize: 24, fontWeight: "900", letterSpacing: -0.5 },
   headerSub: { color: "#8b74e8", fontSize: 13, textAlign: "center", lineHeight: 18 },
 
-  features: { padding: 20, gap: 14 },
-  featureRow: { alignItems: "center", gap: 13 },
-  featureIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#1b1040", alignItems: "center", justifyContent: "center" },
-  featureTitle: { color: C.text, fontSize: 14, fontWeight: "700" },
-  featureDesc: { color: C.faint, fontSize: 12, marginTop: 1 },
-  checkmark: { color: C.violet, fontSize: 17, fontWeight: "800" },
-
-  priceRow: { justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 16 },
-  price: { color: "#fff", fontSize: 34, fontWeight: "900" },
-  pricePer: { color: C.faint, fontSize: 14, marginBottom: 7 },
-  badge: { backgroundColor: C.violet + "22", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: C.violet + "55" },
-  badgeText: { color: "#c4b5fd", fontSize: 13, fontWeight: "700" },
+  plans: { padding: 18, gap: 12 },
+  planCard: {
+    borderRadius: 18, padding: 16, gap: 4,
+    backgroundColor: "#ffffff06", borderWidth: 1.5, borderColor: C.border,
+  },
+  planCardActive: { borderColor: C.violet, backgroundColor: C.violet + "16" },
+  planName: { color: C.sub, fontSize: 18, fontWeight: "900" },
+  planPrice: { color: C.sub, fontSize: 22, fontWeight: "900" },
+  planPer: { color: C.faint, fontSize: 12, marginBottom: 3, marginHorizontal: 2 },
+  planTagline: { color: C.faint, fontSize: 12 },
+  planCheck: { color: C.violet, fontSize: 13, fontWeight: "800", lineHeight: 18 },
+  planFeat: { color: "#c9cae0", fontSize: 12.5, lineHeight: 18 },
 
   cta: {
     marginHorizontal: 18, borderRadius: 16, padding: 17, alignItems: "center",
@@ -1764,6 +2049,17 @@ const pm = StyleSheet.create({
     shadowColor: C.violet, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10,
   },
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  skip: { alignItems: "center", paddingVertical: 14 },
+  trialNote: { color: C.faint, fontSize: 11.5, textAlign: "center", marginTop: 10 },
+  redeemLink: { alignItems: "center", paddingVertical: 12 },
+  redeemLinkText: { color: C.violet, fontSize: 13, fontWeight: "700", textDecorationLine: "underline" },
+  redeemBox: { marginHorizontal: 18, marginTop: 8, gap: 6 },
+  redeemInput: {
+    flex: 1, backgroundColor: "#ffffff0d", borderRadius: 12, borderWidth: 1, borderColor: C.border,
+    paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontSize: 14, letterSpacing: 1,
+  },
+  redeemBtn: { backgroundColor: C.violet, borderRadius: 12, paddingHorizontal: 18, justifyContent: "center" },
+  redeemBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  redeemErr: { color: C.ai, fontSize: 12, textAlign: "center" },
+  skip: { alignItems: "center", paddingVertical: 12 },
   skipText: { color: C.faint, fontSize: 14 },
 });
