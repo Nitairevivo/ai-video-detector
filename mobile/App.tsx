@@ -7,6 +7,7 @@ import {
 import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
+import { LinearGradient } from "expo-linear-gradient";
 import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
@@ -14,30 +15,37 @@ import { SelfCheck } from "./SelfCheck";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
-const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/uMv17W_2UE88oGGD7Y36IyMHFhbVLiDuj0DbvP3Dnz0.apk";
+const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.5.2";
+const APP_VERSION = "1.6.0";
+
+// The signature bold brand gradient — violet → magenta → cyan.
+const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
+const GRAD_START = { x: 0, y: 0 };
+const GRAD_END = { x: 1, y: 1 };
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-  bg: "#05060e",
-  card: "#0c0e1d",
-  card2: "#131530",
-  border: "#ffffff10",
-  text: "#f1f2f8",
-  sub: "#9aa0b8",
-  faint: "#565c78",
-  primary: "#7c6cff",
-  primaryDeep: "#4f46e5",
-  ai: "#f43f5e",
-  edited: "#a855f7",
-  real: "#10b981",
+  bg: "#070316",
+  card: "#0e0a24",
+  card2: "#17103a",
+  border: "#ffffff14",
+  text: "#f4f2ff",
+  sub: "#a29dc4",
+  faint: "#6b6690",
+  primary: "#a066ff",      // bright signal violet
+  primaryDeep: "#6d28ff",  // electric indigo
+  magenta: "#ff3ec9",      // hot magenta accent
+  cyan: "#22e3ee",         // cyan spark
+  ai: "#ff3d6e",
+  edited: "#c084fc",
+  real: "#2ee6a6",
   gold: "#fbbf24",
-  violet: "#8b5cf6",
+  violet: "#b061ff",
 };
 
 // ─── i18n — Hebrew / English ──────────────────────────────────────────────────
@@ -573,6 +581,149 @@ function HistoryRow({ item, onPress, lang }: { item: HistoryItem; onPress: () =>
   );
 }
 
+// ─── Guide page content (he / en) ─────────────────────────────────────────────
+const GUIDE = {
+  he: {
+    title: "איך זה עובד",
+    intro:
+      "VerifAI קורא את הראיות שאי אפשר לזייף — קרדנציית C2PA, תוויות ה-AI של הפלטפורמות, ומכלול ראייה מכויל — כדי להגיד לך תוך שניות אם סרטון אמיתי או נוצר ב-AI.",
+    checkTitle: "3 דרכים לבדוק",
+    checkSteps: [
+      ["🔗", "הדבק קישור", "העתק קישור מטיקטוק / יוטיוב / אינסטגרם / X, פתח את VerifAI ולחץ ‘בדוק’. אם העתקת קישור — נציע לך אותו אוטומטית בלחיצה אחת."],
+      ["📤", "שתף לאפליקציה", "בכל אפליקציה: לחץ ‘שתף’ על הסרטון או התמונה ובחר VerifAI. זו הדרך הכי אמינה — תמיד עובדת."],
+      ["🖼️", "מהגלריה", "פתח את הגלריה, שתף סרטון או תמונה, ובחר VerifAI."],
+    ],
+    floatTitle: "הכפתור הצף האוטומטי",
+    floatSub:
+      "כפתור קטן שמופיע מעל TikTok / Instagram / YouTube. לחיצה אחת עליו בודקת את מה שאתה צופה בו — בלי לצאת מהאפליקציה.",
+    floatSteps: [
+      "אשר את ההרשאה ‘תצוגה מעל אפליקציות אחרות’ (פעם אחת בלבד).",
+      "חזור ל-VerifAI והדלק את המתג למטה.",
+      "פתח TikTok / Instagram / YouTube — הכפתור הצף יופיע. לחץ עליו כדי לבדוק את הסרטון על המסך.",
+    ],
+    enableBtn: "הפעל את הכפתור הצף",
+    disableBtn: "כבה את הכפתור הצף",
+    enabledBadge: "הכפתור הצף פעיל ✓",
+    evidenceTitle: "איך VerifAI יודע?",
+    back: "חזרה",
+    tip: "טיפ: הדרך הכי אמינה תמיד היא ‘שתף → VerifAI’ — כי היא מעלה את הקובץ עצמו.",
+  },
+  en: {
+    title: "How it works",
+    intro:
+      "VerifAI reads the evidence that can’t be faked — C2PA credentials, the platforms’ own AI labels, and a calibrated vision ensemble — to tell you in seconds whether a video is real or AI-generated.",
+    checkTitle: "3 ways to check",
+    checkSteps: [
+      ["🔗", "Paste a link", "Copy a link from TikTok / YouTube / Instagram / X, open VerifAI and tap ‘Detect’. If you copied a link, we’ll offer it to you in one tap."],
+      ["📤", "Share to the app", "In any app: tap ‘Share’ on the video or image and pick VerifAI. This is the most reliable way — it always works."],
+      ["🖼️", "From the gallery", "Open your gallery, share a video or image, and choose VerifAI."],
+    ],
+    floatTitle: "The automatic floating button",
+    floatSub:
+      "A small button that appears over TikTok / Instagram / YouTube. One tap checks whatever you’re watching — without leaving the app.",
+    floatSteps: [
+      "Grant the ‘Display over other apps’ permission (just once).",
+      "Come back to VerifAI and turn on the switch below.",
+      "Open TikTok / Instagram / YouTube — the floating button appears. Tap it to check the video on screen.",
+    ],
+    enableBtn: "Enable the floating button",
+    disableBtn: "Turn off the floating button",
+    enabledBadge: "Floating button is on ✓",
+    evidenceTitle: "How does VerifAI know?",
+    back: "Back",
+    tip: "Tip: the most reliable path is always ‘Share → VerifAI’ — it uploads the file itself.",
+  },
+} as const;
+
+function GuideScreen({
+  visible, onClose, lang, overlayActive, onToggle,
+}: {
+  visible: boolean; onClose: () => void; lang: Lang;
+  overlayActive: boolean; onToggle: (on: boolean) => void;
+}) {
+  const g = GUIDE[lang];
+  const t = T[lang];
+  const rtl = lang === "he";
+  const align = { textAlign: rtl ? "right" : "left" } as const;
+  const row = { flexDirection: rtl ? "row-reverse" : "row" } as const;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <LinearGradient
+          colors={["#2a0e63", "#1a0838", "rgba(7,3,22,0)"]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={gd.glow} pointerEvents="none"
+        />
+        {/* header */}
+        <View style={[gd.header, row]}>
+          <TouchableOpacity onPress={onClose} style={[gd.backBtn, row]} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={gd.backText}>{rtl ? "→" : "←"}</Text>
+            <Text style={gd.backText}>{g.back}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={gd.scroll} showsVerticalScrollIndicator={false}>
+          <Text style={[gd.h1, align]}>{g.title}</Text>
+          <Text style={[gd.intro, align]}>{g.intro}</Text>
+
+          {/* 3 ways to check */}
+          <Text style={[gd.section, align]}>{g.checkTitle}</Text>
+          {g.checkSteps.map(([icon, title, desc], i) => (
+            <View key={i} style={[gd.stepCard, row]}>
+              <View style={gd.stepIconWrap}><Text style={gd.stepIcon}>{icon}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={[gd.stepTitle, align]}>{title}</Text>
+                <Text style={[gd.stepDesc, align]}>{desc}</Text>
+              </View>
+            </View>
+          ))}
+
+          {/* floating button */}
+          <Text style={[gd.section, align]}>{g.floatTitle}</Text>
+          <Text style={[gd.subtle, align]}>{g.floatSub}</Text>
+          {g.floatSteps.map((step, i) => (
+            <View key={i} style={[gd.numRow, row]}>
+              <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.numBadge}>
+                <Text style={gd.numText}>{i + 1}</Text>
+              </LinearGradient>
+              <Text style={[gd.numStep, align]}>{step}</Text>
+            </View>
+          ))}
+          {Platform.OS === "android" && (
+            overlayActive ? (
+              <View style={gd.enabledBadge}><Text style={gd.enabledText}>{g.enabledBadge}</Text></View>
+            ) : (
+              <TouchableOpacity style={gd.enableWrap} activeOpacity={0.85} onPress={() => onToggle(true)}>
+                <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={gd.enableBtn}>
+                  <Text style={gd.enableText}>✨  {g.enableBtn}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )
+          )}
+          {Platform.OS === "android" && overlayActive && (
+            <TouchableOpacity style={gd.offBtn} onPress={() => onToggle(false)} activeOpacity={0.8}>
+              <Text style={gd.offText}>{g.disableBtn}</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* evidence */}
+          <Text style={[gd.section, align]}>{g.evidenceTitle}</Text>
+          {t.howKnowRows.map(([icon, text], i) => (
+            <View key={`k${i}`} style={[gd.evRow, row]}>
+              <Text style={gd.evIcon}>{icon}</Text>
+              <Text style={[gd.evText, align]}>{text}</Text>
+            </View>
+          ))}
+
+          <Text style={[gd.tip, align]}>{g.tip}</Text>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function AppInner() {
   const [loading, setLoading] = useState(false);
@@ -582,7 +733,10 @@ function AppInner() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
   const [scansTotal, setScansTotal] = useState(0);
-  const [showHow, setShowHow] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  // A video link found in the clipboard — OFFERED as a one-tap suggestion,
+  // never auto-run (auto-running on every launch felt like an uninvited scan).
+  const [clipHint, setClipHint] = useState<string | null>(null);
   const [urlText, setUrlText] = useState("");
   const [lang, setLangState] = useState<Lang>("he");
   const t = T[lang];
@@ -715,20 +869,26 @@ function AppInner() {
     }
   }, [lang, rtl]);
 
-  // Clipboard auto-detect when app comes foreground
+  // Clipboard → gentle suggestion (never auto-runs). When the app opens or
+  // returns to the foreground and a fresh video link is on the clipboard, we
+  // OFFER it as a one-tap chip instead of silently scanning it — so opening the
+  // app never looks like it started a scan by itself.
+  const offerClipboard = useCallback(async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      if (text && text !== lastChecked.current && isVideoUrl(text)) {
+        setClipHint(text);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    const sub = AppState.addEventListener("change", async (state: string) => {
-      if (state !== "active") return;
-      try {
-        const text = await Clipboard.getStringAsync();
-        if (text && text !== lastChecked.current && isVideoUrl(text)) {
-          lastChecked.current = text;
-          detect(text);
-        }
-      } catch {}
+    offerClipboard(); // cold start
+    const sub = AppState.addEventListener("change", (state: string) => {
+      if (state === "active") offerClipboard();
     });
     return () => sub.remove();
-  }, [detect]);
+  }, [offerClipboard]);
 
   // Video FILES shared from TikTok/Instagram (Share → VerifAI)
   useEffect(() => {
@@ -796,16 +956,31 @@ function AppInner() {
 
   const row = { flexDirection: (rtl ? "row-reverse" : "row") as "row-reverse" | "row" };
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
-  const howSteps = Platform.OS === "android" ? t.howSteps : t.howIos;
 
   return (
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
+      {/* brand glow behind the header — pure depth, non-interactive */}
+      <LinearGradient
+        colors={["#2a0e63", "#1a0838", "rgba(7,3,22,0)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={s.heroGlow}
+        pointerEvents="none"
+      />
+
       {selected && !selected.loading && (
         <ResultSheet item={selected} onClose={() => setSelected(null)} onRecheck={detect} lang={lang} />
       )}
       <PremiumModal visible={showPremium} onClose={() => setShowPremium(false)} lang={lang} />
+      <GuideScreen
+        visible={showGuide}
+        onClose={() => setShowGuide(false)}
+        lang={lang}
+        overlayActive={overlayActive}
+        onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+      />
       <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -813,7 +988,9 @@ function AppInner() {
         {/* ── Header ── */}
         <View style={[s.headerTop, row]}>
           <View style={[{ alignItems: "center", gap: 10 }, row]}>
-            <View style={s.logoMark}><Text style={s.logoMarkText}>V</Text></View>
+            <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.logoMark}>
+              <Text style={s.logoMarkText}>V</Text>
+            </LinearGradient>
             <View>
               <Text style={[s.headerTitle, align]}>VerifAI</Text>
               <Text style={[s.headerVersion, align]}>v{APP_VERSION}</Text>
@@ -858,11 +1035,12 @@ function AppInner() {
             )}
           </View>
           <TouchableOpacity
-            style={[s.detectBtn, (loading || !urlText.trim()) && s.detectBtnDisabled]}
+            style={[s.detectBtnWrap, (loading || !urlText.trim()) && s.detectBtnDisabled]}
             onPress={submitUrl}
             disabled={loading || !urlText.trim()}
             activeOpacity={0.85}
           >
+           <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.detectBtn}>
             {loading ? (
               <View style={[{ alignItems: "center", gap: 8 }, row]}>
                 <ActivityIndicator size="small" color="#fff" />
@@ -871,9 +1049,31 @@ function AppInner() {
             ) : (
               <Text style={s.detectBtnText}>🛡️  {t.detectNow}</Text>
             )}
+           </LinearGradient>
           </TouchableOpacity>
           <Text style={s.detectHint}>{t.detectTip}</Text>
         </View>
+
+        {/* ── Copied-link suggestion (one tap, never auto-runs) ── */}
+        {clipHint && !loading && (
+          <View style={[s.clipHint, row]}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={0.85}
+              onPress={() => { const u = clipHint; lastChecked.current = u; setClipHint(null); detect(u); }}
+            >
+              <Text style={[s.clipHintTitle, align]}>🔗 {rtl ? "לבדוק את הקישור שהעתקת?" : "Check the link you copied?"}</Text>
+              <Text style={[s.clipHintUrl, align]} numberOfLines={1}>{clipHint}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { lastChecked.current = clipHint; setClipHint(null); }}
+              style={s.clipHintClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ color: C.faint, fontSize: 16, fontWeight: "700" }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Stats ── */}
         {history.length > 0 && (
@@ -903,31 +1103,16 @@ function AppInner() {
           />
         )}
 
-        {/* ── How it works (collapsible) ── */}
-        <TouchableOpacity style={s.card} onPress={() => setShowHow(!showHow)} activeOpacity={0.8}>
-          <View style={[{ justifyContent: "space-between", alignItems: "center" }, row]}>
+        {/* ── Guide entry: opens the full step-by-step page ── */}
+        <TouchableOpacity style={[s.guideCard, row]} onPress={() => setShowGuide(true)} activeOpacity={0.85}>
+          <LinearGradient colors={GRAD} start={GRAD_START} end={GRAD_END} style={s.guideIcon}>
+            <Text style={{ fontSize: 20 }}>📖</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
             <Text style={[s.cardTitle, align]}>💡 {t.howTitle}</Text>
-            <Text style={s.chevron}>{showHow ? "▴" : "▾"}</Text>
+            <Text style={[s.guideSub, align]}>{rtl ? "מדריך מלא, שלב אחר שלב — כולל הפעלת הכפתור הצף" : "Full step-by-step guide — including the floating button"}</Text>
           </View>
-          {showHow && (
-            <View style={{ gap: 10, marginTop: 12 }}>
-              {howSteps.map((step, i) => (
-                <View key={i} style={[{ alignItems: "center", gap: 10 }, row]}>
-                  <View style={s.stepNum}><Text style={s.stepNumText}>{i + 1}</Text></View>
-                  <Text style={[s.stepText, align, { flex: 1 }]}>{step}</Text>
-                </View>
-              ))}
-              <Text style={[s.cardTitle, align, { marginTop: 10, fontSize: 13, color: "#c9c3ff" }]}>
-                {t.howKnowTitle}
-              </Text>
-              {t.howKnowRows.map(([icon, text], i) => (
-                <View key={`k${i}`} style={[{ alignItems: "flex-start", gap: 10 }, row]}>
-                  <Text style={s.howIcon}>{icon}</Text>
-                  <Text style={[s.stepText, align, { flex: 1 }]}>{text}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
         </TouchableOpacity>
 
         {/* ── Premium banner ── */}
@@ -1160,17 +1345,18 @@ function AppRouter() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
+  heroGlow: { position: "absolute", top: 0, left: 0, right: 0, height: 300 },
   scroll: { padding: 18, paddingBottom: 60, gap: 16 },
 
   // Header
   headerTop: { justifyContent: "space-between", alignItems: "center" },
   logoMark: {
-    width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center",
-    backgroundColor: C.primaryDeep, borderWidth: 1, borderColor: "#ffffff2e",
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 8,
+    width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center",
+    backgroundColor: C.primary, borderWidth: 1.5, borderColor: "#ffffff33",
+    shadowColor: C.magenta, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.85, shadowRadius: 18, elevation: 12,
   },
-  logoMarkText: { color: "#fff", fontSize: 22, fontWeight: "900", letterSpacing: -1 },
-  headerTitle: { color: C.text, fontSize: 26, fontWeight: "900", letterSpacing: -0.8 },
+  logoMarkText: { color: "#fff", fontSize: 26, fontWeight: "900", letterSpacing: -1 },
+  headerTitle: { color: C.text, fontSize: 30, fontWeight: "900", letterSpacing: -1 },
   headerVersion: { color: C.faint, fontSize: 10, fontWeight: "600", letterSpacing: 1 },
   tagline: { color: C.sub, fontSize: 14, marginTop: -6 },
   langBtn: { backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: C.border },
@@ -1180,12 +1366,12 @@ const s = StyleSheet.create({
 
   // Detect card (paste a link → answer)
   detectCard: {
-    backgroundColor: C.card, borderRadius: 22, padding: 18, gap: 10,
-    borderWidth: 1, borderColor: C.primary + "55",
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 24, elevation: 8,
+    backgroundColor: C.card, borderRadius: 24, padding: 18, gap: 10,
+    borderWidth: 1.5, borderColor: C.primary + "66",
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4, shadowRadius: 28, elevation: 10,
   },
-  detectTitle: { color: C.text, fontSize: 18, fontWeight: "800" },
+  detectTitle: { color: C.text, fontSize: 19, fontWeight: "800" },
   detectSub: { color: C.sub, fontSize: 12.5, marginTop: -4 },
   inputRow: { gap: 8, alignItems: "center", marginTop: 4 },
   input: {
@@ -1204,14 +1390,28 @@ const s = StyleSheet.create({
     backgroundColor: "#ffffff0f", borderWidth: 1, borderColor: "#ffffff1f",
   },
   clearInputText: { color: C.sub, fontSize: 15, fontWeight: "700" },
+  detectBtnWrap: {
+    marginTop: 4, borderRadius: 16,
+    shadowColor: C.magenta, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.7, shadowRadius: 22, elevation: 12,
+  },
   detectBtn: {
-    backgroundColor: C.primaryDeep, borderRadius: 16, paddingVertical: 15, alignItems: "center",
-    marginTop: 4, shadowColor: C.primaryDeep, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5, shadowRadius: 16, elevation: 8,
+    borderRadius: 16, paddingVertical: 16, alignItems: "center",
+    borderWidth: 1, borderColor: "#ffffff2e",
   },
   detectBtnDisabled: { opacity: 0.4 },
-  detectBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  detectBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.2 },
   detectHint: { color: C.faint, fontSize: 11, textAlign: "center", marginTop: 2 },
+
+  // Copied-link suggestion chip
+  clipHint: {
+    alignItems: "center", gap: 10, backgroundColor: C.primary + "16",
+    borderWidth: 1, borderColor: C.primary + "44", borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  clipHintTitle: { color: C.text, fontSize: 14, fontWeight: "800" },
+  clipHintUrl: { color: C.sub, fontSize: 11, marginTop: 2 },
+  clipHintClose: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
 
   // How-it-works explainer
   howIcon: { fontSize: 17, width: 26, textAlign: "center" },
@@ -1226,6 +1426,15 @@ const s = StyleSheet.create({
   card: { backgroundColor: C.card, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: C.border },
   cardTitle: { color: C.text, fontWeight: "800", fontSize: 15 },
   chevron: { color: C.faint, fontSize: 14 },
+
+  // Guide nav card
+  guideCard: {
+    alignItems: "center", gap: 13, backgroundColor: C.card, borderRadius: 20, padding: 16,
+    borderWidth: 1.5, borderColor: C.primary + "40",
+  },
+  guideIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  guideSub: { color: C.sub, fontSize: 12, marginTop: 3, lineHeight: 17 },
+  guideArrow: { color: C.primary, fontSize: 20, fontWeight: "800" },
 
   stepNum: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: C.primaryDeep },
   stepNumText: { color: "#fff", fontSize: 11, fontWeight: "800" },
@@ -1264,6 +1473,56 @@ const s = StyleSheet.create({
 
   downloadLink: { alignItems: "center", paddingVertical: 12 },
   downloadText: { color: C.faint, fontSize: 12 },
+});
+
+// Guide page styles
+const gd = StyleSheet.create({
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 260 },
+  header: { alignItems: "center", paddingHorizontal: 14, paddingTop: 8, paddingBottom: 4 },
+  backBtn: { alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 6 },
+  backText: { color: C.sub, fontSize: 15, fontWeight: "700" },
+  scroll: { paddingHorizontal: 20, paddingBottom: 60, gap: 4 },
+  h1: { color: C.text, fontSize: 32, fontWeight: "900", letterSpacing: -1, marginTop: 6 },
+  intro: { color: C.sub, fontSize: 14, lineHeight: 22, marginTop: 10 },
+  section: { color: C.text, fontSize: 19, fontWeight: "800", marginTop: 30, marginBottom: 8 },
+  subtle: { color: C.sub, fontSize: 13, lineHeight: 20, marginBottom: 12 },
+
+  stepCard: {
+    alignItems: "center", gap: 13, backgroundColor: C.card, borderRadius: 18, padding: 15,
+    borderWidth: 1, borderColor: C.border, marginTop: 10,
+  },
+  stepIconWrap: {
+    width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center",
+    backgroundColor: C.primary + "1c", borderWidth: 1, borderColor: C.primary + "3a",
+  },
+  stepIcon: { fontSize: 22 },
+  stepTitle: { color: C.text, fontSize: 15, fontWeight: "800" },
+  stepDesc: { color: C.sub, fontSize: 12.5, lineHeight: 19, marginTop: 3 },
+
+  numRow: { alignItems: "flex-start", gap: 12, marginTop: 12 },
+  numBadge: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  numText: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  numStep: { color: C.text, fontSize: 14, lineHeight: 22, flex: 1, marginTop: 2 },
+
+  enableWrap: {
+    marginTop: 18, borderRadius: 16,
+    shadowColor: C.magenta, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.6, shadowRadius: 20, elevation: 10,
+  },
+  enableBtn: { borderRadius: 16, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: "#ffffff2e" },
+  enableText: { color: "#fff", fontSize: 16, fontWeight: "900" },
+  enabledBadge: {
+    marginTop: 18, borderRadius: 16, paddingVertical: 15, alignItems: "center",
+    backgroundColor: C.real + "18", borderWidth: 1, borderColor: C.real + "55",
+  },
+  enabledText: { color: C.real, fontSize: 15, fontWeight: "800" },
+  offBtn: { alignItems: "center", paddingVertical: 14, marginTop: 4 },
+  offText: { color: C.faint, fontSize: 13, fontWeight: "600" },
+
+  evRow: { alignItems: "flex-start", gap: 11, marginTop: 11 },
+  evIcon: { fontSize: 17, width: 24, textAlign: "center" },
+  evText: { color: C.sub, fontSize: 13.5, lineHeight: 20, flex: 1 },
+
+  tip: { color: C.faint, fontSize: 12.5, lineHeight: 19, marginTop: 28, fontStyle: "italic" },
 });
 
 // Status card styles

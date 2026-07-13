@@ -85,16 +85,23 @@ function getVerdictStyle(r: DetectionResult) {
 // ── Logo ─────────────────────────────────────────────────────────────────────
 function Logo({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" aria-hidden>
-      <rect width="36" height="36" rx="10" fill="url(#lg)" />
-      <path d="M7 18C7 18 11.5 11 18 11C24.5 11 29 18 29 18C29 18 24.5 25 18 25C11.5 25 7 18 7 18Z"
-        stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="18" cy="18" r="3.5" fill="white" />
-      <line x1="14" y1="18" x2="22" y2="18" stroke="#22d3ee" strokeWidth="1.2" strokeLinecap="round" />
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden>
+      <rect width="40" height="40" rx="12" fill="url(#lg)" />
+      <rect width="40" height="40" rx="12" fill="url(#lgloss)" />
+      {/* bold verify check */}
+      <path d="M11 20.5 L17.5 27.5 L29.5 12"
+        stroke="white" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" />
+      {/* cyan spark at the tip */}
+      <circle cx="29.5" cy="12" r="2.7" fill="#22e3ee" />
       <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#4f46e5" />
-          <stop offset="1" stopColor="#7c6cff" />
+        <linearGradient id="lg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#7c3aed" />
+          <stop offset="0.5" stopColor="#d946ef" />
+          <stop offset="1" stopColor="#22d3ee" />
+        </linearGradient>
+        <linearGradient id="lgloss" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
+          <stop stopColor="white" stopOpacity="0.22" />
+          <stop offset="0.5" stopColor="white" stopOpacity="0" />
         </linearGradient>
       </defs>
     </svg>
@@ -148,9 +155,9 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
   if (item.status === "analyzing") {
     return (
       <div className="card p-5 flex items-center gap-4 rise-in">
-        <div className="relative w-11 h-11 rounded-xl bg-[#7c6cff]/10 border border-[#7c6cff]/25 flex items-center justify-center flex-shrink-0 overflow-hidden">
-          <div className="absolute left-0 right-0 h-[2px] bg-[#7c6cff] scan-beam" style={{ boxShadow: "0 0 10px #7c6cff" }} />
-          <svg className="w-5 h-5 text-[#7c6cff] animate-spin" fill="none" viewBox="0 0 24 24">
+        <div className="relative w-11 h-11 rounded-xl bg-[#a066ff]/10 border border-[#a066ff]/25 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="absolute left-0 right-0 h-[2px] bg-[#a066ff] scan-beam" style={{ boxShadow: "0 0 10px #a066ff" }} />
+          <svg className="w-5 h-5 text-[#a066ff] animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -158,7 +165,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
         <div className="flex-1 min-w-0">
           <p className="text-white text-sm font-medium truncate">{item.label}</p>
           <p className="text-faint text-xs mt-0.5 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#7c6cff] animate-pulse inline-block" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#a066ff] animate-pulse inline-block" />
             {item.file ? `Reading the code · ${(item.file.size/1024/1024).toFixed(1)} MB` : "Reading the code behind it…"}
           </p>
         </div>
@@ -174,7 +181,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
           <p className="text-white text-sm font-medium truncate">{item.label}</p>
           <p className="text-[#ff97a8] text-xs mt-0.5">{item.error}</p>
           {onRetry && (
-            <button onClick={onRetry} className="text-xs text-[#7c6cff] hover:text-[#a99bff] mt-1.5 transition-colors underline underline-offset-2">
+            <button onClick={onRetry} className="text-xs text-[#a066ff] hover:text-[#a99bff] mt-1.5 transition-colors underline underline-offset-2">
               Try again
             </button>
           )}
@@ -211,7 +218,7 @@ function ResultCard({ item, onRemove, onRetry }: { item: VideoItem; onRemove: ()
                 const pct = Math.round(r.confidence * 100);
                 const verdict = r.verdict === "ai_generated" ? "🤖 AI Generated" : r.verdict === "ai_edited" ? "✏️ AI Edited" : "✅ Real";
                 navigator.clipboard.writeText(`${verdict} (${pct}%) — ${item.url}\nDetected by VerifAI`);
-              }} className="text-xs text-muted hover:text-[#7c6cff] transition-colors">
+              }} className="text-xs text-muted hover:text-[#a066ff] transition-colors">
                 Copy result
               </button>
             )}
@@ -487,17 +494,17 @@ export default function Home() {
   const urlCount = urlInput.split(/[\n,\s]+/).filter(s => s.trim().startsWith("http")).length;
 
   return (
-    <div className="min-h-screen flex flex-col relative" style={{ background: "radial-gradient(ellipse at 50% -10%, #180a3a 0%, #05050f 55%)" }}>
+    <div className="min-h-screen flex flex-col relative" style={{ background: "radial-gradient(ellipse at 50% -12%, #1c0a44 0%, #0a0522 42%, #060314 72%)" }}>
       <div className="aurora" aria-hidden><span className="spark" /></div>
       <div className="fixed inset-0 z-0 grid-texture pointer-events-none" aria-hidden />
       <div className="grain" aria-hidden />
       <div className="relative z-10 flex flex-col min-h-screen">
 
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-5 sm:px-8 py-4 border-b border-white/6 backdrop-blur-xl sticky top-0 z-50 bg-[#05050f]/70">
+      <nav className="flex items-center justify-between px-5 sm:px-8 py-4 border-b border-white/6 backdrop-blur-xl sticky top-0 z-50 bg-[#060314]/70">
         <a href="/" className="flex items-center gap-2.5">
           <Logo size={32} />
-          <span className="font-bold text-lg tracking-tight">Verif<span className="text-[#7c6cff]">AI</span></span>
+          <span className="font-bold text-lg tracking-tight">Verif<span className="text-[#a066ff]">AI</span></span>
         </a>
         <div className="flex items-center gap-1 sm:gap-3 text-sm">
           <a href="/accuracy" className="px-3 py-1.5 rounded-lg text-muted hover:text-white hover:bg-white/5 transition-colors hidden sm:block">Accuracy</a>
@@ -516,9 +523,9 @@ export default function Home() {
           Live model · self-improves every night · ships to production automatically
         </div>
 
-        <div className="rise-in d1 mb-7 animate-float"><Logo size={76} /></div>
+        <div className="rise-in d1 mb-7 animate-float glow-pulse"><Logo size={88} /></div>
 
-        <h1 className="rise-in d1 display text-[2.9rem] sm:text-7xl font-extrabold mb-5">
+        <h1 className="rise-in d1 display text-[3.5rem] sm:text-[5.5rem] lg:text-[7rem] mb-5">
           <span className="text-white">Is it real,</span><br />
           <span className="shimmer-text">or is it AI?</span>
         </h1>
@@ -562,12 +569,12 @@ export default function Home() {
       <section id="how" className="py-16 sm:py-20 px-4">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <p className="text-xs text-[#7c6cff] font-bold tracking-[0.2em] uppercase mb-3">How it works</p>
+            <p className="text-xs text-[#a066ff] font-bold tracking-[0.2em] uppercase mb-3">How it works</p>
             <h2 className="display text-3xl sm:text-5xl font-extrabold gradient-text">Evidence first. Vision second.</h2>
             <p className="text-muted text-sm mt-4 max-w-md mx-auto">Hard, verifiable evidence decides in milliseconds. The vision ensemble is the fallback — so a single layer can never cry wolf alone.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            <LayerCard n="1" icon="🔏" accent="#7c6cff" title="File forensics"
+            <LayerCard n="1" icon="🔏" accent="#a066ff" title="File forensics"
               desc="Cryptographically verifies C2PA Content Credentials and reads AI-tool signatures, proprietary MP4 boxes and codec fingerprints from Sora, Kling, Runway, Veo and 30+ tools." />
             <LayerCard n="2" icon="🏷️" accent="#22d3ee" title="Platform intelligence"
               desc="When platforms re-encode and strip the file, VerifAI reads their own AI-disclosure labels — TikTok AIGC, YouTube ‘Altered or synthetic’, Meta ‘AI info’ — straight from the source." />
@@ -582,7 +589,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           <div><p className="display text-4xl sm:text-5xl font-extrabold gradient-text">30+</p><p className="text-xs text-muted mt-2">AI tools detected</p></div>
           <div><p className="display text-4xl sm:text-5xl font-extrabold gradient-text">6</p><p className="text-xs text-muted mt-2">detection layers</p></div>
-          <a href="/accuracy" className="group"><p className="display text-4xl sm:text-5xl font-extrabold gradient-text group-hover:opacity-80 transition-opacity">0.98</p><p className="text-xs text-muted mt-2 group-hover:text-[#7c6cff] transition-colors">cross-validated AUC ↗</p></a>
+          <a href="/accuracy" className="group"><p className="display text-4xl sm:text-5xl font-extrabold gradient-text group-hover:opacity-80 transition-opacity">0.98</p><p className="text-xs text-muted mt-2 group-hover:text-[#a066ff] transition-colors">cross-validated AUC ↗</p></a>
           <div><p className="display text-4xl sm:text-5xl font-extrabold gradient-text">~5s</p><p className="text-xs text-muted mt-2">avg detection time</p></div>
         </div>
       </section>
@@ -604,7 +611,7 @@ export default function Home() {
             <button
               onClick={() => setDeepMode(d => !d)}
               aria-label="Toggle deep analysis"
-              className={`relative w-11 h-6 rounded-full transition-all duration-200 flex-shrink-0 ${deepMode ? "bg-[#7c6cff]" : "bg-white/10"}`}>
+              className={`relative w-11 h-6 rounded-full transition-all duration-200 flex-shrink-0 ${deepMode ? "bg-[#a066ff]" : "bg-white/10"}`}>
               <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${deepMode ? "left-5" : "left-0.5"}`} />
             </button>
           </div>
@@ -619,7 +626,7 @@ export default function Home() {
               }}
               placeholder={"Paste one or multiple links (TikTok, Instagram, YouTube, X…)\nOne per line for batch analysis"}
               rows={urlInput.split("\n").length > 1 ? Math.min(urlInput.split("\n").length + 1, 5) : 1}
-              className="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-white text-sm placeholder-faint focus:outline-none focus:border-[#7c6cff]/60 focus:ring-2 focus:ring-[#7c6cff]/20 transition-all resize-none leading-relaxed"
+              className="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-white text-sm placeholder-faint focus:outline-none focus:border-[#a066ff]/60 focus:ring-2 focus:ring-[#a066ff]/20 transition-all resize-none leading-relaxed"
             />
             <div className="flex gap-2">
               <button onClick={() => addUrls(urlInput)}
@@ -674,7 +681,7 @@ export default function Home() {
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             className={`w-full h-48 rounded-3xl border-2 border-dashed cursor-pointer flex flex-col items-center justify-center gap-3 transition-all duration-200 ${
-              isDragging ? "border-[#7c6cff] bg-[#7c6cff]/10 scale-[1.01]" : "border-white/12 bg-white/2 hover:border-[#7c6cff]/50 hover:bg-white/4"
+              isDragging ? "border-[#a066ff] bg-[#a066ff]/10 scale-[1.01]" : "border-white/12 bg-white/2 hover:border-[#a066ff]/50 hover:bg-white/4"
             }`}>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl btn-primary">🎬</div>
             <div className="text-center">
@@ -689,7 +696,7 @@ export default function Home() {
           {items.length > 0 && (
             <div className="flex items-center justify-between text-sm">
               <div className="flex gap-4 flex-wrap">
-                {analyzingCount > 0 && <span className="text-[#7c6cff] font-medium">⏳ {analyzingCount} analyzing</span>}
+                {analyzingCount > 0 && <span className="text-[#a066ff] font-medium">⏳ {analyzingCount} analyzing</span>}
                 {aiCount > 0 && <span className="text-[#ff5470] font-medium">🤖 {aiCount} AI</span>}
                 {editedCount > 0 && <span className="text-[#b98bff] font-medium">✏️ {editedCount} Edited</span>}
                 {realCount > 0 && <span className="text-[#34e0a1] font-medium">✅ {realCount} Real</span>}

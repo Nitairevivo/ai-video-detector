@@ -68,10 +68,34 @@ def _iter_repo_videos(repo_id: str, limit: int, seen: set):
         got += 1
 
 
+def _record_hard_stats(repo_id: str, is_ai: bool, added: int, hard: int):
+    """Append this repo's hard-sample rate to data/hard_samples_report.json so we
+    can SEE which generators the model is weakest on and steer future collection
+    toward them. A 'hard' sample is one the current model gets wrong at 0.5 — for
+    the AI class these are exactly the misses that keep recall down."""
+    import json
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "data" / "hard_samples_report.json"
+    try:
+        rep = json.loads(p.read_text()) if p.exists() else {"repos": {}}
+    except Exception:
+        rep = {"repos": {}}
+    rate = round(hard / added, 3) if added else 0.0
+    rep["repos"][repo_id] = {
+        "class": "ai" if is_ai else "real",
+        "added": added, "hard": hard, "hard_rate": rate,
+    }
+    try:
+        p.write_text(json.dumps(rep, indent=2))
+    except Exception:
+        pass
+
+
 def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> int:
     classifier = get_classifier()
     seen = _trained_sources()
     added = 0
+    hard = 0  # samples the CURRENT model gets wrong — the ones worth having
     for tag, path in _iter_repo_videos(repo_id, limit, seen):
         # label_file records source by filename; make it the unique HF tag so
         # dedup across runs works and we never re-count the same clip.
@@ -81,10 +105,20 @@ def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> 
             path = renamed
         except Exception:
             pass
-        if label_file(path, is_ai=is_ai, classifier=classifier):
+        result = label_file(path, is_ai=is_ai, classifier=classifier)
+        if result:
             added += 1
+            # Hard-sample mining: does the current model already get this right?
+            # The ones it misses are the ones that actually move recall/precision.
+            try:
+                prob, _ = classifier.predict(result.feature_vector)
+                miss = (prob < 0.5) if is_ai else (prob >= 0.5)
+                if miss:
+                    hard += 1
+            except Exception:
+                pass
             if added % 25 == 0:
-                print(f"[hf] {repo_id}: +{added} samples")
+                print(f"[hf] {repo_id}: +{added} samples ({hard} hard so far)")
             if added % retrain_every == 0:
                 retrain(classifier)
         try:
@@ -93,7 +127,10 @@ def collect(repo_id: str, is_ai: bool, limit: int, retrain_every: int = 200) -> 
             pass
     if added:
         retrain(classifier)
-    print(f"[hf] {repo_id}: added {added} {'AI' if is_ai else 'real'} samples")
+        _record_hard_stats(repo_id, is_ai, added, hard)
+    pct = (100 * hard / added) if added else 0
+    print(f"[hf] {repo_id}: added {added} {'AI' if is_ai else 'real'} samples "
+          f"— {hard} were HARD ({pct:.0f}% the model missed before training)")
     return added
 
 

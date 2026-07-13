@@ -5,7 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "VerifAI — AI Video Detector",
+  metadataBase: new URL("https://verifai.app"),
+  title: "VerifAI — Is this video real or AI?",
   description:
     "Detect AI-generated videos (Sora, Veo, Kling, Runway…) — cryptographic C2PA verification, platform AI labels and a calibrated vision ensemble. Videos deleted right after analysis.",
   keywords: ["AI video detector", "deepfake detection", "C2PA", "content credentials", "Sora", "AI generated"],
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
     siteName: "VerifAI",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "VerifAI — Is this video real or AI?",
     description: "Detect AI-generated videos in seconds. Privacy safe — videos deleted right after analysis.",
   },
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[#06060f] text-white">{children}</body>
+      <body className="min-h-full bg-[#060314] text-white">{children}</body>
     </html>
   );
 }

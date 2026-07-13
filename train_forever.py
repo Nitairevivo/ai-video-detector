@@ -319,24 +319,29 @@ def download_pexels(search: str, out_dir: Path, seen: set, api_key: str) -> list
     return new_files
 
 
-def label_file(path: Path, is_ai: bool, classifier) -> bool:
-    """Extract features, sanity-check, and add to training set. Returns True if added."""
+def label_file(path: Path, is_ai: bool, classifier):
+    """Extract features, sanity-check, and add to training set.
+
+    Returns the DetectionResult on success (truthy — callers can still use it as
+    a boolean), or None if the sample was skipped. Returning the result lets the
+    collector do hard-sample mining: ask the current model whether it would have
+    gotten this sample right, and surface the ones it misses."""
     try:
         result = extract_features(str(path), deep=False)
     except Exception as e:
         print(f"    ✗ error: {e}")
-        return False
+        return None
 
     # Sanity checks — reject mislabeled samples
     if is_ai and result.confidence < 0.10 and "Camera origin" in result.method:
         print(f"    ✗ strong camera markers on supposed AI — skip")
-        return False
+        return None
     if not is_ai and result.confidence >= 0.95:
         print(f"    ✗ definitive AI signals on supposed real — skip")
-        return False
+        return None
 
     classifier.add_sample(result.feature_vector, label=is_ai, source=path.name)
-    return True
+    return result
 
 
 def _trained_sources() -> set:

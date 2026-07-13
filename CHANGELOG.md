@@ -1,5 +1,14 @@
 # VerifAI — What's New
 
+## 2026-07-13 — Model & detection improvements
+
+- Video detector now at 0.997 AUC with a 0.3% false-positive rate (trained on 5,164 videos).
+- Image detector trained on 3,249 samples (AUC 0.852).
+- Detect-url: never analyze a non-video download (false-positive guard).
+- Fix mobile OTA gate: expo export needs a project-relative output dir.
+- Fix 'everything is 6% real': restore Gemini's time budget.
+- Fix mobile startup crash: make OTA safe, not a brick vector.
+
 ## 2026-07-12 — Model & detection improvements
 
 - Video detector now at 0.956 AUC with a 2.6% false-positive rate (trained on 4,530 videos).
