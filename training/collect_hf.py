@@ -108,17 +108,23 @@ def collect_auto(repo_id: str, limit: int, retrain_every: int = 200) -> dict:
     only the confidently-labeled ones, skip everything ambiguous. Returns the
     class counts actually added."""
     from training.path_labeler import classify
+    from train_forever import real_class_saturated
     from huggingface_hub import hf_hub_download
     classifier = get_classifier()
     seen = _trained_sources()
     token = os.environ.get("HF_TOKEN") or None
     counts = {"ai": 0, "real": 0, "skip": 0}
+    # When the real class is already saturated, only pull the AI half — the whole
+    # point of ingesting a benchmark right now is to un-starve the AI class.
+    skip_real = real_class_saturated()
     for f in _list_repo_video_paths(repo_id):
         if counts["ai"] + counts["real"] >= limit:
             break
         cls = classify(f)
         if cls is None:
             counts["skip"] += 1
+            continue
+        if cls == "real" and skip_real:
             continue
         tag = f"hf:{repo_id}:{f}"
         stored = tag.replace("/", "_").replace(":", "_")

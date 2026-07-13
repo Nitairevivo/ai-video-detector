@@ -12,6 +12,16 @@ def test_ai_generator_folders():
     assert classify("generated/modelscope/v.mp4") == "ai"
 
 
+def test_deepaction_generators():
+    # DeepAction packs AI by model-name folder + Pexels reals
+    assert classify("deepaction_v1/VideoPoet/clip.mp4") == "ai"
+    assert classify("CogVideoX5B/000.mp4") == "ai"
+    assert classify("data/RunwayML/x.mp4") == "ai"
+    assert classify("StableDiffusion/y.mp4") == "ai"
+    assert classify("AnimateDiff/z.mp4") == "ai"
+    assert classify("deepaction/Pexels/real001.mp4") == "real"
+
+
 def test_real_folders():
     assert classify("real/vript/clip042.mp4") == "real"
     assert classify("data/webvid/abc.mp4") == "real"

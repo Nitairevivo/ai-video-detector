@@ -25,6 +25,10 @@ _AI_TOKENS = [
     "easyanimate", "allegro", "mochi", "hunyuan", "wanx", "ltx", "seedance",
     "hailuo", "vidu", "genmo", "moonvalley", "cogvideox-5b", "opensora-plan",
     "generated", "synthetic", "aigc", "genvideo", "gen_video",
+    # additional generators seen in public benchmarks (e.g. DeepAction)
+    "videopoet", "video-poet", "stablediffusion", "stable-diffusion",
+    "runwayml", "animate-diff", "cogvideo5b", "cogvideox5b", "lumiere",
+    "streamingt2v", "pyramid-flow", "pyramidflow",
 ]
 # Explicit real/source markers. A path with any of these (and no AI-marker) is real.
 _REAL_TOKENS = [
