@@ -917,6 +917,20 @@ def _download_with_ytdlp(url: str, tmp_path: str) -> bool:
                  "youtube:player_client=android,ios,tv_embedded,web_embedded,web_safari",
                  "--add-header", "Referer:https://www.google.com/"]
 
+    # The two levers that ACTUALLY defeat datacenter bot-walls — off by default,
+    # enabled by setting an env var (no redeploy of code needed):
+    #   YTDLP_PROXY   — route through a residential/rotating proxy. This is the
+    #                   only thing that reliably makes YouTube/TikTok links work
+    #                   from a fixed server IP; a cheap proxy is a few $/mo.
+    #   YT_COOKIES_FILE — path to a cookies.txt exported from a logged-in
+    #                   browser; yt-dlp presents them and often clears the wall.
+    proxy = os.environ.get("YTDLP_PROXY", "").strip()
+    if proxy:
+        base_args += ["--proxy", proxy]
+    cookies = os.environ.get("YT_COOKIES_FILE", "").strip()
+    if cookies and os.path.exists(cookies):
+        base_args += ["--cookies", cookies]
+
     # Strategy 1: HLS/m3u8 — works for YouTube even when DASH is blocked
     formats = [
         "18",           # progressive muxed 360p mp4 (single file, no mux needed)
