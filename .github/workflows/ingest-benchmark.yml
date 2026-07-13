@@ -85,17 +85,14 @@ jobs:
         if: always()
         run: |
           git checkout -B auto-train
-          # The restore step stages files into the index; reset it to HEAD so the
-          # index reflects ONLY what changed in the working tree (the +AI samples
-          # + retrained model). Without this the later add/diff saw a clean index
-          # and silently committed nothing.
-          git reset -q
-          git add -f data/training_samples.json data/seen_video_ids.json \
-                  data/hard_samples_report.json \
-                  models/trained_model.joblib models/trained_model_meta.json \
-                  models/frame_model.pkl || true
-          echo "Staged changes:"; git status --porcelain
-          if [ -n "$(git status --porcelain)" ]; then
+          # Stage everything under data/ and models/ with -A. Do NOT list files:
+          # `git add -f a b c` fatals and stages NOTHING when any pathspec (e.g.
+          # a not-yet-created seen_video_ids.json) doesn't match — which is what
+          # dropped two successful ingests. `git add -A <dir>` never has that
+          # problem and captures exactly the dataset + model artifacts.
+          git add -A data/ models/
+          echo "Staged:"; git status --short | head -20
+          if [ -n "$(git diff --cached --name-only)" ]; then
             git commit -m "Ingest ${{ github.event.inputs.repo }}: grow AI class ($(date -u +%Y-%m-%d))"
             git push -f origin auto-train
             echo "Committed + pushed to auto-train."
