@@ -12,6 +12,7 @@ import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
+import { DemoReel } from "./components/DemoReel";
 import { Tier, TIERS, getTier, setTier as persistTier, getUsage, canScan, recordScan } from "./services/quota";
 
 const { width } = Dimensions.get("window");
@@ -19,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.1";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -707,6 +708,9 @@ function GuideScreen({
           <Text style={[gd.h1, align]}>{g.title}</Text>
           <Text style={[gd.intro, align]}>{g.intro}</Text>
 
+          {/* Animated demo — the in-app "how it works" video */}
+          <DemoReel lang={lang} />
+
           {/* 3 ways to check */}
           <Text style={[gd.section, align]}>{g.checkTitle}</Text>
           {g.checkSteps.map(([icon, title, desc], i) => (
@@ -1230,8 +1234,8 @@ function AppInner() {
             <Text style={{ fontSize: 20 }}>📖</Text>
           </LinearGradient>
           <View style={{ flex: 1 }}>
-            <Text style={[s.cardTitle, align]}>💡 {t.howTitle}</Text>
-            <Text style={[s.guideSub, align]}>{rtl ? "מדריך מלא, שלב אחר שלב — כולל הפעלת הכפתור הצף" : "Full step-by-step guide — including the floating button"}</Text>
+            <Text style={[s.cardTitle, align]}>▶️ {rtl ? "צפה איך זה עובד" : "See how it works"}</Text>
+            <Text style={[s.guideSub, align]}>{rtl ? "הדגמה חיה + מדריך מלא שלב אחר שלב" : "Live demo + full step-by-step guide"}</Text>
           </View>
           <Text style={s.guideArrow}>{rtl ? "←" : "→"}</Text>
         </TouchableOpacity>
