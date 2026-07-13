@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from "react";
+import IosInstallHint from "./IosInstallHint";
 
 const HISTORY_KEY = "aivd_history";
 const MAX_HISTORY = 50;
@@ -498,6 +499,7 @@ export default function Home() {
       <div className="aurora" aria-hidden><span className="spark" /></div>
       <div className="fixed inset-0 z-0 grid-texture pointer-events-none" aria-hidden />
       <div className="grain" aria-hidden />
+      <IosInstallHint />
       <div className="relative z-10 flex flex-col min-h-screen">
 
       {/* Navbar */}
