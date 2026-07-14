@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.9";
+const APP_VERSION = "1.8.0";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -87,6 +87,8 @@ const T = {
     accessRestrictedBody: "זו חסימת אבטחה של אנדרואיד לאפליקציות שהותקנו מחוץ ל-Play (לא באג). כדי לאפשר בכל זאת:\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור והפעל את שירות הנגישות של VerifAI\n\nאבל שוב — זה לא חובה. הכפתור עובד גם בלי זה.",
     accessGotIt: "הבנתי",
     openAppSettings: "פתח הגדרות אפליקציה",
+    overlayHelpTitle: "הכפתור הצף לא הצליח לעלות",
+    overlayHelpBody: "נראה שהטלפון חוסם את השכבה הצפה. בשיאומי / רדמי / פוקו צריך הרשאה *נוספת* נסתרת:\n\nהגדרות → אפליקציות → VerifAI → הרשאות נוספות (Other permissions) → הדלק:\n• 'הצג חלונות קופצים בזמן ריצה ברקע'\n• 'הצג מעל אפליקציות אחרות'\n\nבטלפונים אחרים: ודא ש'תצוגה מעל אפליקציות אחרות' דלוקה ל-VerifAI, ואז נסה שוב.",
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
@@ -180,6 +182,8 @@ const T = {
     accessRestrictedBody: "This is an Android security block for apps installed outside the Play Store (not a bug). To allow it anyway:\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Go back and enable VerifAI's accessibility service\n\nBut again — it's optional. The button works without it.",
     accessGotIt: "Got it",
     openAppSettings: "Open app settings",
+    overlayHelpTitle: "The floating button couldn't start",
+    overlayHelpBody: "Your phone seems to be blocking the overlay. On Xiaomi / Redmi / Poco you need an EXTRA hidden permission:\n\nSettings → Apps → VerifAI → Other permissions → enable:\n• 'Display pop-up windows while running in background'\n• 'Display over other apps'\n\nOn other phones: make sure 'Display over other apps' is ON for VerifAI, then try again.",
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
@@ -849,6 +853,20 @@ function AppInner() {
   const lastChecked = useRef<string>("");
 
   const { overlayActive, status, startOverlay, stopOverlay } = useOverlay();
+  // Turning the button on can fail on OEMs (Xiaomi/Redmi/Poco, Oppo, Vivo) that
+  // require an extra hidden "show pop-up while running in background" permission
+  // on top of "display over other apps". Rather than a switch that silently
+  // won't flip, show device-specific steps + open app settings.
+  const enableOverlay = useCallback(async () => {
+    const ok = await startOverlay();
+    if (!ok) {
+      const g = T[lang];
+      Alert.alert(g.overlayHelpTitle, g.overlayHelpBody, [
+        { text: g.accessGotIt, style: "cancel" },
+        { text: g.openAppSettings, onPress: () => Linking.openSettings() },
+      ]);
+    }
+  }, [startOverlay, lang]);
 
   // NOTE: we deliberately do NOT auto-start the overlay on launch. Starting a
   // specialUse foreground service at app startup crashes the process on
@@ -1131,7 +1149,7 @@ function AppInner() {
         onClose={() => setShowGuide(false)}
         lang={lang}
         overlayActive={overlayActive}
-        onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+        onToggle={(v) => (v ? enableOverlay() : stopOverlay())}
       />
       <WhatsNew />{/* only on the home screen — never over onboarding/crash */}
 
@@ -1262,7 +1280,7 @@ function AppInner() {
           <StatusCard
             status={status}
             overlayActive={overlayActive}
-            onToggle={(v) => (v ? startOverlay() : stopOverlay())}
+            onToggle={(v) => (v ? enableOverlay() : stopOverlay())}
             lang={lang}
           />
         )}
