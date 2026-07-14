@@ -51,35 +51,47 @@ export function useOverlay() {
     return false;
   }, []);
 
-  const actuallyStart = useCallback(async () => {
+  // Try to bring the button up and CONFIRM it actually came up by reading the
+  // running service — the source of truth that survives OEMs whose
+  // canDrawOverlays() lies. Returns true only if the overlay is really live.
+  const actuallyStart = useCallback(async (): Promise<boolean> => {
     try {
       await OverlayModule.start();
-      setOverlayActive(true);
-      pendingStart.current = false;
-      refreshStatus();
-      return true;
+      // The foreground service + addView happen just after; give it a moment,
+      // then confirm via serviceRunning.
+      for (let i = 0; i < 4; i++) {
+        await sleep(400);
+        try {
+          const s: OverlayStatus = await OverlayModule.getStatus();
+          if (s.serviceRunning) {
+            setStatus(s);
+            setOverlayActive(true);
+            pendingStart.current = false;
+            return true;
+          }
+        } catch {}
+      }
+      return false;
     } catch (e) {
       console.warn("Overlay start failed:", e);
       return false;
     }
-  }, [refreshStatus]);
+  }, []);
 
   // Explicit user action only (the home-screen toggle) — never called at launch.
   const startOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
-    // If the permission is already granted, just start — never bounce the user
-    // to Settings again. Retry the read: right after the app regains focus the
-    // system can briefly still report false, which is exactly what caused the
-    // "I already granted it but it sends me back to permissions" loop.
-    if (await checkPermission(3)) {
-      await actuallyStart();
-      return;
-    }
-    // Otherwise remember the intent and open the grant screen; the AppState
-    // listener finishes the start when they return.
+    // ALWAYS try to start first — don't trust canDrawOverlays, which lies on
+    // many OEM skins and used to trap the user in a "grant permission" loop even
+    // though it was already granted. If the button actually comes up, we're done
+    // and the user is NEVER bounced to Settings.
+    if (await actuallyStart()) return;
+    // The overlay genuinely couldn't be added → the permission is really missing.
+    // Now (and only now) open the grant screen; the AppState listener finishes
+    // the start when they return.
     pendingStart.current = true;
     try { await OverlayModule.requestPermission(); } catch (e) { console.warn(e); }
-  }, [checkPermission, actuallyStart]);
+  }, [actuallyStart]);
 
   const stopOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
@@ -104,11 +116,9 @@ export function useOverlay() {
     const sub = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
       if (pendingStart.current) {
-        const granted = await checkPermission(4);
-        if (granted) {
-          await actuallyStart();
-          return;
-        }
+        // They just came back from the grant screen — try to bring the button
+        // up and confirm it (actuallyStart trusts serviceRunning, not the flag).
+        if (await actuallyStart()) return;
       }
       refreshStatus();
     });
