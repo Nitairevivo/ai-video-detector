@@ -254,9 +254,14 @@ public class OverlayService extends Service {
             .getInt("button_y", dp(140));
 
         attachDragAndTap(buttonView);
-        // Without the accessibility service there is no foreground-app signal,
-        // so the Play build shows the button whenever the service is on.
-        buttonView.setVisibility(BuildFlags.PLAY_BUILD ? View.VISIBLE : View.GONE);
+        // ALWAYS visible once the service is on. Previously the sideload build
+        // started GONE and only appeared when the accessibility service reported
+        // a supported app in the foreground — but accessibility is blocked for
+        // sideloaded apps, so the button was invisible forever ("worked for a
+        // second then vanished"). Accessibility now only REFINES visibility
+        // (auto-hide over non-video apps) when it happens to be on; it never
+        // gates the button's existence.
+        buttonView.setVisibility(View.VISIBLE);
         windowManager.addView(buttonView, buttonParams);
     }
 
