@@ -233,11 +233,11 @@ public class OverlayService extends Service {
 
     private void showButton() {
         // Accessibility service may start us before the overlay permission is
-        // granted — in that case run without the button instead of crashing.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && !android.provider.Settings.canDrawOverlays(this)) {
-            return;
-        }
+        // We do NOT pre-check canDrawOverlays() — it lies on many OEM skins.
+        // We just try to add the view; if the permission is genuinely missing
+        // addView() throws, onCreate() catches it and stops the service, and the
+        // JS side sees serviceRunning=false and opens Settings. If it succeeds,
+        // the button is up regardless of what the flag claimed.
         buttonView = buildButtonView();
 
         buttonParams = new WindowManager.LayoutParams(

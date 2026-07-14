@@ -52,11 +52,13 @@ public class OverlayModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void start(Promise promise) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                    && !Settings.canDrawOverlays(reactContext)) {
-                promise.reject("NO_PERMISSION", "SYSTEM_ALERT_WINDOW permission not granted");
-                return;
-            }
+            // NOTE: we deliberately do NOT gate on Settings.canDrawOverlays()
+            // here. On many OEM skins (MIUI, ColorOS, One UI…) that flag reads
+            // false even when the user HAS granted "display over other apps",
+            // which used to trap the user in an endless "grant permission" loop.
+            // Instead we just try to start the service; OverlayService attempts
+            // to add the view and the JS side confirms success via serviceRunning
+            // — trusting what actually happens, not the unreliable flag.
             Intent intent = new Intent(reactContext, OverlayService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 reactContext.startForegroundService(intent);
@@ -92,8 +94,12 @@ public class OverlayModule extends ReactContextBaseJavaModule {
     public void getStatus(Promise promise) {
         try {
             com.facebook.react.bridge.WritableMap map = com.facebook.react.bridge.Arguments.createMap();
+            // If the button service is running, the overlay demonstrably works —
+            // report the permission as granted even when canDrawOverlays() lies
+            // (OEM skins), so the status row shows green and stops nagging.
             boolean overlayPerm = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
-                || Settings.canDrawOverlays(reactContext);
+                || Settings.canDrawOverlays(reactContext)
+                || OverlayService.instance != null;
             map.putBoolean("overlayPermission", overlayPerm);
             map.putBoolean("serviceRunning", OverlayService.instance != null);
             String enabled = Settings.Secure.getString(
