@@ -79,18 +79,21 @@ export function useOverlay() {
   }, []);
 
   // Explicit user action only (the home-screen toggle) — never called at launch.
-  const startOverlay = useCallback(async () => {
-    if (Platform.OS !== "android" || !OverlayModule) return;
+  // Returns true if the button actually came up. On false the caller shows the
+  // OEM-permission help so the user isn't left with a switch that silently
+  // refuses to turn on.
+  const startOverlay = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== "android" || !OverlayModule) return false;
     // ALWAYS try to start first — don't trust canDrawOverlays, which lies on
-    // many OEM skins and used to trap the user in a "grant permission" loop even
-    // though it was already granted. If the button actually comes up, we're done
-    // and the user is NEVER bounced to Settings.
-    if (await actuallyStart()) return;
-    // The overlay genuinely couldn't be added → the permission is really missing.
-    // Now (and only now) open the grant screen; the AppState listener finishes
-    // the start when they return.
+    // many OEM skins. If the button actually comes up, we're done.
+    if (await actuallyStart()) return true;
+    // The overlay couldn't be added → open the standard grant screen and arm the
+    // AppState listener to finish the start when they return. Also signal failure
+    // so the caller can show device-specific guidance (Xiaomi & co. need an
+    // extra hidden 'pop-up while in background' permission).
     pendingStart.current = true;
     try { await OverlayModule.requestPermission(); } catch (e) { console.warn(e); }
+    return false;
   }, [actuallyStart]);
 
   const stopOverlay = useCallback(async () => {
