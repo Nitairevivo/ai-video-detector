@@ -1,13 +1,9 @@
 # VerifAI — What's New
 
-## 2026-07-14 — Model & detection improvements
+## 2026-07-14 — Nightly model refresh
 
 - Video detector now at 0.999 AUC with a 0.4% false-positive rate (trained on 6,364 videos).
 - Image detector trained on 3,749 samples (AUC 0.851).
-- Fix build: share-crash-fix helper can't reference app module from the library.
-- Cover DeepAction generators + auto-label pulls only AI when real-saturated.
-- Cap real:AI imbalance so the AI signal isn't drowned.
-- Poison-proof on-ramp for generator diversity.
 
 ## 2026-07-13 — Model & detection improvements
 
