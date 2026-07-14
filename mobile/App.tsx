@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.5";
+const APP_VERSION = "1.7.6";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -80,8 +80,12 @@ const T = {
     stages: ["מאתר את הסרטון…", "מוריד נתונים…", "מנתח פריימים…", "מצליב ממצאים…"],
     statusTitle: "מרכז בקרה",
     statusOverlayPerm: "הרשאת תצוגה מעל אפליקציות",
-    statusAccess: "זיהוי אוטומטי (נגישות)",
+    statusAccess: "זיהוי אוטומטי של קישור (נגישות · לא חובה)",
     statusService: "כפתור צף פעיל",
+    accessOptionalNote: "הכפתור עובד בלי זה — הוא מצלם את המסך ומזהה. נגישות רק מוסיפה תפיסת קישור אוטומטית.",
+    accessRestrictedTitle: "אנדרואיד חוסם נגישות לאפליקציות מבחוץ",
+    accessRestrictedBody: "זו חסימת אבטחה של אנדרואיד לאפליקציות שהותקנו מחוץ ל-Play (לא באג). כדי לאפשר בכל זאת:\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור והפעל את שירות הנגישות של VerifAI\n\nאבל שוב — זה לא חובה. הכפתור עובד גם בלי זה.",
+    accessGotIt: "הבנתי",
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
@@ -168,8 +172,12 @@ const T = {
     stages: ["Locating video…", "Fetching data…", "Analyzing frames…", "Cross-checking…"],
     statusTitle: "Control center",
     statusOverlayPerm: "Display over other apps",
-    statusAccess: "Auto-detection (accessibility)",
+    statusAccess: "Auto link-detection (accessibility · optional)",
     statusService: "Floating button",
+    accessOptionalNote: "The button works without this — it captures the screen and detects. Accessibility only adds automatic link grabbing.",
+    accessRestrictedTitle: "Android blocks accessibility for sideloaded apps",
+    accessRestrictedBody: "This is an Android security block for apps installed outside the Play Store (not a bug). To allow it anyway:\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Go back and enable VerifAI's accessibility service\n\nBut again — it's optional. The button works without it.",
+    accessGotIt: "Got it",
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
@@ -509,17 +517,21 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const { OverlayModule } = require("react-native").NativeModules;
 
-  const allGood = status.overlayPermission && (PLAY_BUILD || status.accessibilityEnabled) && overlayActive;
+  // The button needs ONLY the overlay permission to work (it captures the
+  // screen on tap). Accessibility is an optional bonus for auto link-grabbing,
+  // and Android 13+ blocks it for sideloaded apps anyway — so it must NOT gate
+  // "all set", or the user is stuck in a permission loop they can't win.
+  const allGood = status.overlayPermission && overlayActive;
 
-  const Row = ({ ok, label, onFix }: { ok: boolean; label: string; onFix?: () => void }) => (
+  const Row = ({ ok, label, onFix, optional }: { ok: boolean; label: string; onFix?: () => void; optional?: boolean }) => (
     <View style={[st.row, row]}>
-      <View style={[st.dot, { backgroundColor: ok ? C.real : C.ai }]} />
+      <View style={[st.dot, { backgroundColor: ok ? C.real : (optional ? "#f59e0b" : C.ai) }]} />
       <Text style={[st.rowLabel, align, { flex: 1 }]}>{label}</Text>
       {ok ? (
         <Text style={st.okText}>{t.statusOn} ✓</Text>
       ) : onFix ? (
         <TouchableOpacity style={st.fixBtn} onPress={onFix}>
-          <Text style={st.fixText}>{t.statusFix}</Text>
+          <Text style={st.fixText}>{optional ? "?" : t.statusFix}</Text>
         </TouchableOpacity>
       ) : (
         <Text style={st.offText}>{t.statusOff}</Text>
@@ -548,12 +560,25 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
         <Row
           ok={status.accessibilityEnabled}
           label={t.statusAccess}
-          onFix={() => OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings())}
+          optional
+          onFix={() =>
+            Alert.alert(
+              t.accessRestrictedTitle,
+              t.accessRestrictedBody,
+              [
+                { text: t.accessGotIt, style: "cancel" },
+                { text: "⚙️", onPress: () => OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings()) },
+              ]
+            )
+          }
         />
       )}
       <Row ok={overlayActive} label={t.statusService} />
 
       {allGood && <Text style={[st.allGood, align]}>{t.statusAllGood}</Text>}
+      {!PLAY_BUILD && !status.accessibilityEnabled && (
+        <Text style={[st.offText, align, { marginTop: 8, opacity: 0.7 }]}>{t.accessOptionalNote}</Text>
+      )}
     </View>
   );
 }
