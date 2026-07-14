@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.7.6";
+const APP_VERSION = "1.7.7";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -86,6 +86,7 @@ const T = {
     accessRestrictedTitle: "אנדרואיד חוסם נגישות לאפליקציות מבחוץ",
     accessRestrictedBody: "זו חסימת אבטחה של אנדרואיד לאפליקציות שהותקנו מחוץ ל-Play (לא באג). כדי לאפשר בכל זאת:\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור והפעל את שירות הנגישות של VerifAI\n\nאבל שוב — זה לא חובה. הכפתור עובד גם בלי זה.",
     accessGotIt: "הבנתי",
+    openAppSettings: "פתח הגדרות אפליקציה",
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
@@ -178,6 +179,7 @@ const T = {
     accessRestrictedTitle: "Android blocks accessibility for sideloaded apps",
     accessRestrictedBody: "This is an Android security block for apps installed outside the Play Store (not a bug). To allow it anyway:\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Go back and enable VerifAI's accessibility service\n\nBut again — it's optional. The button works without it.",
     accessGotIt: "Got it",
+    openAppSettings: "Open app settings",
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
@@ -554,7 +556,10 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
       <Row
         ok={status.overlayPermission}
         label={t.statusOverlayPerm}
-        onFix={() => OverlayModule?.requestPermission?.()}
+        // Route through the same enable path as the switch: it re-checks the
+        // permission and, if already granted, starts the button immediately
+        // instead of bouncing to Settings again.
+        onFix={() => onToggle(true)}
       />
       {!PLAY_BUILD && (
         <Row
@@ -567,7 +572,7 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
               t.accessRestrictedBody,
               [
                 { text: t.accessGotIt, style: "cancel" },
-                { text: "⚙️", onPress: () => OverlayModule?.openAccessibilitySettings?.().catch(() => Linking.openSettings()) },
+                { text: t.openAppSettings, onPress: () => Linking.openSettings() },
               ]
             )
           }

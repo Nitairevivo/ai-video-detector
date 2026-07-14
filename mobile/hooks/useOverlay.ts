@@ -68,8 +68,10 @@ export function useOverlay() {
   const startOverlay = useCallback(async () => {
     if (Platform.OS !== "android" || !OverlayModule) return;
     // If the permission is already granted, just start — never bounce the user
-    // to Settings again.
-    if (await checkPermission(1)) {
+    // to Settings again. Retry the read: right after the app regains focus the
+    // system can briefly still report false, which is exactly what caused the
+    // "I already granted it but it sends me back to permissions" loop.
+    if (await checkPermission(3)) {
       await actuallyStart();
       return;
     }
