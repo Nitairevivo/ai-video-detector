@@ -254,14 +254,21 @@ public class OverlayService extends Service {
             .getInt("button_y", dp(140));
 
         attachDragAndTap(buttonView);
-        // ALWAYS visible once the service is on. Previously the sideload build
-        // started GONE and only appeared when the accessibility service reported
-        // a supported app in the foreground — but accessibility is blocked for
-        // sideloaded apps, so the button was invisible forever ("worked for a
-        // second then vanished"). Accessibility now only REFINES visibility
-        // (auto-hide over non-video apps) when it happens to be on; it never
-        // gates the button's existence.
-        buttonView.setVisibility(View.VISIBLE);
+        // Visibility policy:
+        //  • Accessibility ON  → the button appears ONLY inside supported apps
+        //    (TikTok/Instagram/YouTube/Telegram/WhatsApp…) and hides everywhere
+        //    else, so it never sits stuck on the home screen annoying the user.
+        //    onForegroundApp() drives show/hide from here on.
+        //  • Accessibility OFF → we can't know which app is in front, so the
+        //    button stays visible (better an always-there button than an
+        //    invisible one — this was the old "worked a second then vanished").
+        boolean canDetectApp = VerifAIAccessibilityService.isConnected();
+        boolean showNow = true;
+        if (canDetectApp) {
+            String fg = VerifAIAccessibilityService.getForegroundPackage();
+            showNow = fg != null && VerifAIAccessibilityService.SUPPORTED_PACKAGES.contains(fg);
+        }
+        buttonView.setVisibility(showNow ? View.VISIBLE : View.GONE);
         windowManager.addView(buttonView, buttonParams);
     }
 
@@ -517,6 +524,101 @@ public class OverlayService extends Service {
         }
     }
 
+    // ─── Local-file detection (Telegram / WhatsApp) ─────────────────────────
+
+    /** Kick off reading the most-recently-saved video from the app the user is
+     *  in (Telegram/WhatsApp). Falls back to the screen-capture path if no file
+     *  is reachable. Reads the REAL code/metadata — the product's core promise. */
+    private void detectViaLatestLocalVideo(final String pkg) {
+        detectionPending = true;
+        showLoading();
+        mainHandler.removeCallbacks(detectionTimeout);
+        mainHandler.postDelayed(detectionTimeout, 120000);
+        executor.submit(() -> {
+            try {
+                java.io.File video = findLatestAppVideo(pkg);
+                if (video == null) {
+                    // No readable file (not downloaded yet, or media permission
+                    // missing) → photograph the screen instead of dead-ending.
+                    startScreenCaptureFallback();
+                    return;
+                }
+                JSONObject result = detectViaLocalFile(video);
+                if (result == null) throw new Exception("no result");
+                renderResult(result);
+            } catch (Exception e) {
+                startScreenCaptureFallback();
+            }
+        });
+    }
+
+    /** Find the newest video file that belongs to the given app, via MediaStore
+     *  (the {@code Android/media/<pkg>/…} folders Telegram & WhatsApp write to
+     *  are indexed and world-readable on Android 11+). "Newest" is the video the
+     *  user most likely just opened/downloaded. Returns null if none found. */
+    private java.io.File findLatestAppVideo(String pkg) {
+        String needle;
+        if (pkg == null) return null;
+        if (pkg.contains("telegram") || pkg.contains("challegram")) needle = "elegram"; // Telegram / Telegram X
+        else if (pkg.contains("whatsapp")) needle = "hatsApp";
+        else return null;
+
+        String[] proj = {
+            android.provider.MediaStore.Video.Media.DATA,
+            android.provider.MediaStore.Video.Media.SIZE,
+        };
+        String sel = android.provider.MediaStore.Video.Media.DATA + " LIKE ?";
+        String[] args = { "%" + needle + "%" };
+        try (android.database.Cursor c = getContentResolver().query(
+                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                proj, sel, args,
+                android.provider.MediaStore.Video.Media.DATE_MODIFIED + " DESC")) {
+            if (c != null && c.moveToFirst()) {
+                String path = c.getString(0);
+                long size = c.getLong(1);
+                if (path != null && size > 50000) {
+                    java.io.File f = new java.io.File(path);
+                    if (f.exists() && f.canRead()) return f;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** Upload a local video file to /detect and return the parsed result. */
+    private JSONObject detectViaLocalFile(java.io.File file) throws Exception {
+        String boundary = "VerifAILocal" + System.currentTimeMillis();
+        URL uploadUrl = new URL(API + "/detect");
+        HttpURLConnection upConn = (HttpURLConnection) uploadUrl.openConnection();
+        upConn.setRequestMethod("POST");
+        upConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        upConn.setDoOutput(true);
+        upConn.setConnectTimeout(10000);
+        upConn.setReadTimeout(90000); // deep analysis can take 40s+
+
+        try (OutputStream out = upConn.getOutputStream()) {
+            String header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\""
+                + file.getName() + "\"\r\nContent-Type: video/mp4\r\n\r\n";
+            out.write(header.getBytes("UTF-8"));
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+                byte[] buf = new byte[65536]; int n; long total = 0;
+                while ((n = fis.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                    total += n;
+                    if (total > 30 * 1024 * 1024) break; // cap upload at 30MB
+                }
+            }
+            out.write(("\r\n--" + boundary + "--\r\n").getBytes("UTF-8"));
+        }
+
+        if (upConn.getResponseCode() != 200) throw new Exception("Upload error " + upConn.getResponseCode());
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(upConn.getInputStream()))) {
+            String line; while ((line = br.readLine()) != null) sb.append(line);
+        }
+        return new JSONObject(sb.toString());
+    }
+
     // ─── Button Tap ─────────────────────────────────────────────────────────
 
     private void onButtonTapped() {
@@ -534,6 +636,17 @@ public class OverlayService extends Service {
             startScreenCaptureFallback();
             return;
         }
+
+        // Telegram / WhatsApp: the video the user is watching is a REAL file
+        // already downloaded on the phone. Read its actual code/metadata instead
+        // of screenshotting — a far stronger verdict. Needs the accessibility
+        // service on so we know which app is in front.
+        String fg = VerifAIAccessibilityService.getForegroundPackage();
+        if (VerifAIAccessibilityService.isLocalFileApp(fg)) {
+            detectViaLatestLocalVideo(fg);
+            return;
+        }
+
         detectionPending = true;
         showLoading();
         // Stage timeout: covers clipboard check + accessibility automation.

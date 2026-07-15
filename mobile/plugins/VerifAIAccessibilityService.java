@@ -24,8 +24,20 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         "com.google.android.youtube",  // YouTube
         "com.facebook.katana",         // Facebook
         "com.twitter.android",         // Twitter/X
-        "com.reddit.frontpage"         // Reddit
+        "com.reddit.frontpage",        // Reddit
+        "org.telegram.messenger",      // Telegram
+        "org.telegram.messenger.web",  // Telegram (web/beta variant)
+        "org.thunderdog.challegram",   // Telegram X
+        "com.whatsapp",                // WhatsApp
+        "com.whatsapp.w4b"             // WhatsApp Business
     ));
+
+    /** Apps where the tapped video is a LOCAL downloaded file we can read the
+     *  real code from, rather than a URL to fetch or a screen to photograph. */
+    public static boolean isLocalFileApp(String pkg) {
+        return pkg != null &&
+            (pkg.contains("telegram") || pkg.contains("challegram") || pkg.contains("whatsapp"));
+    }
 
     // Windows that must NOT change the button visibility (transient system UI,
     // share sheets, keyboards, and our own overlay/clipboard-reader windows).
@@ -70,6 +82,11 @@ public class VerifAIAccessibilityService extends AccessibilityService {
     };
 
     public static String getForegroundPackage() { return foregroundPackage; }
+
+    /** True when the accessibility service is actually connected and can report
+     *  the foreground app — lets the overlay decide whether it may auto-hide the
+     *  button outside supported apps (it can't guess the app without this). */
+    public static boolean isConnected() { return instance != null; }
 
     /**
      * Called by OverlayService when the floating button is tapped and the
