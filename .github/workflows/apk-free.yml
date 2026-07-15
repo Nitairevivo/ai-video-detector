@@ -12,6 +12,10 @@ on:
         description: 'Release tag for the APK asset'
         required: false
         default: 'apk-latest'
+      ref:
+        description: 'Git ref (branch/tag/SHA) to build from'
+        required: false
+        default: 'master'
 
 jobs:
   apk:
@@ -22,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ github.event.inputs.ref || 'master' }}
 
       - uses: actions/setup-node@v4
         with:
