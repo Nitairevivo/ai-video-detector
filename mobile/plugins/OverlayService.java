@@ -665,10 +665,62 @@ public class OverlayService extends Service {
             return; // comes back via SOURCE_AUTOMATION
         }
 
-        // No accessibility (or unsupported app): the clipboard may hold a link
-        // the user copied. Android 10+ blocks clipboard reads from a background
-        // service, so a transparent activity grabs focus for a moment.
+        // Accessibility is OFF (foreground app unknown): the user may have just
+        // watched a Telegram/WhatsApp video, which is a REAL file freshly written
+        // to the phone. Read that file's actual code — NOT a screenshot — as long
+        // as it was touched in the last couple of minutes (so we don't grab a
+        // stale, unrelated clip). This makes Telegram/WhatsApp work by-code even
+        // without the accessibility service.
+        if (fg == null) {
+            executor.submit(() -> {
+                try {
+                    java.io.File recent = findRecentAppVideo(120000);
+                    if (recent != null) {
+                        JSONObject r = detectViaLocalFile(recent);
+                        if (r != null) { renderResult(r); return; }
+                    }
+                } catch (Exception ignored) {}
+                // Nothing readable → clipboard link (must read on the main thread
+                // via the transparent activity; background reads are blocked).
+                mainHandler.post(() -> launchClipboardReader(SOURCE_TAP));
+            });
+            return;
+        }
+
+        // Unsupported foreground app with accessibility on: the clipboard may
+        // hold a link the user copied.
         launchClipboardReader(SOURCE_TAP);
+    }
+
+    /** Newest Telegram/WhatsApp video ANYWHERE on shared storage, but only if it
+     *  was modified within {@code maxAgeMs} — i.e. the clip the user is almost
+     *  certainly watching right now. Lets the by-code path work in those apps
+     *  without the accessibility service telling us the foreground app. */
+    private java.io.File findRecentAppVideo(long maxAgeMs) {
+        String[] proj = {
+            android.provider.MediaStore.Video.Media.DATA,
+            android.provider.MediaStore.Video.Media.SIZE,
+            android.provider.MediaStore.Video.Media.DATE_MODIFIED,
+        };
+        String col = android.provider.MediaStore.Video.Media.DATA;
+        String sel = col + " LIKE ? OR " + col + " LIKE ?";
+        String[] args = { "%elegram%", "%hatsApp%" };  // Telegram / WhatsApp
+        try (android.database.Cursor c = getContentResolver().query(
+                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                proj, sel, args,
+                android.provider.MediaStore.Video.Media.DATE_MODIFIED + " DESC")) {
+            if (c != null && c.moveToFirst()) {
+                String path = c.getString(0);
+                long size = c.getLong(1);
+                long modSec = c.getLong(2);                 // epoch SECONDS
+                long ageMs = System.currentTimeMillis() - modSec * 1000L;
+                if (path != null && size > 50000 && ageMs >= 0 && ageMs <= maxAgeMs) {
+                    java.io.File f = new java.io.File(path);
+                    if (f.exists() && f.canRead()) return f;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     /** No link/file could be read (accessibility off + nothing copied). GUIDE the
