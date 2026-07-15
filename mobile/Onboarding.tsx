@@ -13,7 +13,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 const LANG_KEY = "verifai_lang";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const { OverlayModule } = NativeModules;
 
 const C = {
@@ -66,6 +66,16 @@ const L = {
     proSub: "בדיקה אוטומטית של כל סרטון · ללא הגבלה · היסטוריה מלאה · 7 ימים חינם",
     proBtn: "התחל 7 ימים חינם",
     proSkip: "המשך בחינם",
+    proFeatures: [
+      ["⚡", "זיהוי מיידי", "תוצאה תוך שנייה"],
+      ["🔁", "סריקה אוטומטית", "כל סרטון נבדק לבד בזמן גלילה"],
+      ["📊", "דו״ח מפורט", "כלי AI, שכבות ניתוח, חתימות"],
+      ["♾️", "ללא הגבלה", "בדיקות בלתי מוגבלות"],
+    ] as [string, string, string][],
+    proPrice: "₪19",
+    proPer: "/חודש",
+    proTrial: "7 ימים חינם",
+    proHeadline: "אל תישאר עם ניחוש",
     overlayTitle: "הפעל את הכפתור הצף",
     overlaySub: "כפתור קטן שיופיע בתוך טיקטוק / אינסטגרם / יוטיוב / טלגרם / וואטסאפ. לחיצה עליו = בדיקה מיידית של הסרטון שעל המסך.",
     overlayBtn: "הפעל את הכפתור",
@@ -110,6 +120,16 @@ const L = {
     proSub: "Auto-check every video · Unlimited · Full history · 7 days free",
     proBtn: "Start 7 days free",
     proSkip: "Continue free",
+    proFeatures: [
+      ["⚡", "Instant detection", "Results in one second"],
+      ["🔁", "Auto-scan", "Every video checked while you scroll"],
+      ["📊", "Full report", "AI tools, analysis layers, signatures"],
+      ["♾️", "Unlimited", "No daily limits"],
+    ] as [string, string, string][],
+    proPrice: "₪19",
+    proPer: "/mo",
+    proTrial: "7 days free",
+    proHeadline: "Don't be left guessing",
     overlayTitle: "Turn on the floating button",
     overlaySub: "A small button that appears inside TikTok / Instagram / YouTube / Telegram / WhatsApp. Tap it = instant check of the video on screen.",
     overlayBtn: "Enable the button",
@@ -286,32 +306,30 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   } else if (step === "quiz" && !quizDone) {
     const item = quiz[qIdx];
     body = (
-      <View style={st.centerBlock}>
-        <Text style={[st.title, align, writingDir]}>{t.quizTitle}</Text>
-        <Text style={[st.sub, align, writingDir]}>{t.quizSub}</Text>
+      <View style={st.quizBlock}>
+        <Text style={[st.quizQ, writingDir]}>{t.quizQuestion}</Text>
         <View style={st.quizImgWrap}>
           <Image source={{ uri: item.url }} style={st.quizImg} resizeMode="cover" />
+          <View style={st.quizCounterPill}><Text style={st.quizCounterPillText}>{qIdx + 1} / {quiz.length}</Text></View>
           {answered !== null && (
-            <View style={[st.quizReveal, { backgroundColor: (answered ? C.real : C.ai) + "ee" }]}>
+            <View style={[st.quizReveal, { backgroundColor: (answered ? C.real : C.ai) + "f2" }]}>
               <Text style={st.quizRevealBig}>{answered ? t.correct : t.wrong}</Text>
               <Text style={st.quizRevealSub}>{item.is_ai ? t.wasAi : t.wasReal}</Text>
             </View>
           )}
         </View>
-        <Text style={[st.quizQ, writingDir]}>{t.quizQuestion}</Text>
         {answered === null ? (
           <View style={st.quizBtns}>
-            <TouchableOpacity style={[st.guessBtn, { borderColor: C.real }]} onPress={() => guess(false)}>
+            <TouchableOpacity style={[st.guessBtn, { borderColor: C.real }]} onPress={() => guess(false)} activeOpacity={0.8}>
               <Text style={[st.guessText, { color: C.real }]}>{t.real}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[st.guessBtn, { borderColor: C.ai }]} onPress={() => guess(true)}>
+            <TouchableOpacity style={[st.guessBtn, { borderColor: C.ai }]} onPress={() => guess(true)} activeOpacity={0.8}>
               <Text style={[st.guessText, { color: C.ai }]}>{t.ai}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <PrimaryBtn label={t.quizNext} onPress={quizContinue} />
         )}
-        <Text style={st.quizCounter}>{qIdx + 1} / {quiz.length}</Text>
       </View>
     );
   } else if (step === "quiz" && quizDone) {
@@ -319,16 +337,41 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       <View style={st.centerBlock}>
         <Text style={st.bigEmoji}>{score >= 2 ? "🧐" : "🤯"}</Text>
         <Text style={[st.title, { textAlign: "center" }]}>{t.scoreTitle(score)}</Text>
-        <Text style={[st.sub, { textAlign: "center" }]}>{score >= 2 ? t.scoreHigh : t.scoreLow}</Text>
+        <Text style={[st.sub, { textAlign: "center", marginBottom: 4 }]}>{score >= 2 ? t.scoreHigh : t.scoreLow}</Text>
+
         <View style={st.proCard}>
-          <Text style={[st.proTitle, align, writingDir]}>{t.proTitle}</Text>
-          <Text style={[st.proSub, align, writingDir]}>{t.proSub}</Text>
-          <TouchableOpacity onPress={() => Linking.openURL(PREMIUM_URL).catch(() => {})} activeOpacity={0.85}>
+          <View style={st.proCrown}><Text style={{ fontSize: 26 }}>👑</Text></View>
+          <Text style={st.proCardTitle}>VerifAI Pro</Text>
+          <Text style={[st.proCardHeadline, { textAlign: "center" }]}>{t.proHeadline}</Text>
+
+          <View style={{ gap: 10, marginTop: 14, marginBottom: 16 }}>
+            {t.proFeatures.map((f, i) => (
+              <View key={i} style={[st.featRow, { flexDirection: rtl ? "row-reverse" : "row" }]}>
+                <Text style={{ fontSize: 18 }}>{f[0]}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.featTitle, align, writingDir]}>{f[1]}</Text>
+                  <Text style={[st.featDesc, align, writingDir]}>{f[2]}</Text>
+                </View>
+                <Text style={st.featCheck}>✓</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={[st.priceRow, { flexDirection: rtl ? "row-reverse" : "row" }]}>
+            <View style={{ flexDirection: rtl ? "row-reverse" : "row", alignItems: "flex-end" }}>
+              <Text style={st.priceBig}>{t.proPrice}</Text>
+              <Text style={st.pricePer}>{t.proPer}</Text>
+            </View>
+            <View style={st.trialBadge}><Text style={st.trialBadgeText}>{t.proTrial}</Text></View>
+          </View>
+
+          <TouchableOpacity onPress={() => Linking.openURL(PREMIUM_URL).catch(() => {})} activeOpacity={0.85} style={{ marginTop: 14 }}>
             <LinearGradient colors={["#fbbf24", "#f59e0b"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={st.proBtn}>
               <Text style={st.proBtnText}>{t.proBtn}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
+
         <TouchableOpacity onPress={goNext}><Text style={st.skipText}>{t.proSkip}</Text></TouchableOpacity>
       </View>
     );
@@ -424,22 +467,38 @@ const st = StyleSheet.create({
   dots: { flexDirection: "row", justifyContent: "center", gap: 7, paddingBottom: 22 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#ffffff22" },
   dotActive: { width: 22, backgroundColor: C.primary },
-  // quiz
-  quizImgWrap: { width: "100%", aspectRatio: 1, borderRadius: 20, overflow: "hidden", marginVertical: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  // quiz — big, near-full-screen image
+  quizBlock: { gap: 14, paddingVertical: 4 },
+  quizImgWrap: {
+    width: width - 44, height: Math.min(height * 0.5, (width - 44) * 1.25),
+    borderRadius: 22, overflow: "hidden", backgroundColor: C.card,
+    borderWidth: 1, borderColor: C.border, alignSelf: "center",
+  },
   quizImg: { width: "100%", height: "100%" },
-  quizReveal: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, alignItems: "center" },
-  quizRevealBig: { color: "#fff", fontSize: 22, fontWeight: "900" },
-  quizRevealSub: { color: "#ffffffdd", fontSize: 14, fontWeight: "600", marginTop: 2 },
-  quizQ: { color: C.text, fontSize: 17, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  quizCounterPill: { position: "absolute", top: 12, left: 12, backgroundColor: "#000000aa", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  quizCounterPillText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  quizReveal: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 20, alignItems: "center" },
+  quizRevealBig: { color: "#fff", fontSize: 26, fontWeight: "900" },
+  quizRevealSub: { color: "#ffffffee", fontSize: 15, fontWeight: "700", marginTop: 3 },
+  quizQ: { color: C.text, fontSize: 20, fontWeight: "900", textAlign: "center" },
   quizBtns: { flexDirection: "row", gap: 12 },
   guessBtn: { flex: 1, borderWidth: 2, borderRadius: 16, paddingVertical: 18, alignItems: "center", backgroundColor: C.card },
   guessText: { fontSize: 18, fontWeight: "900" },
-  quizCounter: { color: C.faint, fontSize: 12, textAlign: "center", marginTop: 12, fontWeight: "700" },
-  // pro
-  proCard: { backgroundColor: C.card2, borderRadius: 20, padding: 18, marginTop: 22, borderWidth: 1, borderColor: C.gold + "44", gap: 8 },
-  proTitle: { color: C.gold, fontSize: 18, fontWeight: "900" },
-  proSub: { color: C.sub, fontSize: 13, lineHeight: 19 },
-  proBtn: { borderRadius: 14, paddingVertical: 14, alignItems: "center", marginTop: 8 },
+  // pro pricing screen
+  proCard: { backgroundColor: C.card2, borderRadius: 22, padding: 20, marginTop: 18, borderWidth: 1, borderColor: C.gold + "55" },
+  proCrown: { alignSelf: "center", width: 52, height: 52, borderRadius: 16, backgroundColor: C.gold + "1f", alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  proCardTitle: { color: C.gold, fontSize: 22, fontWeight: "900", textAlign: "center" },
+  proCardHeadline: { color: C.sub, fontSize: 14, marginTop: 2 },
+  featRow: { alignItems: "center", gap: 12 },
+  featTitle: { color: C.text, fontSize: 15, fontWeight: "800" },
+  featDesc: { color: C.sub, fontSize: 12, marginTop: 1 },
+  featCheck: { color: C.real, fontSize: 16, fontWeight: "900" },
+  priceRow: { alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  priceBig: { color: C.text, fontSize: 34, fontWeight: "900" },
+  pricePer: { color: C.sub, fontSize: 15, fontWeight: "700", marginBottom: 6, marginHorizontal: 2 },
+  trialBadge: { backgroundColor: C.real + "22", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.real + "66" },
+  trialBadgeText: { color: C.real, fontSize: 13, fontWeight: "800" },
+  proBtn: { borderRadius: 14, paddingVertical: 15, alignItems: "center" },
   proBtnText: { color: "#1a1203", fontSize: 16, fontWeight: "900" },
   // ok pill
   okPill: { backgroundColor: C.real + "22", borderColor: C.real, borderWidth: 1.5, borderRadius: 16, paddingVertical: 15, alignItems: "center" },

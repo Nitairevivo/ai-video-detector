@@ -66,6 +66,12 @@ public class ClipboardReaderActivity extends Activity {
                 getIntent().getBooleanExtra(OverlayService.EXTRA_AUTOMATION_CLICKED, false));
             startService(i);
         } catch (Exception ignored) {}
+        // This transparent activity runs in its own isolated task. Plain finish()
+        // removes that task and — on MIUI/HyperOS/ColorOS — drops the user to the
+        // HOME SCREEN instead of back to the app they were in. moveTaskToBack
+        // sends our empty task behind, revealing the app that was underneath, so
+        // the user stays exactly where they were.
+        try { moveTaskToBack(true); } catch (Exception ignored) {}
         finish();
         overridePendingTransition(0, 0);
     }

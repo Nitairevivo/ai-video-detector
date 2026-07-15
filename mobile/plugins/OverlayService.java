@@ -232,6 +232,14 @@ public class OverlayService extends Service {
     }
 
     private void showButton() {
+        // Dedup guard: never leave a previous button attached. If showButton is
+        // ever reached twice (service re-created via START_STICKY, etc.) a second
+        // addView would put a SECOND floating button on screen. Remove any
+        // existing one first so there is always exactly one.
+        if (buttonView != null) {
+            try { windowManager.removeView(buttonView); } catch (Exception ignored) {}
+            buttonView = null;
+        }
         // Accessibility service may start us before the overlay permission is
         // We do NOT pre-check canDrawOverlays() — it lies on many OEM skins.
         // We just try to add the view; if the permission is genuinely missing
