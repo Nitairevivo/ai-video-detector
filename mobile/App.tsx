@@ -14,13 +14,14 @@ import { useOverlay, OverlayStatus } from "./hooks/useOverlay";
 import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
+import Onboarding from "./Onboarding";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.8.2";
+const APP_VERSION = "1.8.3";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -29,6 +30,7 @@ const GRAD_END = { x: 1, y: 1 };
 const JS_ERROR_KEY = "verifai_last_js_error";
 const LANG_KEY = "verifai_lang";
 const GUIDE_SEEN_KEY = "verifai_guide_seen";
+const ONBOARDING_KEY = "verifai_onboarding_v1";
 const HISTORY_FILE = FileSystem.documentDirectory + "verifai_history.json";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -80,11 +82,11 @@ const T = {
     stages: ["מאתר את הסרטון…", "מוריד נתונים…", "מנתח פריימים…", "מצליב ממצאים…"],
     statusTitle: "מרכז בקרה",
     statusOverlayPerm: "הרשאת תצוגה מעל אפליקציות",
-    statusAccess: "זיהוי אוטומטי של קישור (נגישות · לא חובה)",
+    statusAccess: "זיהוי אוטומטי של קישור (נגישות · חובה)",
     statusService: "כפתור צף פעיל",
-    accessOptionalNote: "הכפתור עובד בלי זה — הוא מצלם את המסך ומזהה. נגישות רק מוסיפה תפיסת קישור אוטומטית.",
-    accessRestrictedTitle: "אנדרואיד חוסם נגישות לאפליקציות מבחוץ",
-    accessRestrictedBody: "זו חסימת אבטחה של אנדרואיד לאפליקציות שהותקנו מחוץ ל-Play (לא באג). כדי לאפשר בכל זאת:\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור והפעל את שירות הנגישות של VerifAI\n\nאבל שוב — זה לא חובה. הכפתור עובד גם בלי זה.",
+    accessNeededNote: "בלי נגישות הכפתור לא יודע איזה סרטון פתוח ונאלץ לצלם מסך. הדלק אותה בהגדרות — לחיצה אחת תקרא את הקוד האמיתי.",
+    accessRestrictedTitle: "איך מפעילים את הנגישות",
+    accessRestrictedBody: "כדי שלחיצה על הכפתור תקרא את הסרטון לבד (בלי צילום מסך):\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור → הגדרות → נגישות → VerifAI → הדלק\n\nזו חסימת אבטחה של אנדרואיד לאפליקציות מחוץ ל-Play (לא באג) — הצעדים האלה עוקפים אותה.",
     accessGotIt: "הבנתי",
     openAppSettings: "פתח הגדרות אפליקציה",
     overlayHelpTitle: "הכפתור הצף לא הצליח לעלות",
@@ -175,11 +177,11 @@ const T = {
     stages: ["Locating video…", "Fetching data…", "Analyzing frames…", "Cross-checking…"],
     statusTitle: "Control center",
     statusOverlayPerm: "Display over other apps",
-    statusAccess: "Auto link-detection (accessibility · optional)",
+    statusAccess: "Auto link-detection (accessibility · required)",
     statusService: "Floating button",
-    accessOptionalNote: "The button works without this — it captures the screen and detects. Accessibility only adds automatic link grabbing.",
-    accessRestrictedTitle: "Android blocks accessibility for sideloaded apps",
-    accessRestrictedBody: "This is an Android security block for apps installed outside the Play Store (not a bug). To allow it anyway:\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Go back and enable VerifAI's accessibility service\n\nBut again — it's optional. The button works without it.",
+    accessNeededNote: "Without accessibility the button can't tell which video is open and has to screenshot. Enable it in Settings — one tap will read the real code.",
+    accessRestrictedTitle: "How to enable accessibility",
+    accessRestrictedBody: "So a tap reads the video by itself (no screenshot):\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Back → Settings → Accessibility → VerifAI → turn on\n\nThis is an Android security block for apps installed outside the Play Store (not a bug) — these steps get around it.",
     accessGotIt: "Got it",
     openAppSettings: "Open app settings",
     overlayHelpTitle: "The floating button couldn't start",
@@ -523,11 +525,14 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const { OverlayModule } = require("react-native").NativeModules;
 
-  // The button needs ONLY the overlay permission to work (it captures the
-  // screen on tap). Accessibility is an optional bonus for auto link-grabbing,
-  // and Android 13+ blocks it for sideloaded apps anyway — so it must NOT gate
-  // "all set", or the user is stuck in a permission loop they can't win.
-  const allGood = status.overlayPermission && overlayActive;
+  // The button now relies on accessibility to read the on-screen video's link
+  // hands-free (without it a tap can't tell WHICH video you're watching). So
+  // "all set" means: button live AND accessibility on. Accessibility can be
+  // enabled even on sideloaded apps via ⋮ → "Allow restricted settings", which
+  // the onboarding wizard walks the user through — so it's no longer an
+  // unwinnable gate, it's the intended setup.
+  const allGood = status.overlayPermission && overlayActive &&
+    (PLAY_BUILD || status.accessibilityEnabled);
 
   const Row = ({ ok, label, onFix, optional }: { ok: boolean; label: string; onFix?: () => void; optional?: boolean }) => (
     <View style={[st.row, row]}>
@@ -569,14 +574,13 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
         <Row
           ok={status.accessibilityEnabled}
           label={t.statusAccess}
-          optional
           onFix={() =>
             Alert.alert(
               t.accessRestrictedTitle,
               t.accessRestrictedBody,
               [
                 { text: t.accessGotIt, style: "cancel" },
-                { text: t.openAppSettings, onPress: () => Linking.openSettings() },
+                { text: t.openAppSettings, onPress: () => { try { OverlayModule?.openAccessibilitySettings?.(); } catch { Linking.openSettings(); } } },
               ]
             )
           }
@@ -586,7 +590,7 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
 
       {allGood && <Text style={[st.allGood, align]}>{t.statusAllGood}</Text>}
       {!PLAY_BUILD && !status.accessibilityEnabled && (
-        <Text style={[st.offText, align, { marginTop: 8, opacity: 0.7 }]}>{t.accessOptionalNote}</Text>
+        <Text style={[st.offText, align, { marginTop: 8, opacity: 0.7 }]}>{t.accessNeededNote}</Text>
       )}
     </View>
   );
@@ -1526,13 +1530,34 @@ export default function App() {
 function AppRouter() {
   // Crash from a previous run? Show it before anything else.
   const [crashLog, dismissCrashLog] = useStoredCrashLogs();
+  // First-run onboarding: a guided wizard that (1) runs the AI-vs-real quiz,
+  // (2) walks the user through the floating-button permission, and (3) enables
+  // the accessibility service — the reliable way to read a video's real code
+  // hands-free. null = still reading the flag; true = already onboarded.
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  useEffect(() => {
+    SecureStore.getItemAsync(ONBOARDING_KEY)
+      .then((v) => setOnboarded(!!v))
+      .catch(() => setOnboarded(true)); // never trap the user if storage fails
+  }, []);
+
   if (crashLog) {
     return <ErrorScreen title="🛠️ נתפסה שגיאה מהריצה הקודמת" text={crashLog} onDismiss={dismissCrashLog} />;
   }
-
-  // Onboarding is no longer a hard gate: the overlay/accessibility permissions
-  // are optional (offered inside the app via the control-center card), so the
-  // permission flow can never block or loop the user out of the app.
+  if (onboarded === null) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          SecureStore.setItemAsync(ONBOARDING_KEY, "1").catch(() => {});
+          // The wizard already covered the setup steps — don't also auto-pop the
+          // legacy guide screen right after.
+          SecureStore.setItemAsync(GUIDE_SEEN_KEY, "1").catch(() => {});
+          setOnboarded(true);
+        }}
+      />
+    );
+  }
   return <AppInner />;
 }
 

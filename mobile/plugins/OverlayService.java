@@ -538,16 +538,19 @@ public class OverlayService extends Service {
             try {
                 java.io.File video = findLatestAppVideo(pkg);
                 if (video == null) {
-                    // No readable file (not downloaded yet, or media permission
-                    // missing) → photograph the screen instead of dead-ending.
-                    startScreenCaptureFallback();
+                    // No readable file yet (Telegram keeps videos in a private
+                    // cache until saved) → guide instead of screen-capturing.
+                    mainHandler.post(OverlayService.this::finishDetection);
+                    showToastResult("📥 הסרטון עדיין לא נשמר במכשיר", "unknown",
+                        "שמור אותו לגלריה (בטלגרם: ⋮ ← Save to Gallery) ולחץ שוב", 0);
                     return;
                 }
                 JSONObject result = detectViaLocalFile(video);
                 if (result == null) throw new Exception("no result");
                 renderResult(result);
             } catch (Exception e) {
-                startScreenCaptureFallback();
+                mainHandler.post(OverlayService.this::finishDetection);
+                showToastResult("❌ הבדיקה נכשלה", "unknown", "נסה שוב", 0);
             }
         });
     }
@@ -654,9 +657,28 @@ public class OverlayService extends Service {
         mainHandler.removeCallbacks(detectionTimeout);
         mainHandler.postDelayed(detectionTimeout, 12000);
 
-        // Android 10+ blocks clipboard reads from background services, so a
-        // transparent activity grabs focus for a moment and reports back.
+        // Fast path: if the accessibility service can read the on-screen video's
+        // link RIGHT NOW, grab it directly — skipping the clipboard-reader
+        // activity flash. Removes the visible flicker and ~0.5-1s of delay, and
+        // means a tap answers almost immediately.
+        if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
+            return; // comes back via SOURCE_AUTOMATION
+        }
+
+        // No accessibility (or unsupported app): the clipboard may hold a link
+        // the user copied. Android 10+ blocks clipboard reads from a background
+        // service, so a transparent activity grabs focus for a moment.
         launchClipboardReader(SOURCE_TAP);
+    }
+
+    /** No link/file could be read (accessibility off + nothing copied). GUIDE the
+     *  user instead of hijacking the screen with the capture-consent dialog that
+     *  bounced them out to the home screen. The product reads the video's real
+     *  code — accessibility is the reliable way to feed it a link hands-free. */
+    private void guideNoVideo() {
+        mainHandler.post(this::finishDetection);
+        showToastResult("📋 לא נמצא סרטון לבדיקה", "unknown",
+            "הדלק 'נגישות' בהגדרות VerifAI (זיהוי אוטומטי), או העתק קישור (Share ← Copy Link) ולחץ שוב", 0);
     }
 
     private void launchClipboardReader(String source) {
@@ -701,9 +723,9 @@ public class OverlayService extends Service {
             if (url != null) {
                 detectAndShow(url);
             } else {
-                // No accessibility and no link in the clipboard —
-                // last resort: capture a screen frame and analyze that.
-                startScreenCaptureFallback();
+                // No accessibility and no link in the clipboard — guide the user
+                // rather than screen-capturing (which bounced them to home).
+                guideNoVideo();
             }
         } else { // automation came back
             String preUrl = extractVideoUrl(preAutomationClip);
@@ -715,7 +737,7 @@ public class OverlayService extends Service {
             } else {
                 // Automation never clicked Copy Link and the clipboard only has
                 // the same old text — analyzing it would answer the WRONG video.
-                startScreenCaptureFallback();
+                guideNoVideo();
             }
         }
     }
@@ -746,7 +768,11 @@ public class OverlayService extends Service {
                     || url.contains("instagram.com")
                     || url.contains("youtube.com") || url.contains("youtu.be");
                 if (!phoneDownloadable) {
-                    startScreenCaptureFallback();   // unknown host → analyze pixels
+                    // Unknown host we can't download on-device — guide instead of
+                    // hijacking the screen with a capture dialog.
+                    mainHandler.post(OverlayService.this::finishDetection);
+                    showToastResult("🔗 קישור לא נתמך לבדיקה אוטומטית", "unknown",
+                        "פתח את הסרטון ← Share ← VerifAI, ואני אקרא את הקוד שלו", 0);
                     return;
                 }
                 result = detectViaPhoneDownload(url);
@@ -754,9 +780,11 @@ public class OverlayService extends Service {
                 renderResult(result);
 
             } catch (Exception e) {
-                // Any failure on the URL path → fall back to the on-screen
-                // pixels rather than showing a dead end.
-                startScreenCaptureFallback();
+                // Any failure on the URL path → show a clear retry, not a screen
+                // capture that bounces the user to the home screen.
+                mainHandler.post(OverlayService.this::finishDetection);
+                showToastResult("❌ הבדיקה נכשלה", "unknown",
+                    "נסה שוב, או פתח את הסרטון ← Share ← VerifAI", 0);
             }
         });
     }

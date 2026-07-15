@@ -251,6 +251,44 @@ def root():
     }
 
 
+@app.get("/quiz")
+def quiz():
+    """A tiny AI-vs-real image quiz for the app's onboarding.
+
+    Returns a balanced, shuffled set of image URLs with ground-truth labels; the
+    mobile app validates each image loads, keeps a mix of both classes, and shows
+    three. The whole set can be replaced WITHOUT a redeploy via the QUIZ_ITEMS
+    env var (a JSON list of {"url": ..., "is_ai": true|false}) — so a curated,
+    harder set can be dropped in from Railway at any time.
+    """
+    import random as _rnd
+    override = os.environ.get("QUIZ_ITEMS")
+    if override:
+        try:
+            items = json.loads(override)
+            if isinstance(items, list) and items:
+                _rnd.shuffle(items)
+                return {"items": items[:8]}
+        except Exception:
+            pass
+    # Default set — both classes are portrait headshots so the subject can't give
+    # the answer away: AI faces are StyleGAN (thispersondoesnotexist), real faces
+    # are photographs (randomuser.me). Distinct cache-busted AI URLs each resolve
+    # to a different generated face.
+    ai = [{"url": f"https://thispersondoesnotexist.com/?vqz={i}", "is_ai": True}
+          for i in range(1, 6)]
+    real = []
+    for g in ("men", "women"):
+        for n in _rnd.sample(range(0, 90), 3):
+            real.append({"url": f"https://randomuser.me/api/portraits/{g}/{n}.jpg",
+                         "is_ai": False})
+    _rnd.shuffle(ai)
+    _rnd.shuffle(real)
+    items = ai[:4] + real[:4]
+    _rnd.shuffle(items)
+    return {"items": items}
+
+
 @app.post("/detect")
 @limiter.limit("30/minute")
 async def detect(
