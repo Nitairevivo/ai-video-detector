@@ -76,16 +76,33 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           LIMIT: ${{ github.event.inputs.per_repo_limit || '400' }}
+          # Verified default sources used when the repo VARIABLES are unset, so
+          # collection never silently no-ops. deepaction_v1 is path-verified AI
+          # (2,505 clips across 6 generators; ~900 still un-ingested). Real keeps
+          # flowing from the key-free archive.org/Wikimedia step below and
+          # auto-unlocks as the AI class grows (the real cap is 3x AI).
+          DEFAULT_AI_REPOS: "faridlab/deepaction_v1"
+          DEFAULT_REAL_REPOS: ""
         run: |
-          IFS=',' read -ra AI <<< "${{ vars.HF_AI_REPOS }}"
+          # Repo lists come from GitHub Actions VARIABLES, but if they were
+          # never set the collector iterates NOTHING and the dataset flatlines
+          # (exactly what happened). Fall back to a curated, verified default so
+          # videos always flow in without any manual setup.
+          AI_REPOS="${{ vars.HF_AI_REPOS }}"
+          [ -z "$AI_REPOS" ] && AI_REPOS="$DEFAULT_AI_REPOS"
+          REAL_REPOS="${{ vars.HF_REAL_REPOS }}"
+          [ -z "$REAL_REPOS" ] && REAL_REPOS="$DEFAULT_REAL_REPOS"
+          echo "AI repos:   $AI_REPOS"
+          echo "REAL repos: $REAL_REPOS"
+          IFS=',' read -ra AI <<< "$AI_REPOS"
           for r in "${AI[@]}"; do
             r=$(echo "$r" | xargs)
             [ -z "$r" ] && continue
             echo "::group::AI repo $r"
-            python training/collect_hf.py --repo "$r" --label ai --limit "$LIMIT" || true
+            python training/collect_hf.py --repo "$r" --label ai --limit "$LIMIT" --auto-label || true
             echo "::endgroup::"
           done
-          IFS=',' read -ra RE <<< "${{ vars.HF_REAL_REPOS }}"
+          IFS=',' read -ra RE <<< "$REAL_REPOS"
           for r in "${RE[@]}"; do
             r=$(echo "$r" | xargs)
             [ -z "$r" ] && continue
