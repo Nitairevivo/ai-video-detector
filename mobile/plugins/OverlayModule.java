@@ -49,6 +49,31 @@ public class OverlayModule extends ReactContextBaseJavaModule {
         promise.resolve(true);
     }
 
+    /** Ask the OS to exempt us from battery optimization. On aggressive OEMs
+     *  this is what stops the overlay foreground service from being killed a
+     *  few seconds after it starts. No-op if already exempt. */
+    @ReactMethod
+    public void requestIgnoreBatteryOptimizations(Promise promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                String pkg = reactContext.getPackageName();
+                android.os.PowerManager pm = (android.os.PowerManager)
+                    reactContext.getSystemService(android.content.Context.POWER_SERVICE);
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(pkg)) {
+                    Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    i.setData(Uri.parse("package:" + pkg));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    reactContext.startActivity(i);
+                    promise.resolve(false);   // asked; user must confirm
+                    return;
+                }
+            }
+            promise.resolve(true);            // already exempt / not needed
+        } catch (Exception e) {
+            promise.resolve(false);
+        }
+    }
+
     @ReactMethod
     public void start(Promise promise) {
         try {

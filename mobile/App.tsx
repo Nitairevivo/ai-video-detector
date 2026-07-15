@@ -20,7 +20,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.1";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -88,7 +88,7 @@ const T = {
     accessGotIt: "הבנתי",
     openAppSettings: "פתח הגדרות אפליקציה",
     overlayHelpTitle: "הכפתור הצף לא הצליח לעלות",
-    overlayHelpBody: "נראה שהטלפון חוסם את השכבה הצפה. בשיאומי / רדמי / פוקו צריך הרשאה *נוספת* נסתרת:\n\nהגדרות → אפליקציות → VerifAI → הרשאות נוספות (Other permissions) → הדלק:\n• 'הצג חלונות קופצים בזמן ריצה ברקע'\n• 'הצג מעל אפליקציות אחרות'\n\nבטלפונים אחרים: ודא ש'תצוגה מעל אפליקציות אחרות' דלוקה ל-VerifAI, ואז נסה שוב.",
+    overlayHelpBody: "נראה שהטלפון חוסם או הורג את הכפתור הצף. בשיאומי / רדמי / פוקו צריך הרשאות *נוספות* נסתרות:\n\nהגדרות → אפליקציות → VerifAI → הרשאות נוספות (Other permissions) → הדלק:\n• 'הצג חלונות קופצים בזמן ריצה ברקע'\n• 'הצג מעל אפליקציות אחרות'\n\nוגם — כדי שהכפתור לא ייעלם אחרי שנייה:\n• הגדרות → סוללה → VerifAI → 'ללא הגבלות' / כבה חיסכון בסוללה\n\nבטלפונים אחרים: ודא ש'תצוגה מעל אפליקציות אחרות' דלוקה, ואז נסה שוב.",
     statusFix: "תקן",
     statusOn: "פעיל",
     statusOff: "כבוי",
@@ -183,7 +183,7 @@ const T = {
     accessGotIt: "Got it",
     openAppSettings: "Open app settings",
     overlayHelpTitle: "The floating button couldn't start",
-    overlayHelpBody: "Your phone seems to be blocking the overlay. On Xiaomi / Redmi / Poco you need an EXTRA hidden permission:\n\nSettings → Apps → VerifAI → Other permissions → enable:\n• 'Display pop-up windows while running in background'\n• 'Display over other apps'\n\nOn other phones: make sure 'Display over other apps' is ON for VerifAI, then try again.",
+    overlayHelpBody: "Your phone seems to be blocking or killing the floating button. On Xiaomi / Redmi / Poco enable these EXTRA hidden permissions:\n\nSettings → Apps → VerifAI → Other permissions → enable:\n• 'Display pop-up windows while running in background'\n• 'Display over other apps'\n\nAnd so it doesn't vanish after a second:\n• Settings → Battery → VerifAI → 'No restrictions' / turn off battery saver\n\nOn other phones: make sure 'Display over other apps' is ON, then try again.",
     statusFix: "Fix",
     statusOn: "On",
     statusOff: "Off",
@@ -859,13 +859,21 @@ function AppInner() {
   // won't flip, show device-specific steps + open app settings.
   const enableOverlay = useCallback(async () => {
     const ok = await startOverlay();
-    if (!ok) {
-      const g = T[lang];
-      Alert.alert(g.overlayHelpTitle, g.overlayHelpBody, [
-        { text: g.accessGotIt, style: "cancel" },
-        { text: g.openAppSettings, onPress: () => Linking.openSettings() },
-      ]);
+    if (ok) {
+      // The button is up — now keep it alive. Aggressive OEMs kill the
+      // foreground service within seconds ("appears then vanishes"); a
+      // battery-optimization exemption prevents that. No-op if already exempt.
+      try {
+        const { OverlayModule } = require("react-native").NativeModules;
+        await OverlayModule?.requestIgnoreBatteryOptimizations?.();
+      } catch {}
+      return;
     }
+    const g = T[lang];
+    Alert.alert(g.overlayHelpTitle, g.overlayHelpBody, [
+      { text: g.accessGotIt, style: "cancel" },
+      { text: g.openAppSettings, onPress: () => Linking.openSettings() },
+    ]);
   }, [startOverlay, lang]);
 
   // NOTE: we deliberately do NOT auto-start the overlay on launch. Starting a

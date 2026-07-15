@@ -33,6 +33,10 @@ function withOverlayManifest(config) {
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
       "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
       "android.permission.RECEIVE_BOOT_COMPLETED",
+      // Aggressive OEMs (Xiaomi/MIUI, Oppo, Vivo) kill the overlay foreground
+      // service seconds after it starts ("button appears then vanishes").
+      // Exempting the app from battery optimization keeps it alive.
+      "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
     ];
     for (const perm of neededPerms) {
       if (!existingPerms.includes(perm)) {
