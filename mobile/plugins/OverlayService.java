@@ -464,17 +464,75 @@ public class OverlayService extends Service {
         }
     }
 
+    /** Ask a cobalt instance (from the PHONE — a residential IP, NOT the
+     *  datacenter one the server uses) to resolve any platform URL to a direct,
+     *  downloadable media URL. cobalt is the actively-maintained resolver that
+     *  handles YouTube PO-tokens, Instagram/Facebook/X login walls, etc. — the
+     *  best free shot at making links actually work. Instances overridable later
+     *  server-side; here we hit the public ones from the residential IP. */
+    private String resolveViaCobalt(String videoUrl) {
+        String[] hosts = { "cobalt-api.kwiatekmiki.com", "capi.oei.moe",
+                           "co.otomir23.me", "cobalt-backend.canine.tools" };
+        String body = "{\"url\":\"" + videoUrl.replace("\\", "").replace("\"", "")
+            + "\",\"videoQuality\":\"360\",\"filenameStyle\":\"basic\"}";
+        for (String host : hosts) {
+            try {
+                URL u = new URL("https://" + host + "/");
+                HttpURLConnection c = (HttpURLConnection) u.openConnection();
+                c.setRequestMethod("POST");
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setRequestProperty("Accept", "application/json");
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+                c.setDoOutput(true);
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(15000);
+                try (OutputStream os = c.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
+                if (c.getResponseCode() != 200) continue;
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()))) {
+                    String line; while ((line = br.readLine()) != null) sb.append(line);
+                }
+                JSONObject r = new JSONObject(sb.toString());
+                String status = r.optString("status", "");
+                if (("tunnel".equals(status) || "redirect".equals(status) || "stream".equals(status))
+                        && r.has("url")) {
+                    return r.getString("url");
+                }
+                JSONArray picker = r.optJSONArray("picker");   // multi-item → take first video
+                if (picker != null && picker.length() > 0) {
+                    JSONObject it = picker.getJSONObject(0);
+                    if (it.has("url")) return it.getString("url");
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
     private JSONObject detectViaPhoneDownload(String videoUrl) throws Exception {
         // Step 1: resolve share/page URL to an actual downloadable CDN URL.
         String downloadUrl = videoUrl;
         String referer = "https://www.google.com/";
+        boolean resolved = false;
         if (videoUrl.contains("tiktok.com") || videoUrl.contains("vm.tiktok")) {
             String cdnUrl = resolveTikTokCdnUrl(videoUrl);
-            if (cdnUrl != null) { downloadUrl = cdnUrl; referer = "https://www.tiktok.com/"; }
+            if (cdnUrl != null) { downloadUrl = cdnUrl; referer = "https://www.tiktok.com/"; resolved = true; }
         } else if (videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")) {
             String cdnUrl = resolveYouTubeCdnUrl(videoUrl);
-            if (cdnUrl == null) throw new Exception("youtube resolve failed");
-            downloadUrl = cdnUrl; referer = "https://www.youtube.com/";
+            if (cdnUrl != null) { downloadUrl = cdnUrl; referer = "https://www.youtube.com/"; resolved = true; }
+        }
+        // Not resolved by a platform-specific resolver, and not already a direct
+        // media file → try cobalt from the phone (works for IG/FB/X/Reddit and
+        // as a YouTube/TikTok backup). If even that fails, throw so the caller
+        // falls back to the server.
+        if (!resolved) {
+            String low = videoUrl.toLowerCase();
+            boolean directMedia = low.contains(".mp4") || low.contains(".mov")
+                || low.contains(".webm") || low.contains(".m4v");
+            if (!directMedia) {
+                String cobaltUrl = resolveViaCobalt(videoUrl);
+                if (cobaltUrl != null) { downloadUrl = cobaltUrl; referer = ""; }
+                else throw new Exception("could not resolve a media URL");
+            }
         }
 
         // Download video on phone (residential IP)
@@ -837,13 +895,17 @@ public class OverlayService extends Service {
         executor.submit(() -> {
             JSONObject result = null;
 
-            // Attempt 1 — download on the PHONE (residential IP, not bot-walled)
-            // and upload the real file. ONLY for hosts we can actually resolve to
-            // a media URL on-device (TikTok, YouTube). Instagram et al. have no
-            // phone resolver — downloading their page URL would upload HTML — so
-            // they skip straight to the server, which resolves them via yt-dlp.
+            // Attempt 1 — resolve + download on the PHONE (residential IP, NOT
+            // the bot-walled datacenter one). TikTok/YouTube use their specific
+            // resolvers; everything else (Instagram, Facebook, X, Reddit…) goes
+            // through cobalt from the phone. detectViaPhoneDownload throws if it
+            // can't resolve a real media URL, so we never upload an HTML page.
             boolean phoneDownloadable = url.contains("tiktok.com") || url.contains("vm.tiktok")
-                || url.contains("youtube.com") || url.contains("youtu.be");
+                || url.contains("youtube.com") || url.contains("youtu.be")
+                || url.contains("instagram.com")
+                || url.contains("facebook.com") || url.contains("fb.watch")
+                || url.contains("twitter.com") || url.contains("x.com")
+                || url.contains("reddit.com") || url.contains("redd.it");
             if (phoneDownloadable) {
                 try { result = detectViaPhoneDownload(url); }
                 catch (Exception phoneFail) { result = null; }   // fall through to server
