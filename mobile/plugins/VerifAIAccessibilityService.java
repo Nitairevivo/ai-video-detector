@@ -49,12 +49,18 @@ public class VerifAIAccessibilityService extends AccessibilityService {
 
     // Share/copy button labels across languages
     private static final List<String> SHARE_LABELS = Arrays.asList(
-        "share", "שתף", "共享", "partager", "teilen", "compartir",
-        "Send to", "שלח ל"
+        "share", "שתף", "שיתוף", "לשתף", "共享", "分享", "partager", "teilen",
+        "compartir", "send to", "שלח ל", "share to"
     );
     private static final List<String> COPY_LINK_LABELS = Arrays.asList(
-        "copy link", "copy url", "העתק קישור", "העתק לינק",
-        "copy", "העתק", "复制链接", "copier le lien"
+        "copy link", "copy url", "copy the link", "share link",
+        "העתק קישור", "העתק לינק", "העתק את הקישור", "העתקת קישור", "העתק כתובת",
+        "复制链接", "复制", "copier le lien", "enlace"
+    );
+    // Broad fallbacks, tried only if none of the specific copy-link labels hit —
+    // "copy"/"העתק" alone can match the wrong control, so they're last resort.
+    private static final List<String> COPY_FALLBACK_LABELS = Arrays.asList(
+        "copy", "העתק", "kopieren", "copiar"
     );
 
     private static volatile VerifAIAccessibilityService instance;
@@ -67,8 +73,10 @@ public class VerifAIAccessibilityService extends AccessibilityService {
     /** Whether the current grab flow actually clicked "Copy Link" — lets the
      *  overlay distinguish a fresh link from stale clipboard leftovers. */
     private boolean automationClicked = false;
-    private static final long SHARE_SHEET_TIMEOUT_MS = 2500;
-    private static final long GRAB_WATCHDOG_MS = 8000;
+    private int copyTries = 0;
+    private static final int MAX_COPY_TRIES = 12;          // ~4.8s of polling
+    private static final long COPY_POLL_MS = 400;
+    private static final long GRAB_WATCHDOG_MS = 9000;
 
     // If a grab flow ever dies mid-way (app killed the share sheet, event never
     // arrived…) this watchdog clears the flags so the NEXT tap still works —
@@ -156,14 +164,13 @@ public class VerifAIAccessibilityService extends AccessibilityService {
                 OverlayService.notifyForegroundApp(pkg);
             }
 
-            // Share sheet opened as part of the grab flow
-            if (waitingForShareSheet) {
-                mainHandler.postDelayed(this::findAndClickCopyLink, 400);
-            }
+            // Share sheet opened as part of the grab flow — the poller already
+            // covers it, but an event is a good extra chance to click sooner.
+            if (waitingForShareSheet) tryFindCopyLink();
         }
 
         if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && waitingForShareSheet) {
-            findAndClickCopyLink();
+            tryFindCopyLink();
         }
     }
 
@@ -194,48 +201,96 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         }
 
         waitingForShareSheet = true;
+        copyTries = 0;
         shareBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         shareBtn.recycle();
         if (root != null) root.recycle();
 
-        // Fallback if the share sheet never opens
-        mainHandler.postDelayed(() -> {
-            if (waitingForShareSheet) findAndClickCopyLink();
-        }, SHARE_SHEET_TIMEOUT_MS);
+        // Poll for the "Copy link" row — the share sheet animates in and its
+        // contents change, so a single look almost always misses it. We retry
+        // for ~5s and scroll the sheet halfway through in case Copy link is off
+        // screen (TikTok's actions row often needs a small scroll).
+        mainHandler.postDelayed(this::tryFindCopyLink, COPY_POLL_MS);
     }
 
-    private void findAndClickCopyLink() {
+    /** One attempt to find & click "Copy link"; reschedules itself until it hits
+     *  or the retry budget runs out. Two-tier match: the specific copy-link
+     *  labels first, and only on later tries the broad "copy" fallback. */
+    private void tryFindCopyLink() {
         if (!waitingForShareSheet) return;
-        waitingForShareSheet = false;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) { closeSheetAndFinish(); return; }
+        if (root != null) {
+            List<AccessibilityNodeInfo> nodes = getAllNodes(root);
 
-        List<AccessibilityNodeInfo> nodes = getAllNodes(root);
+            // Pass 1: specific "copy link" labels.
+            if (clickFirstMatch(nodes, COPY_LINK_LABELS)) {
+                recycleAll(nodes); root.recycle(); return;
+            }
+            // Pass 2 (only after a few tries, to avoid clicking a stray "copy"):
+            if (copyTries >= 4 && clickFirstMatch(nodes, COPY_FALLBACK_LABELS)) {
+                recycleAll(nodes); root.recycle(); return;
+            }
+            // Midway: try scrolling the share sheet so an off-screen "Copy link"
+            // comes into view.
+            if (copyTries == 5) scrollAnyScrollable(nodes);
+
+            recycleAll(nodes);
+            root.recycle();
+        }
+
+        if (++copyTries < MAX_COPY_TRIES) {
+            mainHandler.postDelayed(this::tryFindCopyLink, COPY_POLL_MS);
+        } else {
+            waitingForShareSheet = false;
+            closeSheetAndFinish();      // give up → clipboard may still hold a link
+        }
+    }
+
+    /** Click the first clickable node whose text/desc contains any label.
+     *  Returns true and finishes the grab (via clipboard read) if it clicked. */
+    private boolean clickFirstMatch(List<AccessibilityNodeInfo> nodes, List<String> labels) {
         for (AccessibilityNodeInfo node : nodes) {
+            if (node == null) continue;
             CharSequence text = node.getText();
             CharSequence desc = node.getContentDescription();
-            String combined = ((text != null ? text.toString() : "") +
-                               " " +
+            String combined = ((text != null ? text.toString() : "") + " " +
                                (desc != null ? desc.toString() : "")).toLowerCase().trim();
-
-            for (String label : COPY_LINK_LABELS) {
+            if (combined.isEmpty()) continue;
+            for (String label : labels) {
                 if (combined.contains(label.toLowerCase())) {
+                    AccessibilityNodeInfo target = clickableSelfOrAncestor(node);
                     automationClicked = true;
-                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    recycleAll(nodes);
-                    root.recycle();
-                    // Give the app a moment to write the clipboard, then close
-                    // the sheet and read the clipboard via the transparent activity
-                    mainHandler.postDelayed(this::closeSheetAndFinish, 600);
-                    return;
+                    waitingForShareSheet = false;
+                    if (target != null) target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    // Let the app write the clipboard, then close + read it.
+                    mainHandler.postDelayed(this::closeSheetAndFinish, 650);
+                    return true;
                 }
             }
         }
+        return false;
+    }
 
-        recycleAll(nodes);
-        root.recycle();
-        closeSheetAndFinish();
+    /** The label node itself is often not the clickable one — walk up to the
+     *  nearest clickable ancestor so the tap registers. */
+    private AccessibilityNodeInfo clickableSelfOrAncestor(AccessibilityNodeInfo n) {
+        AccessibilityNodeInfo cur = n;
+        for (int i = 0; i < 5 && cur != null; i++) {
+            if (cur.isClickable()) return cur;
+            cur = cur.getParent();
+        }
+        return n;
+    }
+
+    /** Scroll the first scrollable node forward (reveals an off-screen row). */
+    private void scrollAnyScrollable(List<AccessibilityNodeInfo> nodes) {
+        for (AccessibilityNodeInfo node : nodes) {
+            if (node != null && node.isScrollable()) {
+                node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                return;
+            }
+        }
     }
 
     private void closeSheetAndFinish() {

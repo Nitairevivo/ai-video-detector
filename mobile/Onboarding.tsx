@@ -31,14 +31,22 @@ type QuizItem = { url: string; is_ai: boolean };
 // deployed. Both classes are portrait headshots (subject can't give it away):
 // AI = StyleGAN faces (thispersondoesnotexist), real = photographs (randomuser).
 const DEFAULT_QUIZ: QuizItem[] = [
+  // AI faces (StyleGAN). Each cache-busted URL resolves to a different face.
   { url: "https://thispersondoesnotexist.com/?vqz=1", is_ai: true },
   { url: "https://thispersondoesnotexist.com/?vqz=2", is_ai: true },
   { url: "https://thispersondoesnotexist.com/?vqz=3", is_ai: true },
   { url: "https://thispersondoesnotexist.com/?vqz=4", is_ai: true },
+  { url: "https://thispersondoesnotexist.com/?vqz=5", is_ai: true },
+  { url: "https://thispersondoesnotexist.com/?vqz=6", is_ai: true },
+  // Real photographs (very reliable host).
   { url: "https://randomuser.me/api/portraits/men/32.jpg", is_ai: false },
   { url: "https://randomuser.me/api/portraits/women/44.jpg", is_ai: false },
   { url: "https://randomuser.me/api/portraits/men/75.jpg", is_ai: false },
   { url: "https://randomuser.me/api/portraits/women/68.jpg", is_ai: false },
+  { url: "https://randomuser.me/api/portraits/men/11.jpg", is_ai: false },
+  { url: "https://randomuser.me/api/portraits/women/22.jpg", is_ai: false },
+  { url: "https://randomuser.me/api/portraits/men/59.jpg", is_ai: false },
+  { url: "https://randomuser.me/api/portraits/women/90.jpg", is_ai: false },
 ];
 
 // ─── copy ────────────────────────────────────────────────────────────────────
@@ -268,22 +276,41 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [qIdx, setQIdx] = useState(0);
   const [answered, setAnswered] = useState<null | boolean>(null); // was the guess correct
   const [score, setScore] = useState(0);
+  const [answeredCount, setAnsweredCount] = useState(0);
   const [quizDone, setQuizDone] = useState(false);
+  // Any image that fails to actually render is dropped, so a blank tile is never
+  // shown. The quiz then runs over whatever loaded.
+  const [badUrls, setBadUrls] = useState<Set<string>>(new Set());
+  const live = quiz.filter((q) => !badUrls.has(q.url));
+
   const guess = (guessAI: boolean) => {
-    if (answered !== null) return;
-    const item = quiz[qIdx];
-    const right = guessAI === item.is_ai;
+    if (answered !== null || !live[qIdx]) return;
+    const right = guessAI === live[qIdx].is_ai;
     setAnswered(right);
+    setAnsweredCount((n) => n + 1);
     if (right) setScore((n) => n + 1);
   };
   const quizContinue = () => {
-    if (qIdx < quiz.length - 1) {
+    if (qIdx < live.length - 1) {
       setQIdx((i) => i + 1);
       setAnswered(null);
     } else {
       setQuizDone(true);
     }
   };
+  const dropImage = (url: string) => {
+    setBadUrls((prev) => { const n = new Set(prev); n.add(url); return n; });
+  };
+
+  // If images fail to load and we run out mid-quiz: finish (if the user answered
+  // at least one) or skip past the quiz — never leave a blank screen.
+  useEffect(() => {
+    if (step !== "quiz" || quizDone) return;
+    if (live.length === 0 || qIdx >= live.length) {
+      if (answeredCount > 0) setQuizDone(true);
+      else goNext();
+    }
+  }, [step, quizDone, live.length, qIdx, answeredCount]);
 
   const [showOemHelp, setShowOemHelp] = useState(false);
 
@@ -328,14 +355,19 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <PrimaryBtn label={t.start} onPress={goNext} />
       </View>
     );
-  } else if (step === "quiz" && !quizDone) {
-    const item = quiz[qIdx];
+  } else if (step === "quiz" && !quizDone && live[qIdx]) {
+    const item = live[qIdx];
     body = (
       <View style={st.quizBlock}>
         <Text style={[st.quizQ, writingDir]}>{t.quizQuestion}</Text>
         <View style={st.quizImgWrap}>
-          <Image source={{ uri: item.url }} style={st.quizImg} resizeMode="cover" />
-          <View style={st.quizCounterPill}><Text style={st.quizCounterPillText}>{qIdx + 1} / {quiz.length}</Text></View>
+          <Image
+            source={{ uri: item.url }}
+            style={st.quizImg}
+            resizeMode="cover"
+            onError={() => dropImage(item.url)}
+          />
+          <View style={st.quizCounterPill}><Text style={st.quizCounterPillText}>{qIdx + 1} / {live.length}</Text></View>
           {answered !== null && (
             <View style={[st.quizReveal, { backgroundColor: (answered ? C.real : C.ai) + "f2" }]}>
               <Text style={st.quizRevealBig}>{answered ? t.correct : t.wrong}</Text>
@@ -358,11 +390,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       </View>
     );
   } else if (step === "quiz" && quizDone) {
+    const denom = answeredCount || 3;
     body = (
       <View style={st.centerBlock}>
-        <Text style={st.bigEmoji}>{score >= 2 ? "🧐" : "🤯"}</Text>
-        <Text style={[st.title, { textAlign: "center" }]}>{t.scoreTitle(score)}</Text>
-        <Text style={[st.sub, { textAlign: "center", marginBottom: 4 }]}>{score >= 2 ? t.scoreHigh : t.scoreLow}</Text>
+        <Text style={st.bigEmoji}>{score >= denom - 1 ? "🧐" : "🤯"}</Text>
+        <Text style={[st.title, { textAlign: "center" }]}>{score} / {denom}</Text>
+        <Text style={[st.sub, { textAlign: "center", marginBottom: 4 }]}>{score >= denom - 1 ? t.scoreHigh : t.scoreLow}</Text>
 
         <View style={st.proCard}>
           <View style={st.proCrown}><Text style={{ fontSize: 26 }}>👑</Text></View>
@@ -479,7 +512,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <View style={st.root}>
-      <LinearGradient colors={["#1a0b3e", "#070316"]} style={StyleSheet.absoluteFill} />
+      {/* Subtle, professional backdrop — a faint violet glow at the top fading to
+          near-black, instead of a loud full-screen purple gradient. */}
+      <LinearGradient colors={["#12102a", "#08061a", "#060312"]} locations={[0, 0.4, 1]} style={StyleSheet.absoluteFill} />
       <ScrollView contentContainerStyle={st.scroll} showsVerticalScrollIndicator={false}>
         {Header}
         {body}
@@ -509,23 +544,24 @@ const st = StyleSheet.create({
   dots: { flexDirection: "row", justifyContent: "center", gap: 7, paddingBottom: 22 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#ffffff22" },
   dotActive: { width: 22, backgroundColor: C.primary },
-  // quiz — big, near-full-screen image
-  quizBlock: { gap: 14, paddingVertical: 4 },
+  // quiz — full-bleed, near-full-screen image
+  quizBlock: { gap: 16, paddingVertical: 2 },
   quizImgWrap: {
-    width: width - 44, height: Math.min(height * 0.5, (width - 44) * 1.25),
-    borderRadius: 22, overflow: "hidden", backgroundColor: C.card,
-    borderWidth: 1, borderColor: C.border, alignSelf: "center",
+    width: width,                       // edge-to-edge (breaks out of scroll padding)
+    height: Math.min(height * 0.62, width * 1.5),
+    marginHorizontal: -22,
+    overflow: "hidden", backgroundColor: C.card, alignSelf: "center",
   },
   quizImg: { width: "100%", height: "100%" },
-  quizCounterPill: { position: "absolute", top: 12, left: 12, backgroundColor: "#000000aa", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  quizCounterPill: { position: "absolute", top: 14, left: 14, backgroundColor: "#00000099", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
   quizCounterPillText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-  quizReveal: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 20, alignItems: "center" },
-  quizRevealBig: { color: "#fff", fontSize: 26, fontWeight: "900" },
+  quizReveal: { position: "absolute", left: 0, right: 0, bottom: 0, paddingVertical: 22, alignItems: "center" },
+  quizRevealBig: { color: "#fff", fontSize: 28, fontWeight: "900" },
   quizRevealSub: { color: "#ffffffee", fontSize: 15, fontWeight: "700", marginTop: 3 },
-  quizQ: { color: C.text, fontSize: 20, fontWeight: "900", textAlign: "center" },
-  quizBtns: { flexDirection: "row", gap: 12 },
-  guessBtn: { flex: 1, borderWidth: 2, borderRadius: 16, paddingVertical: 18, alignItems: "center", backgroundColor: C.card },
-  guessText: { fontSize: 18, fontWeight: "900" },
+  quizQ: { color: C.text, fontSize: 21, fontWeight: "800", textAlign: "center" },
+  quizBtns: { flexDirection: "row", gap: 12, paddingHorizontal: 2 },
+  guessBtn: { flex: 1, borderWidth: 1.5, borderRadius: 14, paddingVertical: 17, alignItems: "center", backgroundColor: "#ffffff08" },
+  guessText: { fontSize: 17, fontWeight: "800" },
   // pro pricing screen
   proCard: { backgroundColor: C.card2, borderRadius: 22, padding: 20, marginTop: 18, borderWidth: 1, borderColor: C.gold + "55" },
   proCrown: { alignSelf: "center", width: 52, height: 52, borderRadius: 16, backgroundColor: C.gold + "1f", alignItems: "center", justifyContent: "center", marginBottom: 6 },
