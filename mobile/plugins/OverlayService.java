@@ -751,6 +751,11 @@ public class OverlayService extends Service {
                 try {
                     java.io.File recent = findRecentAppVideo(120000);
                     if (recent != null) {
+                        // We're about to upload+analyze (can take ~40s+) — extend
+                        // the stage timeout to the network budget so the short
+                        // 12s timeout can't fire a false "no answer" mid-analysis.
+                        mainHandler.removeCallbacks(detectionTimeout);
+                        mainHandler.postDelayed(detectionTimeout, 120000);
                         JSONObject r = detectViaLocalFile(recent);
                         if (r != null) { renderResult(r); return; }
                     }
