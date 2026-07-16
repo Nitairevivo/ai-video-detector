@@ -92,6 +92,13 @@ const L = {
     accessStep3: "3. אם כתוב \"מוגבל\": חזור למסך פרטי-האפליקציה, לחץ ⋮ ← \"אפשר הגדרות מוגבלות\", ונסה שוב",
     accessBtn: "פתח הגדרות נגישות",
     accessOn: "זיהוי אוטומטי פעיל ✓",
+    keepAliveTitle: "⚠️ חשוב! שלא ייכבה אחרי כמה שניות",
+    keepAliveBody: "שיאומי / רדמי / פוקו הורגים את הנגישות תוך שניות. כדי שזה יישאר דלוק לתמיד, חובה גם:",
+    autostartBtn: "1. אפשר הפעלה אוטומטית (Autostart)",
+    autostartNote: "הפעל את VerifAI ברשימה שתיפתח",
+    batteryBtn: "2. הסר הגבלת סוללה",
+    batteryNote: "בחר 'ללא הגבלות' ל-VerifAI",
+    lockNote: "3. במסך האפליקציות האחרונות — נעל את VerifAI (משוך למטה על הכרטיס / מנעול)",
     doneTitle: "הכל מוכן! 🎉",
     doneSub: "פתח טיקטוק / אינסטגרם / טלגרם, לחץ על הכפתור הצף — ותקבל תשובה תוך שניות.",
     doneBtn: "בוא נתחיל לבדוק",
@@ -146,6 +153,13 @@ const L = {
     accessStep3: "3. If it says \"restricted\": go back to the app-info screen, tap ⋮ → \"Allow restricted settings\", and try again",
     accessBtn: "Open Accessibility settings",
     accessOn: "Auto-detection is active ✓",
+    keepAliveTitle: "⚠️ Important! So it doesn't turn off after a few seconds",
+    keepAliveBody: "Xiaomi / Redmi / Poco kill accessibility within seconds. To keep it on forever you MUST also:",
+    autostartBtn: "1. Allow Autostart",
+    autostartNote: "Enable VerifAI in the list that opens",
+    batteryBtn: "2. Remove battery restriction",
+    batteryNote: "Choose 'No restrictions' for VerifAI",
+    lockNote: "3. In Recent apps — lock VerifAI (pull down on the card / lock icon)",
     doneTitle: "All set! 🎉",
     doneSub: "Open TikTok / Instagram / Telegram, tap the floating button — and get an answer in seconds.",
     doneBtn: "Start checking",
@@ -171,6 +185,17 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   };
 
   const { status, overlayActive, startOverlay, refreshStatus } = useOverlay();
+
+  // The moment accessibility turns on, exempt us from battery optimization —
+  // on aggressive OEMs that's a big part of what stops the system from killing
+  // the service a few seconds later. Fires once per enable.
+  const askedBattery = React.useRef(false);
+  useEffect(() => {
+    if (status.accessibilityEnabled && !askedBattery.current) {
+      askedBattery.current = true;
+      try { OverlayModule?.requestIgnoreBatteryOptimizations?.(); } catch {}
+    }
+  }, [status.accessibilityEnabled]);
 
   // ── Quiz: fetch + validate images (only keep ones that actually load) ──
   const [quiz, setQuiz] = useState<QuizItem[]>([]);
@@ -414,7 +439,24 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         ) : (
           <PrimaryBtn label={t.accessBtn} onPress={() => { try { OverlayModule?.openAccessibilitySettings?.(); } catch {} }} />
         )}
-        <View style={{ height: 16 }} />
+
+        {/* Keep-alive: the single most important part on Xiaomi & co. — without
+            Autostart + no battery limit, the service is killed within seconds. */}
+        <View style={st.keepAliveCard}>
+          <Text style={[st.keepAliveTitle, align, writingDir]}>{t.keepAliveTitle}</Text>
+          <Text style={[st.keepAliveBody, align, writingDir]}>{t.keepAliveBody}</Text>
+          <TouchableOpacity style={st.kaBtn} onPress={() => { try { OverlayModule?.openAutostartSettings?.(); } catch {} }}>
+            <Text style={st.kaBtnText}>{t.autostartBtn}</Text>
+          </TouchableOpacity>
+          <Text style={[st.kaNote, align, writingDir]}>{t.autostartNote}</Text>
+          <TouchableOpacity style={st.kaBtn} onPress={() => { try { OverlayModule?.requestIgnoreBatteryOptimizations?.(); } catch {} }}>
+            <Text style={st.kaBtnText}>{t.batteryBtn}</Text>
+          </TouchableOpacity>
+          <Text style={[st.kaNote, align, writingDir]}>{t.batteryNote}</Text>
+          <Text style={[st.kaNote, align, writingDir, { marginTop: 8 }]}>{t.lockNote}</Text>
+        </View>
+
+        <View style={{ height: 8 }} />
         {on ? (
           <PrimaryBtn label={t.next} onPress={goNext} />
         ) : (
@@ -507,4 +549,11 @@ const st = StyleSheet.create({
   stepsCard: { backgroundColor: C.card, borderRadius: 16, padding: 16, marginVertical: 16, borderWidth: 1, borderColor: C.border, gap: 8 },
   stepsHead: { color: C.text, fontSize: 15, fontWeight: "800", marginBottom: 2 },
   stepLine: { color: C.sub, fontSize: 14, lineHeight: 21 },
+  // keep-alive (anti-kill on aggressive OEMs)
+  keepAliveCard: { backgroundColor: C.amber + "14", borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: C.amber + "55" },
+  keepAliveTitle: { color: C.amber, fontSize: 15, fontWeight: "900" },
+  keepAliveBody: { color: C.sub, fontSize: 13, lineHeight: 19, marginTop: 4, marginBottom: 10 },
+  kaBtn: { backgroundColor: C.card2, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginTop: 8, borderWidth: 1, borderColor: C.amber + "44" },
+  kaBtnText: { color: C.text, fontSize: 14, fontWeight: "800", textAlign: "center" },
+  kaNote: { color: C.faint, fontSize: 12, marginTop: 4, lineHeight: 17 },
 });

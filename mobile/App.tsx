@@ -21,7 +21,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.8.5";
+const APP_VERSION = "1.8.6";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -86,8 +86,9 @@ const T = {
     statusService: "כפתור צף פעיל",
     accessNeededNote: "בלי נגישות הכפתור לא יודע איזה סרטון פתוח ונאלץ לצלם מסך. הדלק אותה בהגדרות — לחיצה אחת תקרא את הקוד האמיתי.",
     accessRestrictedTitle: "איך מפעילים את הנגישות",
-    accessRestrictedBody: "כדי שלחיצה על הכפתור תקרא את הסרטון לבד (בלי צילום מסך):\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור → הגדרות → נגישות → VerifAI → הדלק\n\nזו חסימת אבטחה של אנדרואיד לאפליקציות מחוץ ל-Play (לא באג) — הצעדים האלה עוקפים אותה.",
+    accessRestrictedBody: "כדי שלחיצה על הכפתור תקרא את הסרטון לבד (בלי צילום מסך):\n\n1. הגדרות → אפליקציות → VerifAI\n2. לחץ על 3 הנקודות (⋮) למעלה מימין\n3. בחר \"אפשר הגדרות מוגבלות\"\n4. חזור → הגדרות → נגישות → VerifAI → הדלק\n\n⚠️ הנגישות נכבית אחרי כמה שניות? זו שיאומי/רדמי שהורגים אותה. לחץ \"הפעלה אוטומטית\" למטה, הדלק את VerifAI ברשימה, וגם: סוללה → 'ללא הגבלות'. זה מה שמשאיר אותה דלוקה.",
     accessGotIt: "הבנתי",
+    autostartAction: "הפעלה אוטומטית",
     openAppSettings: "פתח הגדרות אפליקציה",
     overlayHelpTitle: "הכפתור הצף לא הצליח לעלות",
     overlayHelpBody: "נראה שהטלפון חוסם או הורג את הכפתור הצף. בשיאומי / רדמי / פוקו צריך הרשאות *נוספות* נסתרות:\n\nהגדרות → אפליקציות → VerifAI → הרשאות נוספות (Other permissions) → הדלק:\n• 'הצג חלונות קופצים בזמן ריצה ברקע'\n• 'הצג מעל אפליקציות אחרות'\n\nוגם — כדי שהכפתור לא ייעלם אחרי שנייה:\n• הגדרות → סוללה → VerifAI → 'ללא הגבלות' / כבה חיסכון בסוללה\n\nבטלפונים אחרים: ודא ש'תצוגה מעל אפליקציות אחרות' דלוקה, ואז נסה שוב.",
@@ -181,8 +182,9 @@ const T = {
     statusService: "Floating button",
     accessNeededNote: "Without accessibility the button can't tell which video is open and has to screenshot. Enable it in Settings — one tap will read the real code.",
     accessRestrictedTitle: "How to enable accessibility",
-    accessRestrictedBody: "So a tap reads the video by itself (no screenshot):\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Back → Settings → Accessibility → VerifAI → turn on\n\nThis is an Android security block for apps installed outside the Play Store (not a bug) — these steps get around it.",
+    accessRestrictedBody: "So a tap reads the video by itself (no screenshot):\n\n1. Settings → Apps → VerifAI\n2. Tap the 3 dots (⋮) top-right\n3. Choose \"Allow restricted settings\"\n4. Back → Settings → Accessibility → VerifAI → turn on\n\n⚠️ Accessibility turns off after a few seconds? That's Xiaomi/Redmi killing it. Tap \"Autostart\" below, enable VerifAI in the list, and also: Battery → 'No restrictions'. That keeps it alive.",
     accessGotIt: "Got it",
+    autostartAction: "Autostart",
     openAppSettings: "Open app settings",
     overlayHelpTitle: "The floating button couldn't start",
     overlayHelpBody: "Your phone seems to be blocking or killing the floating button. On Xiaomi / Redmi / Poco enable these EXTRA hidden permissions:\n\nSettings → Apps → VerifAI → Other permissions → enable:\n• 'Display pop-up windows while running in background'\n• 'Display over other apps'\n\nAnd so it doesn't vanish after a second:\n• Settings → Battery → VerifAI → 'No restrictions' / turn off battery saver\n\nOn other phones: make sure 'Display over other apps' is ON, then try again.",
@@ -580,6 +582,7 @@ function StatusCard({ status, overlayActive, onToggle, lang }: {
               t.accessRestrictedBody,
               [
                 { text: t.accessGotIt, style: "cancel" },
+                { text: t.autostartAction, onPress: () => { try { OverlayModule?.openAutostartSettings?.(); } catch {} } },
                 { text: t.openAppSettings, onPress: () => { try { OverlayModule?.openAccessibilitySettings?.(); } catch { Linking.openSettings(); } } },
               ]
             )

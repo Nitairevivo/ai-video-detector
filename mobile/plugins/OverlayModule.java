@@ -168,4 +168,52 @@ public class OverlayModule extends ReactContextBaseJavaModule {
             promise.reject("OPEN_SETTINGS_ERROR", e.getMessage());
         }
     }
+
+    /** Open the OEM "Autostart" / background-launch manager. On MIUI/HyperOS,
+     *  ColorOS, Vivo, etc. the system kills the accessibility service (and the
+     *  overlay) seconds after it starts UNLESS the app is allowed to autostart.
+     *  This is the single most important permission to stop "accessibility
+     *  disconnects by itself". Tries each OEM's hidden screen, and falls back to
+     *  the app-details page (where Autostart usually also lives). */
+    @ReactMethod
+    public void openAutostartSettings(Promise promise) {
+        String[][] targets = {
+            // MIUI / Xiaomi / Redmi / POCO (HyperOS included)
+            {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
+            // ColorOS / Oppo / Realme
+            {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},
+            {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
+            // FuntouchOS / Vivo / iQOO
+            {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
+            {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"},
+            // Huawei / Honor
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"},
+            // Letv / OnePlus (older)
+            {"com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity"},
+        };
+        for (String[] t : targets) {
+            try {
+                Intent i = new Intent();
+                i.setClassName(t[0], t[1]);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                reactContext.startActivity(i);
+                promise.resolve(true);
+                return;
+            } catch (Exception ignored) {
+                // this OEM screen doesn't exist on this device — try the next
+            }
+        }
+        // Fallback: the app-details screen (Autostart often listed there too).
+        try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + reactContext.getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(i);
+            promise.resolve(false);   // opened, but not the exact autostart screen
+        } catch (Exception e) {
+            promise.resolve(false);
+        }
+    }
 }
