@@ -549,6 +549,7 @@ public class OverlayService extends Service {
                     // File not reachable. Either the video isn't downloaded yet,
                     // or (most often) VerifAI doesn't have media access. The
                     // 100%-reliable path always works, so point at it.
+                    if (!detectionPending) return;
                     mainHandler.post(OverlayService.this::finishDetection);
                     boolean tg = pkg != null && (pkg.contains("telegram") || pkg.contains("challegram"));
                     showToastResult("📥 לא הצלחתי לגשת לסרטון", "unknown",
@@ -560,6 +561,7 @@ public class OverlayService extends Service {
                 if (result == null) throw new Exception("no result");
                 renderResult(result);
             } catch (Exception e) {
+                if (!detectionPending) return;
                 mainHandler.post(OverlayService.this::finishDetection);
                 showToastResult("❌ הבדיקה נכשלה", "unknown", "נסה שוב", 0);
             }
@@ -867,9 +869,11 @@ public class OverlayService extends Service {
             JSONObject result = null;
 
             // Attempt 1 — download on the PHONE (residential IP, not bot-walled)
-            // and upload the real file, so we read its actual code/metadata.
+            // and upload the real file. ONLY for hosts we can actually resolve to
+            // a media URL on-device (TikTok, YouTube). Instagram et al. have no
+            // phone resolver — downloading their page URL would upload HTML — so
+            // they skip straight to the server, which resolves them via yt-dlp.
             boolean phoneDownloadable = url.contains("tiktok.com") || url.contains("vm.tiktok")
-                || url.contains("instagram.com")
                 || url.contains("youtube.com") || url.contains("youtu.be");
             if (phoneDownloadable) {
                 try { result = detectViaPhoneDownload(url); }
@@ -878,8 +882,8 @@ public class OverlayService extends Service {
 
             // Attempt 2 — hand the URL to the server (/detect-url): it has yt-dlp
             // + cobalt/mirror resolvers and can often fetch what the phone's
-            // simple resolver couldn't (TikTok short links, IG, etc.). This is
-            // what turns "הבדיקה נכשלה" into an actual verdict.
+            // simple resolver couldn't (TikTok short links, Instagram, Twitter,
+            // Facebook, Reddit…). This is what turns a failure into a verdict.
             if (result == null) {
                 try { result = detectViaServerUrl(url); }
                 catch (Exception serverFail) { result = null; }
@@ -890,8 +894,9 @@ public class OverlayService extends Service {
                 catch (Exception ignored) {}
             }
 
-            // Both paths failed — clear retry guidance, never a screen-capture
-            // that bounces the user to the home screen.
+            // Both paths failed — but only surface it if this detection is still
+            // current (the stage timeout / a cancel may have already ended it).
+            if (!detectionPending) return;
             mainHandler.post(OverlayService.this::finishDetection);
             showToastResult("❌ לא הצלחתי לשלוף את הסרטון", "unknown",
                 "נסה שוב, או פתח את הסרטון ← Share ← VerifAI (תמיד עובד)", 0);
@@ -901,6 +906,11 @@ public class OverlayService extends Service {
     /** Map a detection JSON (from /detect, /detect-url or /detect-frame) to the
      *  floating result card. Shared by the URL and screen-frame paths. */
     private void renderResult(JSONObject result) throws Exception {
+        // This detection may already be over — the stage timeout fired, or the
+        // user second-tapped to cancel, or a newer detection started. In any of
+        // those cases detectionPending is false; showing this (now stale) verdict
+        // would flash a SECOND, contradictory toast. Drop it.
+        if (!detectionPending) return;
         String verdict = result.optString("verdict", result.optBoolean("is_ai_generated", false) ? "ai_generated" : "real");
         double confidence = result.getDouble("confidence");
         String tool = result.optString("ai_tool_detected", "");

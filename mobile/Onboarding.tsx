@@ -507,6 +507,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         )}
       </View>
     );
+  } else if (step === "quiz") {
+    // Quiz step but the current image just dropped (onError) and the skip
+    // effect hasn't advanced yet — render nothing for this one frame instead of
+    // briefly flashing the "done" screen.
+    body = <View style={{ height: 200 }} />;
   } else {
     // done
     body = (

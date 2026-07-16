@@ -164,13 +164,14 @@ public class VerifAIAccessibilityService extends AccessibilityService {
                 OverlayService.notifyForegroundApp(pkg);
             }
 
-            // Share sheet opened as part of the grab flow — the poller already
-            // covers it, but an event is a good extra chance to click sooner.
-            if (waitingForShareSheet) tryFindCopyLink();
+            // Share sheet opened as part of the grab flow — an event is a good
+            // extra chance to click sooner. This does NOT consume the poll's
+            // retry budget or start a new timer chain (only the poll does that).
+            if (waitingForShareSheet) attemptCopyLink();
         }
 
         if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && waitingForShareSheet) {
-            tryFindCopyLink();
+            attemptCopyLink();
         }
     }
 
@@ -194,8 +195,9 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo shareBtn = root != null ? findShareButton(root) : null;
 
         if (shareBtn == null) {
-            if (root != null) root.recycle();
-            // Can't find a Share button — maybe the clipboard still helps
+            // findShareButton already recycled every node INCLUDING root (it
+            // recycles all nodes except the non-null result). Do NOT recycle
+            // root again — a double recycle throws on API < 33.
             finishGrab();
             return;
         }
@@ -204,46 +206,47 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         copyTries = 0;
         shareBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         shareBtn.recycle();
-        if (root != null) root.recycle();
+        // (root was already recycled inside findShareButton — don't touch it.)
 
         // Poll for the "Copy link" row — the share sheet animates in and its
-        // contents change, so a single look almost always misses it. We retry
-        // for ~5s and scroll the sheet halfway through in case Copy link is off
-        // screen (TikTok's actions row often needs a small scroll).
-        mainHandler.postDelayed(this::tryFindCopyLink, COPY_POLL_MS);
+        // contents change, so a single look almost always misses it. The POLL
+        // owns the retry budget (~5s) and rescheduling; window events only get
+        // extra immediate attempts via attemptCopyLink(). Scrolls the sheet
+        // halfway through in case Copy link is off-screen.
+        mainHandler.postDelayed(this::pollCopyLink, COPY_POLL_MS);
     }
 
-    /** One attempt to find & click "Copy link"; reschedules itself until it hits
-     *  or the retry budget runs out. Two-tier match: the specific copy-link
-     *  labels first, and only on later tries the broad "copy" fallback. */
-    private void tryFindCopyLink() {
+    /** The timer chain: one attempt, then reschedule until the budget runs out.
+     *  Only THIS increments copyTries / reschedules — so a burst of share-sheet
+     *  content-changed events can't exhaust the budget before the row renders. */
+    private void pollCopyLink() {
         if (!waitingForShareSheet) return;
-
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root != null) {
-            List<AccessibilityNodeInfo> nodes = getAllNodes(root);
-
-            // Pass 1: specific "copy link" labels.
-            if (clickFirstMatch(nodes, COPY_LINK_LABELS)) {
-                recycleAll(nodes); root.recycle(); return;
-            }
-            // Pass 2 (only after a few tries, to avoid clicking a stray "copy"):
-            if (copyTries >= 4 && clickFirstMatch(nodes, COPY_FALLBACK_LABELS)) {
-                recycleAll(nodes); root.recycle(); return;
-            }
-            // Midway: try scrolling the share sheet so an off-screen "Copy link"
-            // comes into view.
-            if (copyTries == 5) scrollAnyScrollable(nodes);
-
-            recycleAll(nodes);
-            root.recycle();
-        }
-
+        attemptCopyLink();
+        if (!waitingForShareSheet) return;   // clicked → done
         if (++copyTries < MAX_COPY_TRIES) {
-            mainHandler.postDelayed(this::tryFindCopyLink, COPY_POLL_MS);
+            mainHandler.postDelayed(this::pollCopyLink, COPY_POLL_MS);
         } else {
             waitingForShareSheet = false;
-            closeSheetAndFinish();      // give up → clipboard may still hold a link
+            closeSheetAndFinish();           // give up → clipboard may still help
+        }
+    }
+
+    /** One look at the current window for the "Copy link" row (specific labels
+     *  first, broad "copy" only after a few tries, scroll at try 5). Does NOT
+     *  touch copyTries or reschedule — safe to call from both the poll and window
+     *  events. recycleAll() recycles root too (it's node 0), so there is no bare
+     *  root.recycle() that could double-recycle and crash on API < 33. */
+    private void attemptCopyLink() {
+        if (!waitingForShareSheet) return;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        List<AccessibilityNodeInfo> nodes = getAllNodes(root);
+        try {
+            if (clickFirstMatch(nodes, COPY_LINK_LABELS)) return;
+            if (copyTries >= 4 && clickFirstMatch(nodes, COPY_FALLBACK_LABELS)) return;
+            if (copyTries == 5) scrollAnyScrollable(nodes);
+        } finally {
+            recycleAll(nodes);
         }
     }
 
