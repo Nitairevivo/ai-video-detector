@@ -39,6 +39,19 @@ public class VerifAIAccessibilityService extends AccessibilityService {
             (pkg.contains("telegram") || pkg.contains("challegram") || pkg.contains("whatsapp"));
     }
 
+    /** Apps where auto Share→Copy-Link is SAFE — their share button opens a plain
+     *  share sheet that contains "Copy link". Facebook is deliberately EXCLUDED:
+     *  its Share opens a post composer, and a mis-click there can PUBLISH A POST.
+     *  On Facebook the button falls back to the copied-link path (no automation). */
+    private static final Set<String> AUTOMATION_SAFE_PACKAGES = new HashSet<>(Arrays.asList(
+        "com.zhiliaoapp.musically",   // TikTok
+        "com.ss.android.ugc.trill",   // TikTok
+        "com.instagram.android",       // Instagram
+        "com.google.android.youtube",  // YouTube
+        "com.twitter.android",         // Twitter/X
+        "com.reddit.frontpage"         // Reddit
+    ));
+
     // Windows that must NOT change the button visibility (transient system UI,
     // share sheets, keyboards, and our own overlay/clipboard-reader windows).
     private static final Set<String> TRANSIENT_PACKAGES = new HashSet<>(Arrays.asList(
@@ -47,20 +60,25 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         "com.android.internal.app"
     ));
 
-    // Share/copy button labels across languages
+    // The SHARE button that opens the share sheet — pure "share" only. NOTHING
+    // that sends/posts/messages (those open composers).
     private static final List<String> SHARE_LABELS = Arrays.asList(
-        "share", "שתף", "שיתוף", "לשתף", "共享", "分享", "partager", "teilen",
-        "compartir", "send to", "שלח ל", "share to"
+        "share", "שתף", "שיתוף", "לשתף", "共享", "分享", "partager", "teilen", "compartir"
     );
+    // ONLY specific "copy link" phrases (each names a link/url). We never click a
+    // bare "copy"/"share" — that could be a "Post"/"Share now"/"Send" control.
     private static final List<String> COPY_LINK_LABELS = Arrays.asList(
-        "copy link", "copy url", "copy the link", "share link",
+        "copy link", "copy url", "copy the link",
         "העתק קישור", "העתק לינק", "העתק את הקישור", "העתקת קישור", "העתק כתובת",
-        "复制链接", "复制", "copier le lien", "enlace"
+        "复制链接", "copier le lien", "copiar enlace", "copiar vínculo", "copiar link"
     );
-    // Broad fallbacks, tried only if none of the specific copy-link labels hit —
-    // "copy"/"העתק" alone can match the wrong control, so they're last resort.
-    private static final List<String> COPY_FALLBACK_LABELS = Arrays.asList(
-        "copy", "העתק", "kopieren", "copiar"
+    // NEVER click a node whose label contains any of these — they publish/send.
+    // This is the guard that stops the automation from ever posting to a feed.
+    private static final List<String> DANGER_LABELS = Arrays.asList(
+        "post", "publish", "share now", "share to", "send", "story", "feed",
+        "add to", "submit", "next", "done",
+        "פרסם", "פרסום", "שלח", "שליחה", "סטורי", "פיד", "הוסף",
+        "publier", "veröffentlichen", "enviar", "publicar", "发布", "发送"
     );
 
     private static volatile VerifAIAccessibilityService instance;
@@ -108,9 +126,21 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         VerifAIAccessibilityService s = instance;
         if (s == null) return false;
         String fg = foregroundPackage;
-        if (fg == null || !SUPPORTED_PACKAGES.contains(fg)) return false;
+        // Only automate on apps whose share sheet is SAFE (has a plain "Copy
+        // link", no post composer). Facebook & everything else fall back to the
+        // copied-link path — we never risk clicking a "Post" button.
+        if (fg == null || !AUTOMATION_SAFE_PACKAGES.contains(fg)) return false;
         s.mainHandler.post(s::startGrabFlow);
         return true;
+    }
+
+    /** True if a node's text/description contains a publish/send word — we must
+     *  NEVER click such a node (it could post to a feed or send a message). */
+    private boolean isDangerous(String combined) {
+        for (String d : DANGER_LABELS) {
+            if (combined.contains(d.toLowerCase())) return true;
+        }
+        return false;
     }
 
     @Override
@@ -231,11 +261,11 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         }
     }
 
-    /** One look at the current window for the "Copy link" row (specific labels
-     *  first, broad "copy" only after a few tries, scroll at try 5). Does NOT
-     *  touch copyTries or reschedule — safe to call from both the poll and window
-     *  events. recycleAll() recycles root too (it's node 0), so there is no bare
-     *  root.recycle() that could double-recycle and crash on API < 33. */
+    /** One look at the current window for the "Copy link" row. ONLY the specific
+     *  copy-link labels — never a broad "copy"/"share" that could be a Post/Send
+     *  button. Does NOT touch copyTries or reschedule — safe from poll + events.
+     *  recycleAll() recycles root too (node 0), so there is no bare root.recycle()
+     *  that could double-recycle and crash on API < 33. */
     private void attemptCopyLink() {
         if (!waitingForShareSheet) return;
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -243,15 +273,14 @@ public class VerifAIAccessibilityService extends AccessibilityService {
         List<AccessibilityNodeInfo> nodes = getAllNodes(root);
         try {
             if (clickFirstMatch(nodes, COPY_LINK_LABELS)) return;
-            if (copyTries >= 4 && clickFirstMatch(nodes, COPY_FALLBACK_LABELS)) return;
             if (copyTries == 5) scrollAnyScrollable(nodes);
         } finally {
             recycleAll(nodes);
         }
     }
 
-    /** Click the first clickable node whose text/desc contains any label.
-     *  Returns true and finishes the grab (via clipboard read) if it clicked. */
+    /** Click the first clickable node whose text/desc contains any label — but
+     *  NEVER one that also looks like a publish/send control. */
     private boolean clickFirstMatch(List<AccessibilityNodeInfo> nodes, List<String> labels) {
         for (AccessibilityNodeInfo node : nodes) {
             if (node == null) continue;
@@ -260,6 +289,7 @@ public class VerifAIAccessibilityService extends AccessibilityService {
             String combined = ((text != null ? text.toString() : "") + " " +
                                (desc != null ? desc.toString() : "")).toLowerCase().trim();
             if (combined.isEmpty()) continue;
+            if (isDangerous(combined)) continue;   // never click Post/Send/Story…
             for (String label : labels) {
                 if (combined.contains(label.toLowerCase())) {
                     AccessibilityNodeInfo target = clickableSelfOrAncestor(node);
@@ -332,6 +362,9 @@ public class VerifAIAccessibilityService extends AccessibilityService {
             String combined = ((text != null ? text.toString() : "") +
                                " " +
                                (desc != null ? desc.toString() : "")).toLowerCase();
+            // Skip anything that could publish/send (e.g. "Share to story",
+            // "Share to feed") — only a plain Share button opens the safe sheet.
+            if (isDangerous(combined)) continue;
 
             for (String label : SHARE_LABELS) {
                 if (combined.contains(label.toLowerCase())) {

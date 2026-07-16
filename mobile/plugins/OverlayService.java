@@ -727,17 +727,20 @@ public class OverlayService extends Service {
             return;
         }
 
-        // Every other app (YouTube / Facebook / TikTok / Instagram / X …): use
-        // the COPIED link. We deliberately NO LONGER auto-drive Share → Copy
-        // Link. That automation navigated the app, popped the share sheet,
-        // pressed Back (which exited the video), and sometimes copied the WRONG
-        // clip — which is exactly the "it does all kinds of things" and the
-        // "wrong result" you saw. The button now NEVER touches the screen: it
-        // just reads the clipboard (and any just-saved WhatsApp/Telegram file).
         detectionPending = true;
         showLoading();
         mainHandler.removeCallbacks(detectionTimeout);
         mainHandler.postDelayed(detectionTimeout, 12000);
+
+        // SAFE auto-copy-link on TikTok/Instagram/YouTube/X/Reddit: the
+        // accessibility service opens the share sheet and clicks ONLY a real
+        // "Copy link" row (it will never click Post/Send/Story — see
+        // DANGER_LABELS), then closes the sheet so you stay on the video.
+        // Facebook and everything else are NOT automated (their Share can post),
+        // so there we just use the link you copied.
+        if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
+            return; // comes back via SOURCE_AUTOMATION
+        }
         launchClipboardReader(SOURCE_TAP);
     }
 
@@ -793,14 +796,18 @@ public class OverlayService extends Service {
 
     private void handleClipboardResult(String text, String source, boolean automationClicked) {
         String url = extractVideoUrl(text);
-        if (url != null) {
-            // The user copied a video link → analyze exactly that video.
+        // If the auto-grab ran but could NOT click Copy Link, the clipboard still
+        // holds whatever was there before (a stale link) — analyzing it would
+        // answer the WRONG video. Only trust the clipboard when the copy actually
+        // happened, or when this was a plain tap (the user copied it themselves).
+        boolean trustClipboard = !SOURCE_AUTOMATION.equals(source) || automationClicked;
+        if (url != null && trustClipboard) {
             detectAndShow(url);
             return;
         }
-        // No link on the clipboard. Maybe they just watched a WhatsApp/Telegram
-        // clip (a real file on disk, saved in the last couple of minutes) — read
-        // that. Otherwise guide them, WITHOUT touching the screen.
+        // No usable link. Maybe they just watched a WhatsApp/Telegram clip (a real
+        // file on disk, saved in the last couple of minutes) — read that.
+        // Otherwise guide them, WITHOUT touching the screen.
         executor.submit(() -> {
             try {
                 java.io.File recent = findRecentAppVideo(120000);
