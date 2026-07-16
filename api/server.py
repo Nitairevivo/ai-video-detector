@@ -251,6 +251,100 @@ def root():
     }
 
 
+# Onboarding quiz images are cached ON THE SERVER and served from OUR domain, so
+# the phone only ever loads from an origin it can already reach (the API). Free
+# image hosts are flaky/blocked on some mobile networks and return no-store
+# images that re-fetch and fail — caching here makes the quiz reliable.
+_QUIZ_DIR = Path(tempfile.gettempdir()) / "verifai_quiz"
+_QUIZ_MANIFEST: list = []
+
+
+def _quiz_fetch_bytes(url: str, timeout: int = 15):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VerifAI quiz cacher)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = r.read()
+        return data if data and len(data) > 3000 else None
+    except Exception:
+        return None
+
+
+def _ensure_quiz_cache(n_each: int = 6):
+    global _QUIZ_MANIFEST
+    if _QUIZ_MANIFEST:
+        return
+    try:
+        _QUIZ_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+    items = []
+    for i in range(n_each):
+        data = _quiz_fetch_bytes("https://thispersondoesnotexist.com/")
+        if data:
+            fid = f"ai{i}"
+            try:
+                (_QUIZ_DIR / f"{fid}.jpg").write_bytes(data)
+                items.append({"id": fid, "is_ai": True})
+            except Exception:
+                pass
+    reals = [("men", 32), ("women", 44), ("men", 75), ("women", 68),
+             ("men", 11), ("women", 22), ("men", 59), ("women", 90)]
+    for i, (g, n) in enumerate(reals[:n_each]):
+        data = _quiz_fetch_bytes(f"https://randomuser.me/api/portraits/{g}/{n}.jpg")
+        if data:
+            fid = f"real{i}"
+            try:
+                (_QUIZ_DIR / f"{fid}.jpg").write_bytes(data)
+                items.append({"id": fid, "is_ai": False})
+            except Exception:
+                pass
+    _QUIZ_MANIFEST = items
+
+
+@app.get("/quiz/img/{fid}")
+def quiz_img(fid: str):
+    """Serve a cached quiz image (stable & cacheable, unlike the upstream hosts)."""
+    from fastapi.responses import FileResponse
+    if not re.fullmatch(r"(ai|real)\d+", fid):
+        raise HTTPException(status_code=404, detail="not found")
+    p = _QUIZ_DIR / f"{fid}.jpg"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(str(p), media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/quiz")
+def quiz(request: Request):
+    """AI-vs-real onboarding quiz: a balanced, shuffled set of image URLs (with
+    ground-truth labels) pointing at OUR cached copies so the phone loads them
+    reliably. Overridable without a redeploy via the QUIZ_ITEMS env var."""
+    import random as _rnd
+    override = os.environ.get("QUIZ_ITEMS")
+    if override:
+        try:
+            items = json.loads(override)
+            if isinstance(items, list) and items:
+                _rnd.shuffle(items)
+                return {"items": items[:8]}
+        except Exception:
+            pass
+    try:
+        _ensure_quiz_cache()
+    except Exception:
+        _QUIZ_MANIFEST.clear()
+    base = str(request.base_url).rstrip("/")
+    items = [{"url": f"{base}/quiz/img/{m['id']}", "is_ai": m["is_ai"]} for m in _QUIZ_MANIFEST]
+    _rnd.shuffle(items)
+    if not items:
+        ai = [{"url": f"https://thispersondoesnotexist.com/?vqz={i}", "is_ai": True} for i in range(1, 5)]
+        real = [{"url": f"https://randomuser.me/api/portraits/{g}/{n}.jpg", "is_ai": False}
+                for g, n in (("men", 32), ("women", 44), ("men", 75), ("women", 68))]
+        items = ai + real
+        _rnd.shuffle(items)
+    return {"items": items[:8]}
+
+
 @app.post("/detect")
 @limiter.limit("30/minute")
 async def detect(
