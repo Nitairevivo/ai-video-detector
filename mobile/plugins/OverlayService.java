@@ -546,11 +546,14 @@ public class OverlayService extends Service {
             try {
                 java.io.File video = findLatestAppVideo(pkg);
                 if (video == null) {
-                    // No readable file yet (Telegram keeps videos in a private
-                    // cache until saved) → guide instead of screen-capturing.
+                    // File not reachable. Either the video isn't downloaded yet,
+                    // or (most often) VerifAI doesn't have media access. The
+                    // 100%-reliable path always works, so point at it.
                     mainHandler.post(OverlayService.this::finishDetection);
-                    showToastResult("📥 הסרטון עדיין לא נשמר במכשיר", "unknown",
-                        "שמור אותו לגלריה (בטלגרם: ⋮ ← Save to Gallery) ולחץ שוב", 0);
+                    boolean tg = pkg != null && (pkg.contains("telegram") || pkg.contains("challegram"));
+                    showToastResult("📥 לא הצלחתי לגשת לסרטון", "unknown",
+                        tg ? "שמור אותו: ⋮ ← Save to Gallery, או שתף אותו ל-VerifAI (תמיד עובד)"
+                           : "שתף את הסרטון ל-VerifAI (הכי אמין), או אפשר ל-VerifAI גישה למדיה בהגדרות", 0);
                     return;
                 }
                 JSONObject result = detectViaLocalFile(video);
@@ -563,20 +566,79 @@ public class OverlayService extends Service {
         });
     }
 
-    /** Find the newest video file that belongs to the given app, via MediaStore
-     *  (the {@code Android/media/<pkg>/…} folders Telegram & WhatsApp write to
-     *  are indexed and world-readable on Android 11+). "Newest" is the video the
-     *  user most likely just opened/downloaded. Returns null if none found. */
-    private java.io.File findLatestAppVideo(String pkg) {
+    /** The exact folders WhatsApp/Telegram write received videos to. We scan
+     *  these DIRECTLY (File API) rather than MediaStore, because WhatsApp drops a
+     *  .nomedia file in its Media folders — so those videos are NOT indexed by
+     *  MediaStore and a MediaStore query finds nothing. Android/media/<pkg>/ is
+     *  readable by other apps on Android 11+. */
+    private java.util.List<String> appVideoDirs(String pkg) {
+        java.util.List<String> dirs = new java.util.ArrayList<>();
+        if (pkg == null) return dirs;
+        String ext;
+        try { ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath(); }
+        catch (Exception e) { ext = "/storage/emulated/0"; }
+        if (pkg.contains("telegram") || pkg.contains("challegram")) {
+            dirs.add(ext + "/Android/media/org.telegram.messenger/Telegram/Telegram Video");
+            dirs.add(ext + "/Android/media/org.telegram.messenger.web/Telegram/Telegram Video");
+            dirs.add(ext + "/Telegram/Telegram Video");
+            dirs.add(ext + "/Android/media/org.telegram.plus/Telegram/Telegram Video");
+        } else if (pkg.contains("whatsapp")) {
+            dirs.add(ext + "/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video");
+            dirs.add(ext + "/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Sent");
+            dirs.add(ext + "/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Video");
+            dirs.add(ext + "/WhatsApp/Media/WhatsApp Video");
+        }
+        return dirs;
+    }
+
+    private boolean isVideoFile(String name) {
+        String n = name.toLowerCase();
+        return n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".webm")
+            || n.endsWith(".mov") || n.endsWith(".3gp");
+    }
+
+    /** Newest video in the app's folders (optionally only if fresher than
+     *  maxAgeMs; pass 0 for no age limit). Direct scan first, MediaStore as a
+     *  fallback for OEMs that put media elsewhere. */
+    private java.io.File findAppVideo(String pkg, long maxAgeMs) {
+        java.io.File newest = null;
+        long newestMod = 0;
+        for (String d : appVideoDirs(pkg)) {
+            java.io.File dir = new java.io.File(d);
+            java.io.File[] files;
+            try { files = dir.listFiles(); } catch (Exception e) { files = null; }
+            if (files == null) continue;
+            for (java.io.File f : files) {
+                try {
+                    if (f == null || !f.isFile() || !isVideoFile(f.getName())) continue;
+                    if (f.length() < 50000) continue;
+                    long mod = f.lastModified();
+                    if (mod > newestMod) { newestMod = mod; newest = f; }
+                } catch (Exception ignored) {}
+            }
+        }
+        if (newest != null && newest.canRead()) {
+            if (maxAgeMs <= 0) return newest;
+            long age = System.currentTimeMillis() - newestMod;
+            if (age >= 0 && age <= maxAgeMs) return newest;
+            return null;   // a file exists but it's stale — not what the user is watching
+        }
+        // Fallback: MediaStore (works when the app has media visibility on).
+        return findAppVideoViaMediaStore(pkg, maxAgeMs);
+    }
+
+    private java.io.File findLatestAppVideo(String pkg) { return findAppVideo(pkg, 0); }
+
+    private java.io.File findAppVideoViaMediaStore(String pkg, long maxAgeMs) {
         String needle;
         if (pkg == null) return null;
-        if (pkg.contains("telegram") || pkg.contains("challegram")) needle = "elegram"; // Telegram / Telegram X
+        if (pkg.contains("telegram") || pkg.contains("challegram")) needle = "elegram";
         else if (pkg.contains("whatsapp")) needle = "hatsApp";
         else return null;
-
         String[] proj = {
             android.provider.MediaStore.Video.Media.DATA,
             android.provider.MediaStore.Video.Media.SIZE,
+            android.provider.MediaStore.Video.Media.DATE_MODIFIED,
         };
         String sel = android.provider.MediaStore.Video.Media.DATA + " LIKE ?";
         String[] args = { "%" + needle + "%" };
@@ -587,9 +649,14 @@ public class OverlayService extends Service {
             if (c != null && c.moveToFirst()) {
                 String path = c.getString(0);
                 long size = c.getLong(1);
+                long modSec = c.getLong(2);
                 if (path != null && size > 50000) {
                     java.io.File f = new java.io.File(path);
-                    if (f.exists() && f.canRead()) return f;
+                    if (f.exists() && f.canRead()) {
+                        if (maxAgeMs <= 0) return f;
+                        long age = System.currentTimeMillis() - modSec * 1000L;
+                        if (age >= 0 && age <= maxAgeMs) return f;
+                    }
                 }
             }
         } catch (Exception ignored) {}
@@ -700,35 +767,16 @@ public class OverlayService extends Service {
         launchClipboardReader(SOURCE_TAP);
     }
 
-    /** Newest Telegram/WhatsApp video ANYWHERE on shared storage, but only if it
-     *  was modified within {@code maxAgeMs} — i.e. the clip the user is almost
-     *  certainly watching right now. Lets the by-code path work in those apps
-     *  without the accessibility service telling us the foreground app. */
+    /** Newest Telegram/WhatsApp video, but only if modified within {@code maxAgeMs}
+     *  — i.e. the clip the user is almost certainly watching right now. Lets the
+     *  by-code path work without the accessibility service telling us the app.
+     *  Direct folder scan (handles WhatsApp's .nomedia) across both apps. */
     private java.io.File findRecentAppVideo(long maxAgeMs) {
-        String[] proj = {
-            android.provider.MediaStore.Video.Media.DATA,
-            android.provider.MediaStore.Video.Media.SIZE,
-            android.provider.MediaStore.Video.Media.DATE_MODIFIED,
-        };
-        String col = android.provider.MediaStore.Video.Media.DATA;
-        String sel = col + " LIKE ? OR " + col + " LIKE ?";
-        String[] args = { "%elegram%", "%hatsApp%" };  // Telegram / WhatsApp
-        try (android.database.Cursor c = getContentResolver().query(
-                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                proj, sel, args,
-                android.provider.MediaStore.Video.Media.DATE_MODIFIED + " DESC")) {
-            if (c != null && c.moveToFirst()) {
-                String path = c.getString(0);
-                long size = c.getLong(1);
-                long modSec = c.getLong(2);                 // epoch SECONDS
-                long ageMs = System.currentTimeMillis() - modSec * 1000L;
-                if (path != null && size > 50000 && ageMs >= 0 && ageMs <= maxAgeMs) {
-                    java.io.File f = new java.io.File(path);
-                    if (f.exists() && f.canRead()) return f;
-                }
-            }
-        } catch (Exception ignored) {}
-        return null;
+        java.io.File tg = findAppVideo("org.telegram.messenger", maxAgeMs);
+        java.io.File wa = findAppVideo("com.whatsapp", maxAgeMs);
+        if (tg == null) return wa;
+        if (wa == null) return tg;
+        return tg.lastModified() >= wa.lastModified() ? tg : wa;
     }
 
     /** No link/file could be read (accessibility off + nothing copied). GUIDE the

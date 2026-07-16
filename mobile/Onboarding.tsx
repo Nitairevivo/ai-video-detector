@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as SecureStore from "expo-secure-store";
+import * as ImagePicker from "expo-image-picker";
 import { useOverlay } from "./hooks/useOverlay";
 
 // Kept in sync with App.tsx (small enough to duplicate rather than refactor a
@@ -204,6 +205,13 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       try { OverlayModule?.requestIgnoreBatteryOptimizations?.(); } catch {}
     }
   }, [status.accessibilityEnabled]);
+
+  // Ask for media access up front so the floating button can read the actual
+  // WhatsApp/Telegram video FILE (they store videos with a .nomedia flag, so we
+  // scan the folders directly — which needs this permission).
+  useEffect(() => {
+    ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => {});
+  }, []);
 
   // ── Quiz: fetch + validate images (only keep ones that actually load) ──
   const [quiz, setQuiz] = useState<QuizItem[]>([]);

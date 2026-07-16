@@ -21,7 +21,7 @@ const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.8.8";
+const APP_VERSION = "1.8.9";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -887,6 +887,16 @@ function AppInner() {
   // specialUse foreground service at app startup crashes the process on
   // Android 14+ (ForegroundServiceStartNotAllowed / DidNotStartInTime — thrown
   // by the framework, uncatchable). The overlay starts ONLY from the toggle.
+
+  // Ensure media access (for reading the actual WhatsApp/Telegram video file the
+  // floating button analyzes). No-op after the user has answered once. Covers
+  // users who onboarded on an older build.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    ImagePicker.getMediaLibraryPermissionsAsync()
+      .then((p) => { if (p.status !== "granted" && p.canAskAgain) ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => {}); })
+      .catch(() => {});
+  }, []);
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
