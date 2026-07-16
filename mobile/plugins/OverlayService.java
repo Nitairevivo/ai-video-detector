@@ -811,41 +811,37 @@ public class OverlayService extends Service {
         mainHandler.postDelayed(detectionTimeout, 120000);
 
         executor.submit(() -> {
-            try {
-                JSONObject result;
+            JSONObject result = null;
 
-                // TikTok/Instagram download on the PHONE (residential IP, not
-                // blocked) then upload the file — fast and reliable. YouTube and
-                // everything else: DON'T wait on the server download (YouTube
-                // bot-walls datacenter IPs, so it's slow and usually fails) —
-                // go straight to analyzing the pixels actually on screen. The
-                // button must always reach a verdict quickly.
-                // Download on the PHONE (residential IP — NOT blocked like our
-                // server) for every platform we can resolve, so we get the real
-                // file and read its actual code/metadata. YouTube included: the
-                // phone's home IP clears the bot-wall that blocks the server.
-                boolean phoneDownloadable = url.contains("tiktok.com") || url.contains("vm.tiktok")
-                    || url.contains("instagram.com")
-                    || url.contains("youtube.com") || url.contains("youtu.be");
-                if (!phoneDownloadable) {
-                    // Unknown host we can't download on-device — guide instead of
-                    // hijacking the screen with a capture dialog.
-                    mainHandler.post(OverlayService.this::finishDetection);
-                    showToastResult("🔗 קישור לא נתמך לבדיקה אוטומטית", "unknown",
-                        "פתח את הסרטון ← Share ← VerifAI, ואני אקרא את הקוד שלו", 0);
-                    return;
-                }
-                result = detectViaPhoneDownload(url);
-                if (result == null) throw new Exception("no result");
-                renderResult(result);
-
-            } catch (Exception e) {
-                // Any failure on the URL path → show a clear retry, not a screen
-                // capture that bounces the user to the home screen.
-                mainHandler.post(OverlayService.this::finishDetection);
-                showToastResult("❌ הבדיקה נכשלה", "unknown",
-                    "נסה שוב, או פתח את הסרטון ← Share ← VerifAI", 0);
+            // Attempt 1 — download on the PHONE (residential IP, not bot-walled)
+            // and upload the real file, so we read its actual code/metadata.
+            boolean phoneDownloadable = url.contains("tiktok.com") || url.contains("vm.tiktok")
+                || url.contains("instagram.com")
+                || url.contains("youtube.com") || url.contains("youtu.be");
+            if (phoneDownloadable) {
+                try { result = detectViaPhoneDownload(url); }
+                catch (Exception phoneFail) { result = null; }   // fall through to server
             }
+
+            // Attempt 2 — hand the URL to the server (/detect-url): it has yt-dlp
+            // + cobalt/mirror resolvers and can often fetch what the phone's
+            // simple resolver couldn't (TikTok short links, IG, etc.). This is
+            // what turns "הבדיקה נכשלה" into an actual verdict.
+            if (result == null) {
+                try { result = detectViaServerUrl(url); }
+                catch (Exception serverFail) { result = null; }
+            }
+
+            if (result != null) {
+                try { renderResult(result); return; }
+                catch (Exception ignored) {}
+            }
+
+            // Both paths failed — clear retry guidance, never a screen-capture
+            // that bounces the user to the home screen.
+            mainHandler.post(OverlayService.this::finishDetection);
+            showToastResult("❌ לא הצלחתי לשלוף את הסרטון", "unknown",
+                "נסה שוב, או פתח את הסרטון ← Share ← VerifAI (תמיד עובד)", 0);
         });
     }
 

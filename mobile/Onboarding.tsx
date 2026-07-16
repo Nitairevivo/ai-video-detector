@@ -302,15 +302,17 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setBadUrls((prev) => { const n = new Set(prev); n.add(url); return n; });
   };
 
-  // If images fail to load and we run out mid-quiz: finish (if the user answered
-  // at least one) or skip past the quiz — never leave a blank screen.
+  // A single lonely image is a worse experience than no quiz — if fewer than 2
+  // images actually loaded (a fair AI-vs-real test needs both), skip the quiz.
+  // Also finish/skip if we run out mid-way. Never leave a blank or lonely tile.
   useEffect(() => {
-    if (step !== "quiz" || quizDone) return;
+    if (step !== "quiz" || quizDone || !quizLoaded) return;
+    if (answeredCount === 0 && live.length < 2) { goNext(); return; }
     if (live.length === 0 || qIdx >= live.length) {
       if (answeredCount > 0) setQuizDone(true);
       else goNext();
     }
-  }, [step, quizDone, live.length, qIdx, answeredCount]);
+  }, [step, quizDone, quizLoaded, live.length, qIdx, answeredCount]);
 
   const [showOemHelp, setShowOemHelp] = useState(false);
 

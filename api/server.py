@@ -251,16 +251,81 @@ def root():
     }
 
 
-@app.get("/quiz")
-def quiz():
-    """A tiny AI-vs-real image quiz for the app's onboarding.
+# Onboarding quiz images are cached ON THE SERVER and served from OUR domain, so
+# the phone only ever loads from an origin it can already reach (the API). Free
+# image hosts (thispersondoesnotexist, randomuser) are flaky/blocked on some
+# mobile networks and return no-store images that re-fetch and fail — caching
+# here makes the quiz reliable and the images stable & cacheable.
+_QUIZ_DIR = Path(tempfile.gettempdir()) / "verifai_quiz"
+_QUIZ_MANIFEST: list = []
 
-    Returns a balanced, shuffled set of image URLs with ground-truth labels; the
-    mobile app validates each image loads, keeps a mix of both classes, and shows
-    three. The whole set can be replaced WITHOUT a redeploy via the QUIZ_ITEMS
-    env var (a JSON list of {"url": ..., "is_ai": true|false}) — so a curated,
-    harder set can be dropped in from Railway at any time.
-    """
+
+def _fetch_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VerifAI quiz cacher)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = r.read()
+        return data if data and len(data) > 3000 else None
+    except Exception:
+        return None
+
+
+def _ensure_quiz_cache(n_each: int = 6):
+    """Populate the on-disk image cache once (server-side fetch, then serve locally)."""
+    global _QUIZ_MANIFEST
+    if _QUIZ_MANIFEST:
+        return
+    try:
+        _QUIZ_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+    items = []
+    # AI faces (StyleGAN). thispersondoesnotexist serves a fresh face each hit —
+    # fetched server-side (reliable from the datacenter) and frozen to a file.
+    for i in range(n_each):
+        data = _fetch_bytes("https://thispersondoesnotexist.com/")
+        if data:
+            fid = f"ai{i}"
+            try:
+                (_QUIZ_DIR / f"{fid}.jpg").write_bytes(data)
+                items.append({"id": fid, "is_ai": True})
+            except Exception:
+                pass
+    # Real photographs.
+    reals = [("men", 32), ("women", 44), ("men", 75), ("women", 68),
+             ("men", 11), ("women", 22), ("men", 59), ("women", 90)]
+    for i, (g, n) in enumerate(reals[:n_each]):
+        data = _fetch_bytes(f"https://randomuser.me/api/portraits/{g}/{n}.jpg")
+        if data:
+            fid = f"real{i}"
+            try:
+                (_QUIZ_DIR / f"{fid}.jpg").write_bytes(data)
+                items.append({"id": fid, "is_ai": False})
+            except Exception:
+                pass
+    _QUIZ_MANIFEST = items
+
+
+@app.get("/quiz/img/{fid}")
+def quiz_img(fid: str):
+    """Serve a cached quiz image (stable, cacheable — unlike the upstream hosts)."""
+    from fastapi.responses import FileResponse
+    # Guard against path traversal — only our generated ids.
+    if not re.fullmatch(r"(ai|real)\d+", fid):
+        raise HTTPException(status_code=404, detail="not found")
+    p = _QUIZ_DIR / f"{fid}.jpg"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(str(p), media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/quiz")
+def quiz(request: Request):
+    """AI-vs-real onboarding quiz. Serves a balanced, shuffled set of image URLs
+    (with ground-truth labels) pointing at OUR cached copies, so the phone loads
+    them reliably. Overridable without a redeploy via the QUIZ_ITEMS env var
+    (JSON list of {"url", "is_ai"})."""
     import random as _rnd
     override = os.environ.get("QUIZ_ITEMS")
     if override:
@@ -271,22 +336,22 @@ def quiz():
                 return {"items": items[:8]}
         except Exception:
             pass
-    # Default set — both classes are portrait headshots so the subject can't give
-    # the answer away: AI faces are StyleGAN (thispersondoesnotexist), real faces
-    # are photographs (randomuser.me). Distinct cache-busted AI URLs each resolve
-    # to a different generated face.
-    ai = [{"url": f"https://thispersondoesnotexist.com/?vqz={i}", "is_ai": True}
-          for i in range(1, 6)]
-    real = []
-    for g in ("men", "women"):
-        for n in _rnd.sample(range(0, 90), 3):
-            real.append({"url": f"https://randomuser.me/api/portraits/{g}/{n}.jpg",
-                         "is_ai": False})
-    _rnd.shuffle(ai)
-    _rnd.shuffle(real)
-    items = ai[:4] + real[:4]
+    try:
+        _ensure_quiz_cache()
+    except Exception:
+        _QUIZ_MANIFEST.clear()
+    base = str(request.base_url).rstrip("/")
+    items = [{"url": f"{base}/quiz/img/{m['id']}", "is_ai": m["is_ai"]} for m in _QUIZ_MANIFEST]
     _rnd.shuffle(items)
-    return {"items": items}
+    if not items:
+        # Cache couldn't populate (e.g. upstream unreachable) — fall back to the
+        # direct hosts so the client at least has something to try.
+        ai = [{"url": f"https://thispersondoesnotexist.com/?vqz={i}", "is_ai": True} for i in range(1, 5)]
+        real = [{"url": f"https://randomuser.me/api/portraits/{g}/{n}.jpg", "is_ai": False}
+                for g, n in (("men", 32), ("women", 44), ("men", 75), ("women", 68))]
+        items = ai + real
+        _rnd.shuffle(items)
+    return {"items": items[:8]}
 
 
 @app.post("/detect")
