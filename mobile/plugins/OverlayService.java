@@ -727,50 +727,17 @@ public class OverlayService extends Service {
             return;
         }
 
+        // Every other app (YouTube / Facebook / TikTok / Instagram / X …): use
+        // the COPIED link. We deliberately NO LONGER auto-drive Share → Copy
+        // Link. That automation navigated the app, popped the share sheet,
+        // pressed Back (which exited the video), and sometimes copied the WRONG
+        // clip — which is exactly the "it does all kinds of things" and the
+        // "wrong result" you saw. The button now NEVER touches the screen: it
+        // just reads the clipboard (and any just-saved WhatsApp/Telegram file).
         detectionPending = true;
         showLoading();
-        // Stage timeout: covers clipboard check + accessibility automation.
-        // detectAndShow() reschedules it for the (slower) network stage.
         mainHandler.removeCallbacks(detectionTimeout);
         mainHandler.postDelayed(detectionTimeout, 12000);
-
-        // Fast path: if the accessibility service can read the on-screen video's
-        // link RIGHT NOW, grab it directly — skipping the clipboard-reader
-        // activity flash. Removes the visible flicker and ~0.5-1s of delay, and
-        // means a tap answers almost immediately.
-        if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
-            return; // comes back via SOURCE_AUTOMATION
-        }
-
-        // Accessibility is OFF (foreground app unknown): the user may have just
-        // watched a Telegram/WhatsApp video, which is a REAL file freshly written
-        // to the phone. Read that file's actual code — NOT a screenshot — as long
-        // as it was touched in the last couple of minutes (so we don't grab a
-        // stale, unrelated clip). This makes Telegram/WhatsApp work by-code even
-        // without the accessibility service.
-        if (fg == null) {
-            executor.submit(() -> {
-                try {
-                    java.io.File recent = findRecentAppVideo(120000);
-                    if (recent != null) {
-                        // We're about to upload+analyze (can take ~40s+) — extend
-                        // the stage timeout to the network budget so the short
-                        // 12s timeout can't fire a false "no answer" mid-analysis.
-                        mainHandler.removeCallbacks(detectionTimeout);
-                        mainHandler.postDelayed(detectionTimeout, 120000);
-                        JSONObject r = detectViaLocalFile(recent);
-                        if (r != null) { renderResult(r); return; }
-                    }
-                } catch (Exception ignored) {}
-                // Nothing readable → clipboard link (must read on the main thread
-                // via the transparent activity; background reads are blocked).
-                mainHandler.post(() -> launchClipboardReader(SOURCE_TAP));
-            });
-            return;
-        }
-
-        // Unsupported foreground app with accessibility on: the clipboard may
-        // hold a link the user copied.
         launchClipboardReader(SOURCE_TAP);
     }
 
@@ -826,35 +793,30 @@ public class OverlayService extends Service {
 
     private void handleClipboardResult(String text, String source, boolean automationClicked) {
         String url = extractVideoUrl(text);
-
-        if (SOURCE_TAP.equals(source)) {
-            // Accessibility automation copies the link of the video CURRENTLY on
-            // screen, so it always beats the clipboard (which may hold a stale
-            // link from yesterday and produce an answer for the wrong video).
-            preAutomationClip = text;
-            if (VerifAIAccessibilityService.grabCurrentVideoUrl()) {
-                return; // comes back with SOURCE_AUTOMATION
-            }
-            if (url != null) {
-                detectAndShow(url);
-            } else {
-                // No accessibility and no link in the clipboard — guide the user
-                // rather than screen-capturing (which bounced them to home).
-                guideNoVideo();
-            }
-        } else { // automation came back
-            String preUrl = extractVideoUrl(preAutomationClip);
-            if (url != null && (automationClicked || preUrl == null || url.equals(lastAnalyzedUrl))) {
-                // Copy-Link actually got clicked (fresh link of the visible
-                // video), or there was nothing stale to confuse it with, or the
-                // user is re-checking the same video — all safe to analyze.
-                detectAndShow(url);
-            } else {
-                // Automation never clicked Copy Link and the clipboard only has
-                // the same old text — analyzing it would answer the WRONG video.
-                guideNoVideo();
-            }
+        if (url != null) {
+            // The user copied a video link → analyze exactly that video.
+            detectAndShow(url);
+            return;
         }
+        // No link on the clipboard. Maybe they just watched a WhatsApp/Telegram
+        // clip (a real file on disk, saved in the last couple of minutes) — read
+        // that. Otherwise guide them, WITHOUT touching the screen.
+        executor.submit(() -> {
+            try {
+                java.io.File recent = findRecentAppVideo(120000);
+                if (recent != null) {
+                    if (!detectionPending) return;
+                    mainHandler.removeCallbacks(detectionTimeout);
+                    mainHandler.postDelayed(detectionTimeout, 120000);
+                    JSONObject r = detectViaLocalFile(recent);
+                    if (r != null) { renderResult(r); return; }
+                }
+            } catch (Exception ignored) {}
+            if (!detectionPending) return;
+            mainHandler.post(OverlayService.this::finishDetection);
+            showToastResult("📋 אין קישור לבדיקה", "unknown",
+                "העתק קישור (Share ← Copy Link) ולחץ שוב, או שתף את הסרטון ל-VerifAI", 0);
+        });
     }
 
     private void detectAndShow(final String url) {
