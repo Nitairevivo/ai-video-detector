@@ -24,6 +24,7 @@ public class MediaProjectionRequestActivity extends Activity {
             (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         if (mpm == null) {
             fail("screen capture unavailable");
+            try { moveTaskToBack(true); } catch (Exception ignored) {}
             finish();
             return;
         }
@@ -54,6 +55,11 @@ public class MediaProjectionRequestActivity extends Activity {
         } else {
             fail("הרשאת צילום מסך נדחתה");
         }
+        // Same MIUI quirk as ClipboardReaderActivity: finishing a NEW_TASK
+        // transparent activity can surface the HOME screen instead of the app
+        // underneath (the "button ejects me out of the video" bug). Send this
+        // task to the back first so the video the user was watching stays up.
+        try { moveTaskToBack(true); } catch (Exception ignored) {}
         finish();
     }
 

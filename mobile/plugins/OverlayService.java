@@ -604,24 +604,20 @@ public class OverlayService extends Service {
             try {
                 java.io.File video = findLatestAppVideo(pkg);
                 if (video == null) {
-                    // File not reachable. Either the video isn't downloaded yet,
-                    // or (most often) VerifAI doesn't have media access. The
-                    // 100%-reliable path always works, so point at it.
+                    // File not reachable (not downloaded / no media access) —
+                    // but the video is PLAYING on screen. Capture its real
+                    // frames instead of giving up with an error.
                     if (!detectionPending) return;
-                    mainHandler.post(OverlayService.this::finishDetection);
-                    boolean tg = pkg != null && (pkg.contains("telegram") || pkg.contains("challegram"));
-                    showToastResult("📥 לא הצלחתי לגשת לסרטון", "unknown",
-                        tg ? "שמור אותו: ⋮ ← Save to Gallery, או שתף אותו ל-VerifAI (תמיד עובד)"
-                           : "שתף את הסרטון ל-VerifAI (הכי אמין), או אפשר ל-VerifAI גישה למדיה בהגדרות", 0);
+                    mainHandler.post(OverlayService.this::startScreenCaptureFallback);
                     return;
                 }
                 JSONObject result = detectViaLocalFile(video);
                 if (result == null) throw new Exception("no result");
                 renderResult(result);
             } catch (Exception e) {
+                // Upload/analysis failed — screen frames are still available.
                 if (!detectionPending) return;
-                mainHandler.post(OverlayService.this::finishDetection);
-                showToastResult("❌ הבדיקה נכשלה", "unknown", "נסה שוב", 0);
+                mainHandler.post(OverlayService.this::startScreenCaptureFallback);
             }
         });
     }
@@ -814,16 +810,6 @@ public class OverlayService extends Service {
         return tg.lastModified() >= wa.lastModified() ? tg : wa;
     }
 
-    /** No link/file could be read (accessibility off + nothing copied). GUIDE the
-     *  user instead of hijacking the screen with the capture-consent dialog that
-     *  bounced them out to the home screen. The product reads the video's real
-     *  code — accessibility is the reliable way to feed it a link hands-free. */
-    private void guideNoVideo() {
-        mainHandler.post(this::finishDetection);
-        showToastResult("📋 לא נמצא סרטון לבדיקה", "unknown",
-            "הדלק 'נגישות' בהגדרות VerifAI (זיהוי אוטומטי), או העתק קישור (Share ← Copy Link) ולחץ שוב", 0);
-    }
-
     private void launchClipboardReader(String source) {
         try {
             Intent i = new Intent(this, ClipboardReaderActivity.class);
@@ -877,10 +863,11 @@ public class OverlayService extends Service {
                     if (r != null) { renderResult(r); return; }
                 }
             } catch (Exception ignored) {}
+            // No link and no recent file — but the video is playing ON SCREEN
+            // right now. Capture a short burst of its real frames and analyze
+            // those. Works in every app, nothing to download or copy.
             if (!detectionPending) return;
-            mainHandler.post(OverlayService.this::finishDetection);
-            showToastResult("📋 אין קישור לבדיקה", "unknown",
-                "העתק קישור (Share ← Copy Link) ולחץ שוב, או שתף את הסרטון ל-VerifAI", 0);
+            mainHandler.post(OverlayService.this::startScreenCaptureFallback);
         });
     }
 
@@ -925,12 +912,12 @@ public class OverlayService extends Service {
                 catch (Exception ignored) {}
             }
 
-            // Both paths failed — but only surface it if this detection is still
-            // current (the stage timeout / a cancel may have already ended it).
+            // Both download paths failed — but the video is RIGHT THERE on the
+            // screen. Creative last resort: capture a short burst of the frames
+            // being played and analyze those (works for EVERY app, nothing to
+            // download). Only if this detection is still current.
             if (!detectionPending) return;
-            mainHandler.post(OverlayService.this::finishDetection);
-            showToastResult("❌ לא הצלחתי לשלוף את הסרטון", "unknown",
-                "נסה שוב, או פתח את הסרטון ← Share ← VerifAI (תמיד עובד)", 0);
+            mainHandler.post(OverlayService.this::startScreenCaptureFallback);
         });
     }
 
