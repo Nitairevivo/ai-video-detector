@@ -1,5 +1,11 @@
 # VerifAI — What's New
 
+## 2026-07-17 — Model & detection improvements
+
+- Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).
+- Image detector trained on 4,646 samples (AUC 0.848).
+- Add /quiz endpoint: server-cached onboarding quiz images.
+
 ## 2026-07-16 — Nightly model refresh
 
 - Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).
