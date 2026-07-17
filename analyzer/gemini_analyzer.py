@@ -41,6 +41,39 @@ GEMINI_TOTAL_BUDGET = float(os.environ.get("GEMINI_BUDGET", "28"))    # whole-ca
 # In-memory cache: hash(video_path content) → GeminiResult
 _CACHE: dict = {}
 
+# Live health of the vision layer — exposed via /health so a dead key or an
+# exhausted quota is VISIBLE instead of silently degrading every verdict to
+# heuristics-only (the "everything says real" failure mode).
+_STATS = {"ok": 0, "fail": 0, "last_error": "", "last_ok_ts": 0.0, "last_model": ""}
+
+
+def gemini_stats() -> dict:
+    """Snapshot of vision-layer health for /health and the daily report."""
+    age = (time.time() - _STATS["last_ok_ts"]) if _STATS["last_ok_ts"] else None
+    return {
+        "calls_ok": _STATS["ok"],
+        "calls_failed": _STATS["fail"],
+        "last_error": _STATS["last_error"] or None,
+        "last_success_age_s": round(age) if age is not None else None,
+        "last_model": _STATS["last_model"] or None,
+    }
+
+
+def _api_keys() -> list:
+    """All configured keys, primary first. Extra keys (GEMINI_API_KEY2/3 or a
+    comma-separated GEMINI_API_KEYS) keep the vision layer alive through a
+    quota-exhausted or revoked primary — the #1 silent killer of accuracy."""
+    keys = []
+    for name in ("GEMINI_API_KEY", "GEMINI_API_KEY2", "GEMINI_API_KEY3"):
+        k = (os.environ.get(name) or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    for k in (os.environ.get("GEMINI_API_KEYS") or "").split(","):
+        k = k.strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
 def _file_hash(path: str) -> str:
     """Fast hash of first 64KB of file for cache key."""
     try:
@@ -174,62 +207,95 @@ def _extract_text(data: dict) -> Optional[str]:
 
 
 def _post_parts(api_key: str, parts: list) -> Optional[dict]:
-    """POST prebuilt content parts to Gemini, walking the model fallback chain."""
+    """POST prebuilt content parts to Gemini, walking the model fallback chain
+    and, on quota/auth failures, the configured backup API keys."""
     global _working_model
 
     models = [_working_model] if _working_model else []
     models += [m for m in _MODEL_CHAIN if m and m not in models]
 
-    deadline = time.time() + GEMINI_TOTAL_BUDGET
-    for model in models:
-        if time.time() >= deadline:
-            break  # out of budget — return best-effort (None) and let other layers decide
-        gen_cfg = {"maxOutputTokens": 800, "temperature": 0.0}
-        # Gemini 2.5 models "think" by default and can burn the whole output
-        # budget before emitting any text (empty response → no verdict).
-        # Disable thinking so the budget goes to the JSON answer. 2.0 models
-        # reject thinkingConfig, so only send it for 2.5.
-        if "2.5" in model:
-            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
-        body = json.dumps({
-            "contents": [{"parts": parts}],
-            "generationConfig": gen_cfg,
-        }).encode()
+    keys = _api_keys()
+    if api_key and api_key not in keys:
+        keys.insert(0, api_key)
+    if not keys:
+        _STATS["last_error"] = "no API key configured"
+        return None
 
-        url = API_URL_TPL.format(model=model) + f"?key={api_key}"
-        for attempt in range(2):
+    last_err = "no response"
+    deadline = time.time() + GEMINI_TOTAL_BUDGET
+    for key_idx, key in enumerate(keys):
+        for model in models:
             if time.time() >= deadline:
-                return None
-            try:
-                # cap each request to whatever budget remains, never more than
-                # the per-request ceiling
-                req_timeout = max(1.0, min(GEMINI_HTTP_TIMEOUT, deadline - time.time()))
-                req = urllib.request.Request(
-                    url, data=body,
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                )
-                with urllib.request.urlopen(req, timeout=req_timeout) as resp:
-                    data = json.loads(resp.read())
-                text = _extract_text(data)
-                if not text:
-                    break  # no usable text → try the next model in the chain
-                match = re.search(r'\{.*\}', text, re.DOTALL)
-                if not match:
+                _STATS["fail"] += 1
+                _STATS["last_error"] = f"budget exceeded ({last_err})"
+                return None  # out of budget — let other layers decide
+            gen_cfg = {"maxOutputTokens": 800, "temperature": 0.0}
+            # Gemini 2.5 models "think" by default and can burn the whole output
+            # budget before emitting any text (empty response → no verdict).
+            # Disable thinking so the budget goes to the JSON answer. 2.0 models
+            # reject thinkingConfig, so only send it for 2.5.
+            if "2.5" in model:
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+            body = json.dumps({
+                "contents": [{"parts": parts}],
+                "generationConfig": gen_cfg,
+            }).encode()
+
+            url = API_URL_TPL.format(model=model) + f"?key={key}"
+            key_exhausted = False
+            for attempt in range(2):
+                if time.time() >= deadline:
+                    _STATS["fail"] += 1
+                    _STATS["last_error"] = f"budget exceeded ({last_err})"
+                    return None
+                try:
+                    # cap each request to whatever budget remains, never more
+                    # than the per-request ceiling
+                    req_timeout = max(1.0, min(GEMINI_HTTP_TIMEOUT, deadline - time.time()))
+                    req = urllib.request.Request(
+                        url, data=body,
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=req_timeout) as resp:
+                        data = json.loads(resp.read())
+                    text = _extract_text(data)
+                    if not text:
+                        last_err = f"{model}: empty response"
+                        break  # no usable text → try the next model in the chain
+                    match = re.search(r'\{.*\}', text, re.DOTALL)
+                    if not match:
+                        last_err = f"{model}: no JSON in response"
+                        break
+                    parsed = json.loads(match.group())
+                    parsed["_model"] = model
+                    _working_model = model
+                    _STATS["ok"] += 1
+                    _STATS["last_ok_ts"] = time.time()
+                    _STATS["last_model"] = model
+                    _STATS["last_error"] = ""
+                    return parsed
+                except urllib.error.HTTPError as e:
+                    last_err = f"{model}: HTTP {e.code}"
+                    if e.code == 429 and attempt < 1:
+                        time.sleep(3 * (attempt + 1))
+                        continue
+                    if e.code == 429:
+                        key_exhausted = True  # quota — this key is done, rotate
+                        break
+                    if e.code in (401, 403):
+                        key_exhausted = True  # bad/revoked key — rotate key
+                        break
+                    if e.code in (400, 404):
+                        break  # model unavailable → try next in chain
                     break
-                parsed = json.loads(match.group())
-                parsed["_model"] = model
-                _working_model = model
-                return parsed
-            except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt < 2:
-                    time.sleep(3 * (attempt + 1))
-                    continue
-                if e.code in (400, 403, 404):
-                    break  # model unavailable → try next in chain
-                break
-            except Exception:
-                break  # transient/parse error → try the next model
+                except Exception as e:
+                    last_err = f"{model}: {type(e).__name__}"
+                    break  # transient/parse error → try the next model
+            if key_exhausted:
+                break  # skip remaining models for this key, go to next key
+    _STATS["fail"] += 1
+    _STATS["last_error"] = last_err
     return None
 
 
@@ -254,9 +320,10 @@ def _to_result(parsed: dict, n_frames: int) -> GeminiResult:
 
 def analyze_with_gemini(video_path: str) -> Optional[GeminiResult]:
     """Analyze video with Gemini Vision. Returns None if unavailable."""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    keys = _api_keys()
+    if not keys:
         return None
+    api_key = keys[0]
 
     key = _file_hash(video_path)
     if key and key in _CACHE:
@@ -329,9 +396,10 @@ def analyze_image_with_gemini(image_b64: str) -> Optional[GeminiResult]:
     Used by the MediaProjection fallback, where no video URL/file is available.
     Returns None if the API key is missing or the call fails.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key or not image_b64:
+    keys = _api_keys()
+    if not keys or not image_b64:
         return None
+    api_key = keys[0]
 
     parts = [
         {"text": "Frame captured from screen:"},
@@ -357,7 +425,7 @@ STRONG AI INDICATORS (compare consecutive frames):
 
 NOT AI (normal for real social video): compression blocking, motion blur, grain/noise, imperfect lighting, beauty filters, cuts/scene changes (a hard cut is NOT morphing). Chaotic materials — flour, smoke, water spray, confetti, fire — naturally look "morphy" across 0.6s gaps; do NOT count them as temporal morphing.
 
-Be calibrated and do NOT over-flag: a false "AI" on a real video is the worst failure.
+Be calibrated in BOTH directions: a false "AI" on a real video is a serious failure, but so is a confident "real" on an AI video — when several frames show morphing, identity drift, anatomy errors or a rendered look, COMMIT to ai_generated with high probability.
 
 Respond ONLY with this JSON (no markdown):
 {
@@ -377,9 +445,10 @@ def analyze_frame_burst_with_gemini(frames_b64: list) -> Optional[GeminiResult]:
     frame: consecutive frames expose the morphing/identity-drift artifacts the
     video pair prompt was built around. Returns None if unavailable.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key or not frames_b64:
+    keys = _api_keys()
+    if not keys or not frames_b64:
         return None
+    api_key = keys[0]
     if len(frames_b64) == 1:
         return analyze_image_with_gemini(frames_b64[0])
 

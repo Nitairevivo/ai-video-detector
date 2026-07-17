@@ -131,6 +131,14 @@ async def _access_log(request: Request, call_next):
             }))
 
 
+def _gemini_stats_safe() -> dict:
+    try:
+        from analyzer.gemini_analyzer import gemini_stats
+        return gemini_stats()
+    except Exception:
+        return {}
+
+
 @app.get("/health")
 def health():
     """Liveness/readiness probe with component status — for uptime monitors."""
@@ -151,6 +159,10 @@ def health():
             "trained_at": meta.get("trained_at"),
         },
         "gemini_enabled": bool(os.environ.get("GEMINI_API_KEY")),
+        # Live vision-layer health: a configured key that FAILS every call
+        # (quota / revoked / model gone) silently degrades every verdict to
+        # heuristics-only — this makes that visible from outside.
+        "gemini": _gemini_stats_safe(),
         "telegram_bot": bool(os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()),
         "whatsapp_bot": all(os.environ.get(k, "").strip() for k in
                             ("WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN")),
@@ -544,6 +556,10 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
     ens = analyze_ensemble(tmp_path, result, ml_prob, use_gemini=True, gemini_result=gemini)
 
     signals = result.signals or {}
+    # Whether the vision base layer ACTUALLY ran is part of the verdict's
+    # trustworthiness — surface it instead of letting a dead Gemini key
+    # silently turn every verdict into heuristics-only.
+    signals["gemini_vision_ran"] = gemini is not None
     return {
         "is_ai_generated": ens.verdict == "ai_generated",
         "verdict": ens.verdict,
@@ -579,6 +595,8 @@ def run_full_analysis(tmp_path: str, deep: bool = True) -> dict:
             "caveats": [c for c in (
                 "video shorter than 2s — low reliability" if signals.get("too_short_for_analysis") else None,
                 "re-encoded by a platform — original file metadata lost" if signals.get("platform_reencoded") else None,
+                "vision layer did not run (unavailable/timeout) — verdict from code+pixel layers only, weaker on modern AI video"
+                if gemini is None else None,
             ) if c],
         },
         "_signals": signals,
@@ -705,12 +723,18 @@ async def detect_frames(request: Request, files: list[UploadFile] = File(...)):
         # who taps the button gets an honest read instead of "unknown", without
         # risking a confident false accusation on a real video.
         if fr_res is not None and fr_res.verdict == "real":
+            # Pixel heuristics can't catch modern AI (Sora/Veo output has
+            # natural texture) — a heuristics-only "real" is a WEAK opinion,
+            # not proof. Cap the confidence and say so, instead of showing a
+            # green "Authentic 95%" that turns out to be an obvious AI reel.
+            conf = min(fr_res.confidence, 0.60)
             return {
                 "is_ai_generated": False, "verdict": "real",
-                "confidence": round(fr_res.confidence, 4),
-                "confidence_pct": f"{fr_res.confidence * 100:.1f}%",
+                "confidence": round(conf, 4),
+                "confidence_pct": f"{conf * 100:.1f}%",
                 "ai_tool_detected": None,
-                "detection_method": f"Screen burst ({len(frames)} frames), local pixel analysis: {fr_res.method}",
+                "detection_method": (f"Screen burst ({len(frames)} frames), local pixel analysis only "
+                                     f"(vision model unavailable — lower reliability): {fr_res.method}"),
                 "source": "frames", "frames_analyzed": len(frames),
             }
         if fr_res is not None and fr_res.verdict == "ai_generated":
