@@ -57,7 +57,8 @@ const L = {
     start: "בוא נתחיל",
     skip: "אעשה את זה אחר כך",
     welcomeTitle: "ברוך הבא ל-VerifAI",
-    welcomeSub: "VerifAI קורא את הקוד שמאחורי כל סרטון ותמונה — וחושף אם נוצרו ב-AI. בוא נגדיר את זה ב-30 שניות.",
+    welcomeSub: "VerifAI קורא את הקוד שמאחורי כל סרטון ותמונה — וחושף אם נוצרו ב-AI. מגן עליך מהונאות, סחיטות ודיפ-פייק. בוא נגדיר את זה ב-30 שניות.",
+    antifraud: "🛡️ מזייפים סרטון של קרוב משפחה כדי לסחוט כסף? מפיצים דיפ-פייק שלך? VerifAI חושף את זה בשנייה — לפני שנופלים בפח.",
     quizTitle: "קודם — מבחן קטן 🕵️",
     quizSub: "3 תמונות. תנחש: אמיתי או AI? זה יותר קשה ממה שנדמה.",
     quizQuestion: "אמיתי או נוצר ב-AI?",
@@ -119,7 +120,8 @@ const L = {
     start: "Let's go",
     skip: "I'll do this later",
     welcomeTitle: "Welcome to VerifAI",
-    welcomeSub: "VerifAI reads the code behind every video and image — and reveals if it was made with AI. Let's set it up in 30 seconds.",
+    welcomeSub: "VerifAI reads the code behind every video and image — and reveals if it was made with AI. It protects you from scams, extortion and deepfakes. Let's set it up in 30 seconds.",
+    antifraud: "🛡️ A faked video of a relative used to extort money? A deepfake of you being spread? VerifAI exposes it in a second — before anyone falls for it.",
     quizTitle: "First — a quick test 🕵️",
     quizSub: "3 images. Guess: real or AI? It's harder than it looks.",
     quizQuestion: "Real or AI-generated?",
@@ -380,7 +382,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Text style={st.bigEmoji}>🛡️</Text>
         <Text style={[st.title, align, writingDir]}>{t.welcomeTitle}</Text>
         <Text style={[st.sub, align, writingDir]}>{t.welcomeSub}</Text>
-        <View style={{ height: 24 }} />
+        <View style={st.antifraudCard}><Text style={[st.antifraudText, writingDir]}>{t.antifraud}</Text></View>
+        <View style={{ height: 20 }} />
         <PrimaryBtn label={t.start} onPress={goNext} />
       </View>
     );
@@ -552,8 +555,57 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Text style={st.bigEmoji}>🎉</Text>
         <Text style={[st.title, { textAlign: "center" }]}>{t.doneTitle}</Text>
         <Text style={[st.sub, { textAlign: "center" }]}>{t.doneSub}</Text>
-        <View style={{ height: 24 }} />
+        <View style={st.antifraudCard}><Text style={[st.antifraudText, writingDir]}>{t.antifraud}</Text></View>
+        <View style={{ height: 20 }} />
         <PrimaryBtn label={t.doneBtn} onPress={onDone} />
+      </View>
+    );
+  }
+
+  // Quiz question = full-screen, nothing else. The image fills the whole screen;
+  // only the guess buttons float on top. This is the hook — a person sees a face
+  // that fills their phone and genuinely can't tell if it's real.
+  if (step === "quiz" && !quizDone && live[qIdx]) {
+    const item = live[qIdx];
+    return (
+      <View style={st.root}>
+        <Image
+          source={{ uri: item.url }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+          onError={() => dropImage(item.url)}
+        />
+        <LinearGradient colors={["#000000dd", "#00000000"]} style={st.qTop} pointerEvents="none" />
+        <View style={st.qTopContent}>
+          <View style={st.qCounter}><Text style={st.qCounterText}>{qIdx + 1} / {live.length}</Text></View>
+          <Text style={[st.qQuestion, writingDir]}>{t.quizQuestion}</Text>
+        </View>
+
+        {answered === null ? (
+          <View style={st.qBottom}>
+            <LinearGradient colors={["#00000000", "#000000f2"]} style={st.qBottomScrim} pointerEvents="none" />
+            <View style={st.qBtns}>
+              <TouchableOpacity style={[st.guessBtn, { borderColor: C.real, backgroundColor: "#00000066" }]} onPress={() => guess(false)} activeOpacity={0.8}>
+                <Text style={[st.guessText, { color: C.real }]}>{t.real}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[st.guessBtn, { borderColor: C.ai, backgroundColor: "#00000066" }]} onPress={() => guess(true)} activeOpacity={0.8}>
+                <Text style={[st.guessText, { color: C.ai }]}>{t.ai}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={st.qRevealWrap}>
+            <View style={[st.qRevealCard, { backgroundColor: (answered ? C.real : C.ai) + "f2" }]}>
+              <Text style={st.qRevealBig}>{answered ? t.correct : t.wrong}</Text>
+              <Text style={st.qRevealSub}>{item.is_ai ? t.wasAi : t.wasReal}</Text>
+            </View>
+            <TouchableOpacity onPress={quizContinue} activeOpacity={0.85} style={{ width: "100%" }}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.primaryBtn}>
+                <Text style={st.primaryBtnText}>{t.quizNext}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -582,6 +634,8 @@ const st = StyleSheet.create({
   langBtnText: { color: C.sub, fontSize: 12, fontWeight: "800" },
   centerBlock: { gap: 10, paddingVertical: 12 },
   bigEmoji: { fontSize: 56, textAlign: "center", marginBottom: 6 },
+  antifraudCard: { marginTop: 16, backgroundColor: C.ai + "14", borderRadius: 14, borderWidth: 1, borderColor: C.ai + "44", padding: 14 },
+  antifraudText: { color: "#ffd9e2", fontSize: 14, fontWeight: "700", lineHeight: 20 },
   title: { color: C.text, fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
   sub: { color: C.sub, fontSize: 15, lineHeight: 22 },
   primaryBtn: { borderRadius: 16, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
@@ -608,6 +662,19 @@ const st = StyleSheet.create({
   quizRevealSub: { color: "#ffffffee", fontSize: 15, fontWeight: "700", marginTop: 3 },
   quizQ: { color: C.text, fontSize: 21, fontWeight: "800", textAlign: "center" },
   quizBtns: { flexDirection: "row", gap: 12, paddingHorizontal: 2 },
+  // full-screen quiz question
+  qTop: { position: "absolute", top: 0, left: 0, right: 0, height: 170 },
+  qTopContent: { position: "absolute", top: 54, left: 20, right: 20, alignItems: "center", gap: 12 },
+  qCounter: { backgroundColor: "#00000099", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
+  qCounterText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  qQuestion: { color: "#fff", fontSize: 24, fontWeight: "900", textAlign: "center", textShadowColor: "#000", textShadowRadius: 8 },
+  qBottom: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 60, justifyContent: "flex-end" },
+  qBottomScrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: 200 },
+  qBtns: { flexDirection: "row", gap: 12 },
+  qRevealWrap: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 20, paddingBottom: 40, gap: 16 },
+  qRevealCard: { borderRadius: 18, paddingVertical: 22, alignItems: "center" },
+  qRevealBig: { color: "#fff", fontSize: 30, fontWeight: "900" },
+  qRevealSub: { color: "#ffffffee", fontSize: 16, fontWeight: "700", marginTop: 4 },
   guessBtn: { flex: 1, borderWidth: 1.5, borderRadius: 14, paddingVertical: 17, alignItems: "center", backgroundColor: "#ffffff08" },
   guessText: { fontSize: 17, fontWeight: "800" },
   // pro pricing screen
