@@ -129,10 +129,16 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
 
     # ── Fusion ────────────────────────────────────────────────────────────────
     if not votes:
-        # Nothing informative — trust the (weak) metadata result as-is
+        # NOTHING informative ran: Gemini failed/unavailable, visual and ML
+        # abstained, metadata carries no signal. Claiming "real" here is a lie —
+        # this is exactly how an obviously-AI reel gets a green "Authentic"
+        # badge when the vision layer silently dies (quota, timeout, bad key).
+        # Be honest: unknown, with a method string that says WHY.
         return EnsembleResult(
-            verdict="real", confidence=max(0.04, meta_conf),
-            method=meta_result.method, layers=layers,
+            verdict="unknown", confidence=0.5,
+            method=("No informative signal — vision layer unavailable and no "
+                    "code evidence (metadata stripped). Re-check shortly."),
+            layers=layers,
         )
 
     total_w = sum(w for _, w in votes)
@@ -161,6 +167,7 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
     # a lone 0.9 from it must not flip a real video to "AI" (false positive =
     # the worst failure mode). Corroboration from any other AI-leaning layer
     # restores full weight.
+    suppressed = False
     if p >= 0.5:
         gemini_says_ai = gemini is not None and gemini.ai_probability >= 0.5
         support_ai = [
@@ -171,10 +178,22 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
             k for k, lp in layers.items()
             if k != "gemini" and isinstance(lp, (int, float)) and lp <= 0.15
         ]
+        # "Hard" opposition = camera-origin metadata or the frame-ML model on a
+        # file with intact metadata. The 14-feature visual model is NOT hard
+        # evidence — modern AI video (Sora/Veo/Kling) has natural texture and
+        # motion stats, so a confident "real" from it must not be able to
+        # silence a very confident Gemini. That silencing is precisely how a
+        # million-percent-AI reel was rendered as "Authentic".
+        hard_oppose = [k for k in oppose_real if k in ("metadata_camera", "frame_ml")]
         if gemini_says_ai and not support_ai and oppose_real:
-            # Gemini is the only accuser and hard evidence points real → hold
-            # below the AI threshold but keep it visibly "suspicious".
-            p = min(p, 0.45)
+            if gemini.ai_probability >= 0.85 and not hard_oppose:
+                pass  # weak visual layer alone can't overrule a confident Gemini
+            else:
+                # Gemini is the only accuser and measured evidence points real →
+                # hold below the AI threshold, but surface it as SUSPICIOUS —
+                # never as a green "Authentic" (see verdict mapping below).
+                p = min(p, 0.45)
+                suppressed = True
 
     # ── 4. Camera-origin guard (deepfakes can still exceed it) ───────────────
     if camera_origin and p < 0.90:
@@ -186,6 +205,13 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
         p = max(p, min(0.85, gemini.ai_probability))
     elif p >= 0.5:
         verdict = "ai_generated"
+    elif (p >= 0.38 and not camera_origin
+          and (suppressed or (gemini is not None and gemini.ai_probability >= 0.60))):
+        # The vision layer accused (or was suppressed by weaker layers) and the
+        # fused probability is still borderline — conflicting evidence is
+        # "suspicious", never a confident green "Authentic". Camera-origin
+        # metadata is the exception: hard real evidence keeps its verdict.
+        verdict = "suspicious"
     else:
         verdict = "real"
 
@@ -212,10 +238,10 @@ def analyze_ensemble(tmp_path: str, meta_result, ml_prob: Optional[float],
 # ── Layer runners (each swallows its own failures) ────────────────────────────
 
 def _run_gemini(tmp_path: str):
-    if not os.environ.get("GEMINI_API_KEY"):
-        return None
     try:
-        from analyzer.gemini_analyzer import analyze_with_gemini
+        from analyzer.gemini_analyzer import analyze_with_gemini, _api_keys
+        if not _api_keys():
+            return None
         g = analyze_with_gemini(tmp_path)
         if g and g.frames_analyzed >= 4:
             return g

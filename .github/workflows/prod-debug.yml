@@ -1,0 +1,13 @@
+name: Production vision-layer debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe production detection layers
+        run: python3 scripts/prod_debug.py
