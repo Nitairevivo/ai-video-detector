@@ -34,6 +34,9 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class OverlayService extends Service {
 
@@ -789,6 +792,45 @@ public class OverlayService extends Service {
 
     // ─── Button Tap ─────────────────────────────────────────────────────────
 
+    /** Freemium check. Returns true if this tap may proceed to detection.
+     *  Pro users always pass. Free users get FREE_DAILY checks per calendar
+     *  day; the counter resets on a new day. When the budget is spent, shows
+     *  an upgrade message and opens the app's paywall, and returns false.
+     *  Pro status and the daily limit are written by JS via OverlayModule into
+     *  the same "verifai_overlay" prefs after a purchase / entitlement check. */
+    private boolean allowFreeCheckOrPrompt() {
+        android.content.SharedPreferences p =
+            getSharedPreferences("verifai_overlay", MODE_PRIVATE);
+        if (p.getBoolean("pro", false)) return true;
+
+        int limit = p.getInt("free_daily_limit", 3);
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        String storedDay = p.getString("quota_day", "");
+        int count = today.equals(storedDay) ? p.getInt("quota_count", 0) : 0;
+
+        if (count >= limit) {
+            promptUpgrade(limit);
+            return false;
+        }
+        p.edit().putString("quota_day", today).putInt("quota_count", count + 1).apply();
+        return true;
+    }
+
+    /** Soft paywall: show an in-overlay message and open the app on the Pro
+     *  screen. Never blocks silently — the user always understands why. */
+    private void promptUpgrade(int limit) {
+        showToastResult("⭐ שדרג ל-Pro", "suspicious",
+            limit + " בדיקות חינם להיום נגמרו — פותח את מסך השדרוג", 0);
+        try {
+            Intent li = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (li != null) {
+                li.putExtra("verifai_open", "paywall");
+                li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(li);
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void onButtonTapped() {
         if (detectionPending) {
             // Second tap while working = cancel. A button that ignores taps
@@ -797,6 +839,13 @@ public class OverlayService extends Service {
             showToastResult("✋ הבדיקה בוטלה", "real", "לחץ שוב על הכפתור כדי לבדוק", 0);
             return;
         }
+        // Freemium gate: Pro users are unlimited; free users get a few checks
+        // per day, then a soft paywall. Decided here (native) because the tap
+        // is handled natively — a JS-side limit could never gate this button.
+        if (!allowFreeCheckOrPrompt()) {
+            return;
+        }
+
         if (BuildFlags.PLAY_BUILD) {
             // No accessibility automation here, and the clipboard can't be
             // trusted on its own (a stale link would answer the WRONG video) —

@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator,
-  ScrollView, Linking, Platform, Dimensions, NativeModules,
+  ScrollView, Linking, Platform, Dimensions, NativeModules, TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as SecureStore from "expo-secure-store";
 import * as ImagePicker from "expo-image-picker";
 import { useOverlay } from "./hooks/useOverlay";
+import { startProCheckout, getStoredEmail } from "./billing";
 
 // Kept in sync with App.tsx (small enough to duplicate rather than refactor a
 // shared config module across the whole app).
 const API = "https://ai-video-detector-production-a305.up.railway.app";
-const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 const LANG_KEY = "verifai_lang";
 
 const { width, height } = Dimensions.get("window");
@@ -75,6 +75,7 @@ const L = {
     proSub: "בדיקה אוטומטית של כל סרטון · ללא הגבלה · היסטוריה מלאה · 7 ימים חינם",
     proBtn: "התחל 7 ימים חינם",
     proSkip: "המשך בחינם",
+    emailPlaceholder: "האימייל שלך (לשמירת המנוי)",
     proFeatures: [
       ["⚡", "זיהוי מיידי", "תוצאה תוך שנייה"],
       ["🔁", "סריקה אוטומטית", "כל סרטון נבדק לבד בזמן גלילה"],
@@ -136,6 +137,7 @@ const L = {
     proSub: "Auto-check every video · Unlimited · Full history · 7 days free",
     proBtn: "Start 7 days free",
     proSkip: "Continue free",
+    emailPlaceholder: "Your email (to keep your subscription)",
     proFeatures: [
       ["⚡", "Instant detection", "Results in one second"],
       ["🔁", "Auto-scan", "Every video checked while you scroll"],
@@ -323,6 +325,23 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   }, [step, quizDone, quizLoaded, live.length, qIdx, answeredCount]);
 
   const [showOemHelp, setShowOemHelp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [buying, setBuying] = useState(false);
+  const [buyErr, setBuyErr] = useState<string | null>(null);
+
+  useEffect(() => { getStoredEmail().then((e) => { if (e) setEmail(e); }); }, []);
+
+  const onBuyPro = async () => {
+    setBuyErr(null);
+    setBuying(true);
+    try {
+      await startProCheckout(email);
+    } catch (e: any) {
+      setBuyErr(e?.message || "שגיאה, נסה שוב");
+    } finally {
+      setBuying(false);
+    }
+  };
 
   const align = { textAlign: (rtl ? "right" : "left") as "right" | "left" };
   const writingDir = { writingDirection: (rtl ? "rtl" : "ltr") as "rtl" | "ltr" };
@@ -433,9 +452,23 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             <View style={st.trialBadge}><Text style={st.trialBadgeText}>{t.proTrial}</Text></View>
           </View>
 
-          <TouchableOpacity onPress={() => Linking.openURL(PREMIUM_URL).catch(() => {})} activeOpacity={0.85} style={{ marginTop: 14 }}>
+          <TextInput
+            value={email}
+            onChangeText={(v) => { setEmail(v); setBuyErr(null); }}
+            placeholder={t.emailPlaceholder}
+            placeholderTextColor={C.sub}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={[st.emailInput, { textAlign: rtl ? "right" : "left" }]}
+          />
+          {buyErr ? <Text style={st.buyErr}>{buyErr}</Text> : null}
+
+          <TouchableOpacity onPress={onBuyPro} activeOpacity={0.85} style={{ marginTop: 12 }} disabled={buying}>
             <LinearGradient colors={["#fbbf24", "#f59e0b"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={st.proBtn}>
-              <Text style={st.proBtnText}>{t.proBtn}</Text>
+              {buying
+                ? <ActivityIndicator color="#1a1203" />
+                : <Text style={st.proBtnText}>{t.proBtn}</Text>}
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -592,6 +625,8 @@ const st = StyleSheet.create({
   trialBadge: { backgroundColor: C.real + "22", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: C.real + "66" },
   trialBadgeText: { color: C.real, fontSize: 13, fontWeight: "800" },
   proBtn: { borderRadius: 14, paddingVertical: 15, alignItems: "center" },
+  emailInput: { marginTop: 14, backgroundColor: "#0000004d", borderRadius: 12, borderWidth: 1, borderColor: "#ffffff22", paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 15, fontWeight: "600" },
+  buyErr: { color: "#f59e0b", fontSize: 13, fontWeight: "700", marginTop: 8, textAlign: "center" },
   proBtnText: { color: "#1a1203", fontSize: 16, fontWeight: "900" },
   // ok pill
   okPill: { backgroundColor: C.real + "22", borderColor: C.real, borderWidth: 1.5, borderRadius: 16, paddingVertical: 15, alignItems: "center" },

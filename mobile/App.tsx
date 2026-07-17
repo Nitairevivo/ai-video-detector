@@ -15,13 +15,13 @@ import { detectVideoUrl, DetectionResult } from "./services/detector";
 import { CHANGELOG, CHANGELOG_VERSION } from "./changelog";
 import { SelfCheck } from "./SelfCheck";
 import Onboarding from "./Onboarding";
+import { syncEntitlement, pushCachedProToNative, startProCheckout, getStoredEmail } from "./billing";
 
 const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
-const PREMIUM_URL = "https://web-zeta-ecru-80.vercel.app/dashboard";
 
-const APP_VERSION = "1.9.5";
+const APP_VERSION = "1.9.6";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -445,13 +445,31 @@ function ResultSheet({ item, onClose, onRecheck, lang }: {
 function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: () => void; lang: Lang }) {
   const rtl = lang === "he";
   const slide = useRef(new Animated.Value(500)).current;
+  const [email, setEmail] = useState("");
+  const [buying, setBuying] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       slide.setValue(500);
       Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 55, friction: 11 }).start();
+      setErr(null);
+      getStoredEmail().then((e) => { if (e) setEmail(e); });
     }
   }, [visible]);
+
+  const buyPro = async () => {
+    setErr(null);
+    setBuying(true);
+    try {
+      await startProCheckout(email);
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || (rtl ? "שגיאה, נסה שוב" : "Error, try again"));
+    } finally {
+      setBuying(false);
+    }
+  };
 
   const FEATURES = rtl ? [
     { icon: "⚡", title: "זיהוי מיידי", desc: "תוצאה תוך שנייה" },
@@ -499,8 +517,22 @@ function PremiumModal({ visible, onClose, lang }: { visible: boolean; onClose: (
             <View style={pm.badge}><Text style={pm.badgeText}>{rtl ? "7 ימים חינם" : "7 days free"}</Text></View>
           </View>
 
-          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={() => { onClose(); Linking.openURL(PREMIUM_URL); }}>
-            <Text style={pm.ctaText}>{rtl ? "התחל ניסיון חינם" : "Start free trial"}</Text>
+          <TextInput
+            value={email}
+            onChangeText={(v) => { setEmail(v); setErr(null); }}
+            placeholder={rtl ? "האימייל שלך (לשמירת המנוי)" : "Your email (to keep your subscription)"}
+            placeholderTextColor="#7f6bd6"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={[pm.emailInput, { textAlign: rtl ? "right" : "left" }]}
+          />
+          {err ? <Text style={pm.err}>{err}</Text> : null}
+
+          <TouchableOpacity style={pm.cta} activeOpacity={0.85} onPress={buyPro} disabled={buying}>
+            {buying
+              ? <ActivityIndicator color="#1a1203" />
+              : <Text style={pm.ctaText}>{rtl ? "התחל ניסיון חינם" : "Start free trial"}</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={pm.skip}>
             <Text style={pm.skipText}>{rtl ? "אולי מאוחר יותר" : "Maybe later"}</Text>
@@ -1075,6 +1107,19 @@ function AppInner() {
     });
     return () => sub.remove();
   }, [offerClipboard]);
+
+  // Keep Pro entitlement in sync with the server. Push the cached flag to the
+  // native button immediately (so a restarted service knows), then re-check
+  // against /me on cold start and every resume — this is how a purchase made
+  // in the browser flips the app to Pro when the user returns.
+  useEffect(() => {
+    pushCachedProToNative().catch(() => {});
+    syncEntitlement().catch(() => {});
+    const sub = AppState.addEventListener("change", (state: string) => {
+      if (state === "active") syncEntitlement().catch(() => {});
+    });
+    return () => sub.remove();
+  }, []);
 
   // Share → VerifAI, on BOTH platforms. On iOS this is the mid-scroll answer:
   // while watching any app, tap Share → VerifAI and it lands here. Handles a
@@ -1860,4 +1905,10 @@ const pm = StyleSheet.create({
   ctaText: { color: "#fff", fontSize: 16, fontWeight: "800" },
   skip: { alignItems: "center", paddingVertical: 14 },
   skipText: { color: C.faint, fontSize: 14 },
+  emailInput: {
+    marginHorizontal: 18, marginBottom: 10, backgroundColor: "#00000040",
+    borderRadius: 14, borderWidth: 1, borderColor: "#ffffff1f",
+    paddingHorizontal: 15, paddingVertical: 13, color: "#fff", fontSize: 15, fontWeight: "600",
+  },
+  err: { color: "#f59e0b", fontSize: 13, fontWeight: "700", marginHorizontal: 18, marginBottom: 8, textAlign: "center" },
 });

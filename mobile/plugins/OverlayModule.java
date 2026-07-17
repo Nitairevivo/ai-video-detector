@@ -23,6 +23,52 @@ public class OverlayModule extends ReactContextBaseJavaModule {
     @Override
     public String getName() { return "OverlayModule"; }
 
+    /** Persist the user's Pro entitlement so the native floating button knows
+     *  whether to enforce the free daily limit. Called by JS after a purchase
+     *  or an entitlement re-check. Stored in the same prefs the OverlayService
+     *  reads. */
+    @ReactMethod
+    public void setProStatus(boolean isPro, Promise promise) {
+        try {
+            reactContext.getSharedPreferences("verifai_overlay", android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean("pro", isPro).apply();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("ERR_SET_PRO", e);
+        }
+    }
+
+    /** Override how many free checks per day the floating button allows before
+     *  the paywall (default 3). Lets pricing be tuned without a native rebuild. */
+    @ReactMethod
+    public void setFreeDailyLimit(int limit, Promise promise) {
+        try {
+            reactContext.getSharedPreferences("verifai_overlay", android.content.Context.MODE_PRIVATE)
+                .edit().putInt("free_daily_limit", Math.max(0, limit)).apply();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("ERR_SET_LIMIT", e);
+        }
+    }
+
+    /** How many free checks remain today (for showing "2/3 left" in the app).
+     *  Returns a large number when Pro. */
+    @ReactMethod
+    public void freeChecksRemaining(Promise promise) {
+        try {
+            android.content.SharedPreferences p = reactContext.getSharedPreferences(
+                "verifai_overlay", android.content.Context.MODE_PRIVATE);
+            if (p.getBoolean("pro", false)) { promise.resolve(999999); return; }
+            int limit = p.getInt("free_daily_limit", 3);
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+            int count = today.equals(p.getString("quota_day", "")) ? p.getInt("quota_count", 0) : 0;
+            promise.resolve(Math.max(0, limit - count));
+        } catch (Exception e) {
+            promise.reject("ERR_REMAINING", e);
+        }
+    }
+
     @ReactMethod
     public void hasPermission(Promise promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

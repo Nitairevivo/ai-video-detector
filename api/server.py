@@ -1672,6 +1672,11 @@ def upgrade(body: UpgradeRequest):
     """Returns a Stripe Checkout URL to upgrade to pro/ultra."""
     if body.tier not in ("pro", "ultra"):
         raise HTTPException(400, "tier must be 'pro' or 'ultra'")
+    # The Stripe webhook upgrades the tier with UPDATE ... WHERE email = ?, which
+    # is a silent no-op if no key row exists yet — the customer would pay and
+    # stay free. Guarantee the row exists BEFORE sending them to checkout.
+    if not get_key_by_email(body.email):
+        create_key(body.email, tier="free")
     url = create_checkout_session(body.email, body.tier)
     return {"checkout_url": url}
 
