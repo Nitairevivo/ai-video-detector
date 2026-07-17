@@ -424,28 +424,62 @@ public class OverlayService extends Service {
             .compile("(?:v=|youtu\\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})").matcher(pageUrl);
         if (!m.find()) return null;
         String vid = m.group(1);
+        // Try several innertube clients, each impersonating a real YouTube app.
+        // YouTube has locked down the ANDROID client (needs a PoToken now), but
+        // the IOS and ANDROID_VR clients still return un-ciphered progressive
+        // URLs for many videos. We run on the phone's residential IP, so the
+        // only remaining wall is the per-client token check — walk the clients
+        // until one hands us a direct MP4. First hit wins.
+        String[][] clients = {
+            // clientName, clientVersion, os, apiKey, userAgent
+            {"IOS", "20.10.4", "iOS", "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
+             "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"},
+            {"ANDROID", "19.44.38", "Android", "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+             "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip"},
+            {"ANDROID_VR", "1.60.19", "Android", "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w",
+             "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12; GB) gzip"},
+        };
+        for (String[] cl : clients) {
+            String direct = tryYouTubeClient(vid, cl);
+            if (direct != null) return direct;
+        }
+        return null;
+    }
+
+    /** One innertube /player call impersonating a specific YouTube app client.
+     *  Returns a direct progressive MP4 URL, or null to let the caller try the
+     *  next client. */
+    private String tryYouTubeClient(String vid, String[] cl) {
         try {
-            String body = "{\"context\":{\"client\":{\"clientName\":\"ANDROID\","
-                + "\"clientVersion\":\"19.44.38\",\"androidSdkVersion\":34,\"hl\":\"en\","
-                + "\"osName\":\"Android\",\"osVersion\":\"14\"}},\"videoId\":\"" + vid
+            String clientName = cl[0], clientVersion = cl[1], os = cl[2], apiKey = cl[3], ua = cl[4];
+            String osBlock = "iOS".equals(os)
+                ? "\"osName\":\"iOS\",\"osVersion\":\"17.5.1.21F90\",\"deviceModel\":\"iPhone16,2\","
+                : "\"osName\":\"Android\",\"osVersion\":\"14\",\"androidSdkVersion\":34,";
+            String body = "{\"context\":{\"client\":{" + osBlock
+                + "\"clientName\":\"" + clientName + "\",\"clientVersion\":\"" + clientVersion
+                + "\",\"hl\":\"en\"}},\"videoId\":\"" + vid
                 + "\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
             URL url = new URL("https://www.youtube.com/youtubei/v1/player?key="
-                + "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false");
+                + apiKey + "&prettyPrint=false");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("User-Agent",
-                "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip");
+            conn.setRequestProperty("User-Agent", ua);
             conn.setDoOutput(true);
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(12000);
-            try (OutputStream os = conn.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
+            try (OutputStream os2 = conn.getOutputStream()) { os2.write(body.getBytes("UTF-8")); }
             if (conn.getResponseCode() != 200) return null;
             StringBuilder sb = new StringBuilder();
             try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
                 String line; while ((line = br.readLine()) != null) sb.append(line);
             }
-            JSONObject sd = new JSONObject(sb.toString()).optJSONObject("streamingData");
+            JSONObject root = new JSONObject(sb.toString());
+            // Only accept a playable response — a login/age/bot wall returns
+            // status != OK, and its (absent) streamingData must not be used.
+            JSONObject ps = root.optJSONObject("playabilityStatus");
+            if (ps != null && !"OK".equals(ps.optString("status", "OK"))) return null;
+            JSONObject sd = root.optJSONObject("streamingData");
             if (sd == null) return null;
             JSONArray fmts = sd.optJSONArray("formats");   // progressive = muxed a+v
             if (fmts == null) return null;
