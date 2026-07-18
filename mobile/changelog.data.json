@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-07-18",
+    "date": "2026-07-18",
+    "title": "Model & detection improvements",
+    "items": [
+      "Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).",
+      "Image detector trained on 4,896 samples (AUC 0.845).",
+      "Fix false-negative verdicts: AI videos no longer silently reported as real."
+    ]
+  },
+  {
     "id": "2026-07-17",
     "date": "2026-07-17",
     "title": "Model & detection improvements",
