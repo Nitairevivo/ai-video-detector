@@ -284,6 +284,17 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const step = steps[Math.min(stepIdx, steps.length - 1)];
   const goNext = () => setStepIdx((i) => Math.min(i + 1, steps.length - 1));
 
+  // Auto-advance off the overlay step the moment the permission is detected
+  // (useOverlay refreshes status on resume, so returning from Settings flips
+  // this). Makes it "tap Enable → toggle → you're already on the next step".
+  const overlayGranted = overlayActive || status.overlayPermission;
+  useEffect(() => {
+    if (step === "overlay" && overlayGranted) {
+      const id = setTimeout(() => goNext(), 900);
+      return () => clearTimeout(id);
+    }
+  }, [overlayGranted, step]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Quiz state ──
   const [qIdx, setQIdx] = useState(0);
   const [answered, setAnswered] = useState<null | boolean>(null); // was the guess correct
