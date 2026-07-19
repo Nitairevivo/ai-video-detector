@@ -239,22 +239,37 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         cand = [...cand].sort(() => Math.random() - 0.5); // vary the set per run
         // Validate images (drop any that don't actually load), gathering a few
         // extra so we can balance the classes.
+        // Validate images, but never let a single slow/blocked host stall the
+        // whole onboarding: each prefetch races a short timeout. A hung image on
+        // a flaky mobile network used to silently starve the quiz to empty.
+        const prefetchWithTimeout = (url: string, ms = 4000) =>
+          Promise.race([
+            Image.prefetch(url).then((g) => !!g).catch(() => false),
+            new Promise<boolean>((res) => setTimeout(() => res(false), ms)),
+          ]);
         const ok: QuizItem[] = [];
         for (const c of cand) {
           if (!c?.url) continue;
-          try {
-            const good = await Image.prefetch(c.url);
-            if (good) ok.push({ url: c.url, is_ai: !!c.is_ai });
-          } catch {}
+          if (await prefetchWithTimeout(c.url)) ok.push({ url: c.url, is_ai: !!c.is_ai });
           if (ok.length >= 8) break;
         }
-        // A fair quiz must contain BOTH classes — otherwise every answer is the
-        // same and it teaches the user nothing. If we can't get a mix, skip it.
-        const ai = ok.filter((x) => x.is_ai);
-        const real = ok.filter((x) => !x.is_ai);
+        // A fair quiz needs BOTH classes. If the primary set didn't yield a mix
+        // (e.g. the server's images were blocked on this network), fall back to
+        // the built-in set before giving up — so the quiz still runs.
+        let pool = ok;
+        if (!(pool.some((x) => x.is_ai) && pool.some((x) => !x.is_ai)) && cand !== DEFAULT_QUIZ) {
+          const fb: QuizItem[] = [];
+          for (const c of DEFAULT_QUIZ) {
+            if (await prefetchWithTimeout(c.url)) fb.push({ url: c.url, is_ai: !!c.is_ai });
+            if (fb.length >= 8) break;
+          }
+          if (fb.some((x) => x.is_ai) && fb.some((x) => !x.is_ai)) pool = fb;
+        }
+        const ai = pool.filter((x) => x.is_ai);
+        const real = pool.filter((x) => !x.is_ai);
         let chosen: QuizItem[] = [];
-        if (ai.length >= 1 && real.length >= 1 && ok.length >= 3) {
-          // Interleave so the sequence alternates classes where possible.
+        // Relaxed: 2 images with both classes is enough to run the quiz.
+        if (ai.length >= 1 && real.length >= 1 && pool.length >= 2) {
           const a = [...ai], b = [...real];
           while (chosen.length < 3 && (a.length || b.length)) {
             if (a.length && (chosen.length % 2 === 0 || !b.length)) chosen.push(a.shift()!);
@@ -274,7 +289,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // ── Step model ──
   const steps = useMemo(() => {
     const s: string[] = ["welcome"];
-    if (quiz.length >= 3) s.push("quiz");
+    if (quiz.length >= 2) s.push("quiz");
     if (isAndroid) s.push("overlay", "access");
     s.push("done");
     return s;

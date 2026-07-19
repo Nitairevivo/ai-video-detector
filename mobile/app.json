@@ -2,7 +2,7 @@
   "expo": {
     "name": "VerifAI",
     "slug": "verifai",
-    "version": "1.9.7",
+    "version": "1.9.8",
     "orientation": "portrait",
     "scheme": "verifai",
     "userInterfaceStyle": "dark",
@@ -35,7 +35,7 @@
         "backgroundColor": "#07070f"
       },
       "package": "com.verifai.app",
-      "versionCode": 44,
+      "versionCode": 45,
       "permissions": [
         "android.permission.READ_CLIPBOARD",
         "android.permission.READ_MEDIA_VIDEO",
