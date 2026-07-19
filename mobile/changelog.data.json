@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-07-19",
+    "date": "2026-07-19",
+    "title": "Nightly model refresh",
+    "items": [
+      "Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).",
+      "Image detector trained on 5,146 samples (AUC 0.844)."
+    ]
+  },
+  {
     "id": "2026-07-18",
     "date": "2026-07-18",
     "title": "Model & detection improvements",
