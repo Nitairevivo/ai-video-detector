@@ -37,6 +37,9 @@ function withOverlayManifest(config) {
       // service seconds after it starts ("button appears then vanishes").
       // Exempting the app from battery optimization keeps it alive.
       "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+      // Read the actual WhatsApp/Telegram video FILE (its code). On Android 11+
+      // File-API access to another app's Android/media folder needs this.
+      "android.permission.MANAGE_EXTERNAL_STORAGE",
     ];
     for (const perm of neededPerms) {
       if (!existingPerms.includes(perm)) {

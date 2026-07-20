@@ -641,20 +641,7 @@ public class OverlayService extends Service {
             try {
                 java.io.File video = findLatestAppVideo(pkg);
                 if (video == null) {
-                    // The #1 reason the folder scan finds nothing on Android 11+
-                    // is that reading another app's Android/media/<pkg>/ folder via
-                    // the File API needs All-Files-Access — READ_MEDIA_VIDEO does
-                    // NOT grant it. If we're missing it, that's almost certainly
-                    // why: send the user to grant it (one toggle) instead of
-                    // silently screen-recording, which reads pixels, not the code.
-                    if (!detectionPending) return;
-                    if (!hasAllFilesAccess()) {
-                        mainHandler.post(OverlayService.this::promptAllFilesAccess);
-                        return;
-                    }
-                    // Access is granted but the file truly isn't on disk (e.g. not
-                    // downloaded yet) — the video is PLAYING, so read its frames.
-                    mainHandler.post(OverlayService.this::startScreenCaptureFallback);
+                    onLocalFileUnavailable();   // ask for file access, else screen frames
                     return;
                 }
                 JSONObject result = detectViaLocalFile(video);
@@ -673,6 +660,21 @@ public class OverlayService extends Service {
      *  .nomedia file in its Media folders — so those videos are NOT indexed by
      *  MediaStore and a MediaStore query finds nothing. Android/media/<pkg>/ is
      *  readable by other apps on Android 11+. */
+    /** Single decision point for "couldn't get a readable local file". If the
+     *  reason is a missing permission, ask for it (one toggle) — NEVER silently
+     *  screen-record, which is what made WhatsApp/Telegram feel broken. Only
+     *  when access IS granted but the video genuinely isn't saved to a readable
+     *  folder (e.g. Telegram with Save-to-Gallery off → private cache) do we
+     *  fall back to reading the on-screen frames. */
+    private void onLocalFileUnavailable() {
+        if (!detectionPending) return;
+        if (!hasAllFilesAccess()) {
+            mainHandler.post(this::promptAllFilesAccess);
+        } else {
+            mainHandler.post(this::startScreenCaptureFallback);
+        }
+    }
+
     /** True if we can read other apps' Android/media folders via the File API.
      *  Below Android 11 the legacy storage model allows it; on 11+ it requires
      *  the All-Files-Access special permission. */
@@ -1011,11 +1013,12 @@ public class OverlayService extends Service {
                     if (r != null) { renderResult(r); return; }
                 }
             } catch (Exception ignored) {}
-            // No link and no recent file — but the video is playing ON SCREEN
-            // right now. Capture a short burst of its real frames and analyze
-            // those. Works in every app, nothing to download or copy.
-            if (!detectionPending) return;
-            mainHandler.post(OverlayService.this::startScreenCaptureFallback);
+            // No link and no readable local file. If that's because we lack
+            // All-Files-Access, ASK for it (this is the accessibility-off path
+            // that previously screen-recorded without ever prompting). Only if
+            // access is granted and there's still no saved file do we read the
+            // on-screen frames.
+            onLocalFileUnavailable();
         });
     }
 
