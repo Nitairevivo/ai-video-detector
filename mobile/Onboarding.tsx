@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator,
-  ScrollView, Linking, Platform, Dimensions, NativeModules, TextInput,
+  ScrollView, Linking, Platform, Dimensions, NativeModules, TextInput, AppState,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as SecureStore from "expo-secure-store";
@@ -103,6 +103,10 @@ const L = {
     accessStep3: "3. אם כתוב \"מוגבל\": חזור למסך פרטי-האפליקציה, לחץ ⋮ ← \"אפשר הגדרות מוגבלות\", ונסה שוב",
     accessBtn: "פתח הגדרות נגישות",
     accessOn: "זיהוי אוטומטי פעיל ✓",
+    filesTitle: "📂 גישה לקבצים (חובה לוואטסאפ/טלגרם)",
+    filesBody: "בלי זה, כשתלחץ על סרטון בוואטסאפ/טלגרם — האפליקציה לא יכולה לקרוא את הקובץ עצמו ותצלם מסך במקום. לחץ, ואשר \"אפשר גישה לכל הקבצים\".",
+    filesBtn: "אפשר גישה לקבצים",
+    filesOn: "גישה לקבצים פעילה ✓",
     keepAliveTitle: "⚠️ חשוב! שלא ייכבה אחרי כמה שניות",
     keepAliveBody: "שיאומי / רדמי / פוקו הורגים את הנגישות תוך שניות. כדי שזה יישאר דלוק לתמיד, חובה גם:",
     autostartBtn: "1. אפשר הפעלה אוטומטית (Autostart)",
@@ -166,6 +170,10 @@ const L = {
     accessStep3: "3. If it says \"restricted\": go back to the app-info screen, tap ⋮ → \"Allow restricted settings\", and try again",
     accessBtn: "Open Accessibility settings",
     accessOn: "Auto-detection is active ✓",
+    filesTitle: "📂 Files access (required for WhatsApp/Telegram)",
+    filesBody: "Without it, tapping a WhatsApp/Telegram video means the app can't read the file itself and screen-records instead. Tap and allow \"Allow access to all files\".",
+    filesBtn: "Allow files access",
+    filesOn: "Files access on ✓",
     keepAliveTitle: "⚠️ Important! So it doesn't turn off after a few seconds",
     keepAliveBody: "Xiaomi / Redmi / Poco kill accessibility within seconds. To keep it on forever you MUST also:",
     autostartBtn: "1. Allow Autostart",
@@ -215,6 +223,17 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // scan the folders directly — which needs this permission).
   useEffect(() => {
     ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => {});
+  }, []);
+
+  // All-Files-Access — REQUIRED on Android 11+ to read the actual WhatsApp/
+  // Telegram video FILE (its code). Without it the folder scan returns nothing
+  // and the button can only screen-record. Track it so onboarding can prompt.
+  const [allFiles, setAllFiles] = useState(true);
+  useEffect(() => {
+    const check = () => { try { OverlayModule?.hasAllFilesAccess?.().then((v: boolean) => setAllFiles(!!v)); } catch {} };
+    check();
+    const sub = AppState.addEventListener("change", (s) => { if (s === "active") check(); });
+    return () => sub.remove();
   }, []);
 
   // ── Quiz: fetch + validate images (only keep ones that actually load) ──
@@ -544,6 +563,22 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         ) : (
           <PrimaryBtn label={t.accessBtn} onPress={() => { try { OverlayModule?.openAccessibilitySettings?.(); } catch {} }} />
         )}
+
+        {/* All-Files-Access — required to read the WhatsApp/Telegram video FILE
+            on Android 11+. Without it the button can only screen-record. */}
+        <View style={[st.keepAliveCard, { borderColor: (allFiles ? C.real : C.ai) + "55" }]}>
+          <Text style={[st.keepAliveTitle, align, writingDir]}>{t.filesTitle}</Text>
+          {allFiles ? (
+            <View style={[st.okPill, { marginTop: 10 }]}><Text style={st.okPillText}>{t.filesOn}</Text></View>
+          ) : (
+            <>
+              <Text style={[st.keepAliveBody, align, writingDir]}>{t.filesBody}</Text>
+              <TouchableOpacity style={st.kaBtn} onPress={() => { try { OverlayModule?.requestAllFilesAccess?.(); } catch {} }}>
+                <Text style={st.kaBtnText}>{t.filesBtn}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
 
         {/* Keep-alive: the single most important part on Xiaomi & co. — without
             Autostart + no battery limit, the service is killed within seconds. */}

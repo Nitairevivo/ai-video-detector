@@ -98,6 +98,43 @@ public class OverlayModule extends ReactContextBaseJavaModule {
     /** Ask the OS to exempt us from battery optimization. On aggressive OEMs
      *  this is what stops the overlay foreground service from being killed a
      *  few seconds after it starts. No-op if already exempt. */
+    /** All-Files-Access is what lets the floating button READ the actual
+     *  WhatsApp/Telegram video file (its code) on Android 11+. Without it the
+     *  folder scan returns nothing and the app can only screen-record. */
+    @ReactMethod
+    public void hasAllFilesAccess(Promise promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try { promise.resolve(android.os.Environment.isExternalStorageManager()); }
+            catch (Exception e) { promise.resolve(false); }
+        } else {
+            promise.resolve(true);
+        }
+    }
+
+    @ReactMethod
+    public void requestAllFilesAccess(Promise promise) {
+        try {
+            Intent i;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + reactContext.getPackageName()));
+            } else {
+                i = reactContext.getPackageManager()
+                    .getLaunchIntentForPackage(reactContext.getPackageName());
+            }
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(i);
+            promise.resolve(true);
+        } catch (Exception e) {
+            try {
+                Intent i2 = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                reactContext.startActivity(i2);
+                promise.resolve(true);
+            } catch (Exception e2) { promise.reject("ERR_ALLFILES", e2); }
+        }
+    }
+
     @ReactMethod
     public void requestIgnoreBatteryOptimizations(Promise promise) {
         try {

@@ -641,10 +641,19 @@ public class OverlayService extends Service {
             try {
                 java.io.File video = findLatestAppVideo(pkg);
                 if (video == null) {
-                    // File not reachable (not downloaded / no media access) —
-                    // but the video is PLAYING on screen. Capture its real
-                    // frames instead of giving up with an error.
+                    // The #1 reason the folder scan finds nothing on Android 11+
+                    // is that reading another app's Android/media/<pkg>/ folder via
+                    // the File API needs All-Files-Access — READ_MEDIA_VIDEO does
+                    // NOT grant it. If we're missing it, that's almost certainly
+                    // why: send the user to grant it (one toggle) instead of
+                    // silently screen-recording, which reads pixels, not the code.
                     if (!detectionPending) return;
+                    if (!hasAllFilesAccess()) {
+                        mainHandler.post(OverlayService.this::promptAllFilesAccess);
+                        return;
+                    }
+                    // Access is granted but the file truly isn't on disk (e.g. not
+                    // downloaded yet) — the video is PLAYING, so read its frames.
                     mainHandler.post(OverlayService.this::startScreenCaptureFallback);
                     return;
                 }
@@ -664,6 +673,40 @@ public class OverlayService extends Service {
      *  .nomedia file in its Media folders — so those videos are NOT indexed by
      *  MediaStore and a MediaStore query finds nothing. Android/media/<pkg>/ is
      *  readable by other apps on Android 11+. */
+    /** True if we can read other apps' Android/media folders via the File API.
+     *  Below Android 11 the legacy storage model allows it; on 11+ it requires
+     *  the All-Files-Access special permission. */
+    private boolean hasAllFilesAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try { return android.os.Environment.isExternalStorageManager(); }
+            catch (Exception e) { return false; }
+        }
+        return true;
+    }
+
+    /** Open the system "All files access" toggle for VerifAI. This is what lets
+     *  the button actually READ the WhatsApp/Telegram video file (its code),
+     *  instead of falling back to a screen recording. */
+    private void promptAllFilesAccess() {
+        finishDetection();
+        showToastResult("📂 צריך הרשאת גישה לקבצים", "suspicious",
+            "כדי לקרוא את הסרטון עצמו מוואטסאפ/טלגרם — אשר \"גישה לכל הקבצים\", ואז לחץ שוב", 0);
+        try {
+            Intent i = new Intent(
+                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                android.net.Uri.parse("package:" + getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            try {
+                Intent i2 = new Intent(
+                    android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i2);
+            } catch (Exception ignored) {}
+        }
+    }
+
     private java.util.List<String> appVideoDirs(String pkg) {
         java.util.List<String> dirs = new java.util.ArrayList<>();
         if (pkg == null) return dirs;
