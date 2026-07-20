@@ -1,0 +1,3050 @@
+{
+  "config": {
+    "deep": true,
+    "gemini": false
+  },
+  "metrics": {
+    "total": 167,
+    "confusion": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0,
+      "tn": 166
+    },
+    "accuracy": 0.994,
+    "precision": 0.0,
+    "recall": null,
+    "fpr": 0.006,
+    "fnr": null
+  },
+  "by_platform": {
+    "archive_org": {
+      "total": 37,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 37
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "wikimedia": {
+      "total": 130,
+      "confusion": {
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "tn": 129
+      },
+      "accuracy": 0.9923,
+      "precision": 0.0,
+      "recall": null,
+      "fpr": 0.0077,
+      "fnr": null
+    }
+  },
+  "by_category": {
+    "aerial": {
+      "total": 8,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 8
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "animal": {
+      "total": 14,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 14
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "cctv": {
+      "total": 3,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 3
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "chaotic": {
+      "total": 9,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 9
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "machine": {
+      "total": 8,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 8
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "misc": {
+      "total": 5,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 5
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "nature": {
+      "total": 43,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 43
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "news": {
+      "total": 1,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 1
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "people": {
+      "total": 33,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 33
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "sport": {
+      "total": 19,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 19
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    },
+    "street": {
+      "total": 10,
+      "confusion": {
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "tn": 9
+      },
+      "accuracy": 0.9,
+      "precision": 0.0,
+      "recall": null,
+      "fpr": 0.1,
+      "fnr": null
+    },
+    "weather": {
+      "total": 14,
+      "confusion": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "tn": 14
+      },
+      "accuracy": 1.0,
+      "precision": null,
+      "recall": null,
+      "fpr": 0.0,
+      "fnr": null
+    }
+  },
+  "by_deciding_layer": {
+    "Ensemble — layers": {
+      "n": 167,
+      "correct": 166,
+      "accuracy": 0.994
+    }
+  },
+  "results": [
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 15.17,
+      "filename": "archive_windiorix-s-curse-br.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 12.99,
+      "filename": "archive_Chevrole1935_3.mp4",
+      "platform": "archive_org",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 11.63,
+      "filename": "archive_youtube-GAP-BK2Pszs.mp4",
+      "platform": "archive_org",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 14.25,
+      "filename": "archive_youtube-2VzdOb3ZUZ8.mp4",
+      "platform": "archive_org",
+      "category": "news",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.005,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.83,
+      "filename": "archive_ev-20250926-193630-0.mp4",
+      "platform": "archive_org",
+      "category": "cctv",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0201,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.01,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 14.24,
+      "filename": "archive_youtube-vN5SBKjWTKE.mp4",
+      "platform": "archive_org",
+      "category": "cctv",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0602,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "audio": 0.7
+      },
+      "ai_tool": null,
+      "elapsed_s": 10.16,
+      "filename": "archive_youtube-__yfsYoKoNE.mp4",
+      "platform": "archive_org",
+      "category": "cctv",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 15.01,
+      "filename": "archive_hcctvmd-How_to_Cut_A.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 6.25,
+      "filename": "archive_shotcut-20251201-075.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.96,
+      "filename": "archive_belmont-circle-part-.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.79,
+      "filename": "archive_you-cut_20250501.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 7.51,
+      "filename": "archive_cpaz-Drone_Tour_of_I.mp4",
+      "platform": "archive_org",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0287,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.021,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.97,
+      "filename": "archive_horseshoe-bay-eclips.mp4",
+      "platform": "archive_org",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 10.55,
+      "filename": "archive_corvca-City_Watch_-_.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 25.77,
+      "filename": "archive_delta-p_202406.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.54,
+      "filename": "archive_youtube-4_xQGtMjlao.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 10.62,
+      "filename": "archive_youtube-mtfsw5SDV1E.mp4",
+      "platform": "archive_org",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 6.43,
+      "filename": "archive_olaks-Downtown_Mural.mp4",
+      "platform": "archive_org",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.46,
+      "filename": "archive_comfl-Timelapse_Tues.mp4",
+      "platform": "archive_org",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.09,
+      "filename": "archive_youtube-J3s3pTjyEv0.mp4",
+      "platform": "archive_org",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.001,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.28,
+      "filename": "archive_youtube-y0WGAkEVdOE.mp4",
+      "platform": "archive_org",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.76,
+      "filename": "archive_Flickr-16229759582.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.57,
+      "filename": "archive_youtube-oAwg47BuKZU.mp4",
+      "platform": "archive_org",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 10.31,
+      "filename": "archive_youtube-p_6Il7M5rho.mp4",
+      "platform": "archive_org",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 20.63,
+      "filename": "archive_youtube--I6-NC90Iu0.mp4",
+      "platform": "archive_org",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.49,
+      "filename": "archive_cubanc_000223.mp4",
+      "platform": "archive_org",
+      "category": "misc",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 21.8,
+      "filename": "archive_wtvlca-WHS_Announcem.mp4",
+      "platform": "archive_org",
+      "category": "misc",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 14.67,
+      "filename": "archive_spautx-The_East_SXSW.mp4",
+      "platform": "archive_org",
+      "category": "misc",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.21,
+      "filename": "archive_coptx-Sanding_Roads_.mp4",
+      "platform": "archive_org",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.57,
+      "filename": "archive_Flickr-18278232695.mp4",
+      "platform": "archive_org",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.97,
+      "filename": "archive_youtube-Mjs8dz226V8.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.14,
+      "filename": "archive_youtube-lxX8LlpEwlM.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.89,
+      "filename": "archive_bostonCANshare_Launc.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 7.55,
+      "filename": "archive_Coon_Rapids_Rainbow_.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 14.13,
+      "filename": "archive_youtube-1DZdGexm_80.mp4",
+      "platform": "archive_org",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.046,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 17.61,
+      "filename": "archive_youtube-aaGD1vxEzY4.mp4",
+      "platform": "archive_org",
+      "category": "misc",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 13.55,
+      "filename": "archive_youtube-LG_V9-BGOiE.mp4",
+      "platform": "archive_org",
+      "category": "misc",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.07,
+      "filename": "wiki_17044330.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.94,
+      "filename": "wiki_85667907.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.95,
+      "filename": "wiki_85171867.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.82,
+      "filename": "wiki_46134695.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.85,
+      "filename": "wiki_13162948.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.88,
+      "filename": "wiki_61460675.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.83,
+      "filename": "wiki_65706164.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.84,
+      "filename": "wiki_55657229.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.91,
+      "filename": "wiki_94338434.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.35,
+      "filename": "wiki_32854239.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.66,
+      "filename": "wiki_75717372.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.83,
+      "filename": "wiki_43829738.webm",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.83,
+      "filename": "wiki_63810699.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.61,
+      "filename": "wiki_37858438.webm",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 6.09,
+      "filename": "wiki_93478611.webm",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.55,
+      "filename": "wiki_85858564.mov",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.1043,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.63,
+      "filename": "wiki_9462857.webm",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "ai_generated",
+      "confidence": 0.8,
+      "predicted_ai": true,
+      "method": "Ensemble — layers: metadata",
+      "layers": {
+        "metadata": 0.3
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.19,
+      "filename": "wiki_87673649.ogv",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": false
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.84,
+      "filename": "wiki_19329368.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.82,
+      "filename": "wiki_42970807.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.6,
+      "filename": "wiki_65143291.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.16,
+      "filename": "wiki_25938244.mov",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.96,
+      "filename": "wiki_9730016.webm",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.26,
+      "filename": "wiki_15149277.mov",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.78,
+      "filename": "wiki_49449919.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.7,
+      "filename": "wiki_40259392.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.046,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.81,
+      "filename": "wiki_75690654.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.71,
+      "filename": "wiki_22683091.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.91,
+      "filename": "wiki_62013896.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.42,
+      "filename": "wiki_9874569.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.69,
+      "filename": "wiki_80836485.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.37,
+      "filename": "wiki_49928946.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 0.42,
+      "filename": "wiki_73610772.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.57,
+      "filename": "wiki_18140702.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.012
+      },
+      "ai_tool": null,
+      "elapsed_s": 9.2,
+      "filename": "wiki_7879822.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.68,
+      "filename": "wiki_44481568.mov",
+      "platform": "wikimedia",
+      "category": "animal",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.039
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.18,
+      "filename": "wiki_62274034.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.01,
+      "filename": "wiki_45574903.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.03,
+      "filename": "wiki_60353878.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.99,
+      "filename": "wiki_92538599.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.85,
+      "filename": "wiki_50470064.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.77,
+      "filename": "wiki_81638230.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.04,
+      "filename": "wiki_43056226.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.51,
+      "filename": "wiki_35710909.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.1043,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.7,
+      "filename": "wiki_50670379.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0881,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.3,
+      "filename": "wiki_50759093.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.92,
+      "filename": "wiki_3475470.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.59,
+      "filename": "wiki_25442875.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.44,
+      "filename": "wiki_22412833.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.86,
+      "filename": "wiki_51772627.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0491,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.8
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.36,
+      "filename": "wiki_76289311.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.001,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.56,
+      "filename": "wiki_37503882.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.001,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.87,
+      "filename": "wiki_64757855.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.012
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.18,
+      "filename": "wiki_13380436.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.52,
+      "filename": "wiki_51107643.webm",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.0,
+      "filename": "wiki_26005798.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.28,
+      "filename": "wiki_18361926.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.9,
+      "filename": "wiki_908200.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.09,
+      "filename": "wiki_74043325.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.1043,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.59,
+      "filename": "wiki_7649968.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.96,
+      "filename": "wiki_39583307.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.49,
+      "filename": "wiki_75170138.webm",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.21,
+      "filename": "wiki_7271837.webm",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.78,
+      "filename": "wiki_98150178.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.84,
+      "filename": "wiki_5915870.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.93,
+      "filename": "wiki_76282194.mov",
+      "platform": "wikimedia",
+      "category": "weather",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.0,
+      "filename": "wiki_94226903.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.18,
+      "filename": "wiki_61129881.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.51,
+      "filename": "wiki_75217.mov",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 35.81,
+      "filename": "wiki_30437433.webm",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.06,
+      "filename": "wiki_41964060.mov",
+      "platform": "wikimedia",
+      "category": "street",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.65,
+      "filename": "wiki_52085581.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.96,
+      "filename": "wiki_36243503.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.31,
+      "filename": "wiki_36707453.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.37,
+      "filename": "wiki_12648794.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.92,
+      "filename": "wiki_40425670.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 9.61,
+      "filename": "wiki_88661175.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.32,
+      "filename": "wiki_49026829.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.31,
+      "filename": "wiki_26259253.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.17,
+      "filename": "wiki_35607958.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.75,
+      "filename": "wiki_5273655.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.1043,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.2,
+      "filename": "wiki_3268604.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 6.4,
+      "filename": "wiki_28546111.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.41,
+      "filename": "wiki_50041845.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.03,
+      "filename": "wiki_28867643.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.74,
+      "filename": "wiki_67485439.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.88,
+      "filename": "wiki_56449602.webm",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.58,
+      "filename": "wiki_92097830.webm",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.68,
+      "filename": "wiki_83524256.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.51,
+      "filename": "wiki_87664856.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.64,
+      "filename": "wiki_57905192.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.34,
+      "filename": "wiki_65446582.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.55,
+      "filename": "wiki_81401145.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.45,
+      "filename": "wiki_82063554.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0582,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "audio": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.95,
+      "filename": "wiki_49270376.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.94,
+      "filename": "wiki_16613321.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.13,
+      "filename": "wiki_56426138.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.03,
+      "filename": "wiki_31600966.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.95,
+      "filename": "wiki_7787181.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0503,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 7.16,
+      "filename": "wiki_95276607.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.22,
+      "filename": "wiki_83587224.webm",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.89,
+      "filename": "wiki_95364597.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.85,
+      "filename": "wiki_64265961.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 1.83,
+      "filename": "wiki_69133138.mov",
+      "platform": "wikimedia",
+      "category": "sport",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.94,
+      "filename": "wiki_27852043.mov",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.1043,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.64,
+      "filename": "wiki_59534995.mov",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.47,
+      "filename": "wiki_84544121.mov",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.36,
+      "filename": "wiki_35283364.mov",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.039
+      },
+      "ai_tool": null,
+      "elapsed_s": 7.17,
+      "filename": "wiki_55808886.webm",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.98,
+      "filename": "wiki_54133137.mov",
+      "platform": "wikimedia",
+      "category": "machine",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.046,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0,
+        "audio": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 6.67,
+      "filename": "wiki_44272531.mov",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 9.31,
+      "filename": "wiki_95138528.mov",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 10.22,
+      "filename": "wiki_98929614.webm",
+      "platform": "wikimedia",
+      "category": "aerial",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.8,
+      "filename": "wiki_71314817.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.34,
+      "filename": "wiki_77872818.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.92,
+      "filename": "wiki_16875240.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.25,
+      "filename": "wiki_83022141.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.52,
+      "filename": "wiki_64916063.mov",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 5.43,
+      "filename": "wiki_76454007.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.24,
+      "filename": "wiki_35868217.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0235,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata_camera, frame_ml, visual",
+      "layers": {
+        "metadata_camera": 0.05,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.37,
+      "filename": "wiki_77212136.webm",
+      "platform": "wikimedia",
+      "category": "nature",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0667,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, visual",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.57,
+      "filename": "wiki_24254967.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.43,
+      "filename": "wiki_88151701.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.94,
+      "filename": "wiki_59391055.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.2087,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: metadata, frame_ml, audio",
+      "layers": {
+        "metadata": 0.3,
+        "frame_ml": 0.0,
+        "audio": 0.65
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.26,
+      "filename": "wiki_17199637.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 2.79,
+      "filename": "wiki_91464845.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, visual",
+      "layers": {
+        "frame_ml": 0.0,
+        "visual": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 9.66,
+      "filename": "wiki_48809474.mov",
+      "platform": "wikimedia",
+      "category": "chaotic",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 3.28,
+      "filename": "wiki_413409.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.02,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml",
+      "layers": {
+        "frame_ml": 0.0
+      },
+      "ai_tool": null,
+      "elapsed_s": 8.38,
+      "filename": "wiki_2249944.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    },
+    {
+      "verdict": "real",
+      "confidence": 0.0674,
+      "predicted_ai": false,
+      "method": "Ensemble — layers: frame_ml, audio",
+      "layers": {
+        "frame_ml": 0.0,
+        "audio": 0.85
+      },
+      "ai_tool": null,
+      "elapsed_s": 4.87,
+      "filename": "wiki_78898731.mov",
+      "platform": "wikimedia",
+      "category": "people",
+      "expected_ai": false,
+      "correct": true
+    }
+  ]
+}
