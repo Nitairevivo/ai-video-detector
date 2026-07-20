@@ -49,14 +49,21 @@ async function ensureAccount(email: string): Promise<string | null> {
     body: JSON.stringify({ email }),
   });
   const data = await r.json().catch(() => ({}));
-  try { await SecureStore.setItemAsync(K_EMAIL, email); } catch {}
   if (data?.api_key) {
-    try { await SecureStore.setItemAsync(K_APIKEY, data.api_key); } catch {}
+    try {
+      await SecureStore.setItemAsync(K_APIKEY, data.api_key);
+      await SecureStore.setItemAsync(K_EMAIL, email);
+    } catch {}
     return data.api_key as string;
   }
-  // Email already registered elsewhere — we still know the email, so /upgrade
-  // and the webhook (which key by email) work; we just can't meter this device.
-  return existing || null;
+  // Email already registered elsewhere — no key is returned for this device.
+  // Store the email so the email-keyed entitlement check works, but DROP any
+  // stale key from a different account (it would report the wrong tier).
+  try {
+    await SecureStore.setItemAsync(K_EMAIL, email);
+    if (savedEmail !== email) await SecureStore.deleteItemAsync(K_APIKEY);
+  } catch {}
+  return savedEmail === email ? existing : null;
 }
 
 /** Start a real Pro purchase: guarantee an account, then open Stripe Checkout.
@@ -87,16 +94,34 @@ export async function startProCheckout(email: string): Promise<void> {
  *  Call on app resume and after returning from checkout. Returns true if Pro.
  *  Fails safe: on any network error it leaves the cached state untouched. */
 export async function syncEntitlement(): Promise<boolean> {
-  const key = await SecureStore.getItemAsync(K_APIKEY).catch(() => null);
-  if (!key) return isProCached();
   try {
-    const r = await fetch(`${API}/me`, { headers: { "X-Api-Key": key } });
-    if (!r.ok) return isProCached();
-    const data = await r.json().catch(() => ({}));
-    const tier = (data?.tier as Tier) || "free";
-    const pro = tier !== "free";
-    await setPro(pro);
-    return pro;
+    const key = await SecureStore.getItemAsync(K_APIKEY).catch(() => null);
+    if (key) {
+      const r = await fetch(`${API}/me`, { headers: { "X-Api-Key": key } });
+      if (r.ok) {
+        const data = await r.json().catch(() => ({}));
+        const pro = ((data?.tier as Tier) || "free") !== "free";
+        await setPro(pro);
+        return pro;
+      }
+    }
+    // No usable API key (fresh reinstall, or the sub was paid on another
+    // device) — fall back to an email-keyed check so the user still unlocks.
+    const email = await SecureStore.getItemAsync(K_EMAIL).catch(() => null);
+    if (email) {
+      const r2 = await fetch(`${API}/entitlement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (r2.ok) {
+        const d2 = await r2.json().catch(() => ({}));
+        const pro = !!d2?.is_pro;
+        await setPro(pro);
+        return pro;
+      }
+    }
+    return isProCached();
   } catch {
     return isProCached();
   }

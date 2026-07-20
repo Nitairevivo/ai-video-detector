@@ -55,6 +55,7 @@ const L = {
   he: {
     next: "המשך",
     start: "בוא נתחיל",
+    loading: "רגע, טוען…",
     skip: "אעשה את זה אחר כך",
     welcomeTitle: "ברוך הבא ל-VerifAI",
     welcomeSub: "VerifAI קורא את הקוד שמאחורי כל סרטון ותמונה — וחושף אם נוצרו ב-AI. מגן עליך מהונאות, סחיטות ודיפ-פייק. בוא נגדיר את זה ב-30 שניות.",
@@ -122,6 +123,7 @@ const L = {
   en: {
     next: "Next",
     start: "Let's go",
+    loading: "One sec…",
     skip: "I'll do this later",
     welcomeTitle: "Welcome to VerifAI",
     welcomeSub: "VerifAI reads the code behind every video and image — and reveals if it was made with AI. It protects you from scams, extortion and deepfakes. Let's set it up in 30 seconds.",
@@ -261,14 +263,18 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         // Validate images, but never let a single slow/blocked host stall the
         // whole onboarding: each prefetch races a short timeout. A hung image on
         // a flaky mobile network used to silently starve the quiz to empty.
-        const prefetchWithTimeout = (url: string, ms = 4000) =>
+        const prefetchWithTimeout = (url: string, ms = 2500) =>
           Promise.race([
             Image.prefetch(url).then((g) => !!g).catch(() => false),
             new Promise<boolean>((res) => setTimeout(() => res(false), ms)),
           ]);
+        // Overall wall-clock budget so onboarding never waits long on a bad
+        // network — whatever loaded by the deadline is what we use.
+        const deadline = Date.now() + 5000;
         const ok: QuizItem[] = [];
         for (const c of cand) {
           if (!c?.url) continue;
+          if (Date.now() > deadline) break;
           if (await prefetchWithTimeout(c.url)) ok.push({ url: c.url, is_ai: !!c.is_ai });
           if (ok.length >= 8) break;
         }
@@ -278,7 +284,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         let pool = ok;
         if (!(pool.some((x) => x.is_ai) && pool.some((x) => !x.is_ai)) && cand !== DEFAULT_QUIZ) {
           const fb: QuizItem[] = [];
+          const fbDeadline = Date.now() + 5000;
           for (const c of DEFAULT_QUIZ) {
+            if (Date.now() > fbDeadline) break;
             if (await prefetchWithTimeout(c.url)) fb.push({ url: c.url, is_ai: !!c.is_ai });
             if (fb.length >= 8) break;
           }
@@ -429,7 +437,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Text style={[st.sub, align, writingDir]}>{t.welcomeSub}</Text>
         <View style={st.antifraudCard}><Text style={[st.antifraudText, writingDir]}>{t.antifraud}</Text></View>
         <View style={{ height: 20 }} />
-        <PrimaryBtn label={t.start} onPress={goNext} />
+        {/* Wait for the quiz to finish resolving before letting the user leave
+            Welcome — otherwise the step list changes under them (quiz gets
+            inserted late) and the quiz is skipped or the user is bounced. */}
+        <PrimaryBtn label={quizLoaded ? t.start : t.loading} onPress={goNext} disabled={!quizLoaded} />
       </View>
     );
   } else if (step === "quiz" && !quizDone && live[qIdx]) {

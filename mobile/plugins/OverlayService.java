@@ -841,6 +841,19 @@ public class OverlayService extends Service {
      *  an upgrade message and opens the app's paywall, and returns false.
      *  Pro status and the daily limit are written by JS via OverlayModule into
      *  the same "verifai_overlay" prefs after a purchase / entitlement check. */
+    /** Give back a free check that was counted at tap time but never produced a
+     *  verdict (e.g. the user cancelled). Keeps the daily limit fair. */
+    private void refundFreeCheck() {
+        android.content.SharedPreferences p =
+            getSharedPreferences("verifai_overlay", MODE_PRIVATE);
+        if (p.getBoolean("pro", false)) return;
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        if (today.equals(p.getString("quota_day", ""))) {
+            int c = p.getInt("quota_count", 0);
+            if (c > 0) p.edit().putInt("quota_count", c - 1).apply();
+        }
+    }
+
     private boolean allowFreeCheckOrPrompt() {
         android.content.SharedPreferences p =
             getSharedPreferences("verifai_overlay", MODE_PRIVATE);
@@ -865,13 +878,21 @@ public class OverlayService extends Service {
         showToastResult("⭐ שדרג ל-Pro", "suspicious",
             limit + " בדיקות חינם להיום נגמרו — פותח את מסך השדרוג", 0);
         try {
-            Intent li = getPackageManager().getLaunchIntentForPackage(getPackageName());
-            if (li != null) {
-                li.putExtra("verifai_open", "paywall");
-                li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                startActivity(li);
-            }
-        } catch (Exception ignored) {}
+            // Deep link the app handles (handleIncomingUrl → shows the paywall).
+            // A plain launch intent + extra did NOT work: nothing on the JS side
+            // reads intent extras, so the upgrade screen never appeared.
+            Intent li = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("verifai://paywall"));
+            li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(li);
+        } catch (Exception e) {
+            try {
+                Intent li2 = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                if (li2 != null) {
+                    li2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    startActivity(li2);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     private void onButtonTapped() {
@@ -879,6 +900,7 @@ public class OverlayService extends Service {
             // Second tap while working = cancel. A button that ignores taps
             // reads as "stuck" — always give the user a way out.
             finishDetection();
+            refundFreeCheck();   // cancelled → don't burn one of the free daily checks
             showToastResult("✋ הבדיקה בוטלה", "real", "לחץ שוב על הכפתור כדי לבדוק", 0);
             return;
         }

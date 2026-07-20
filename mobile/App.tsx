@@ -21,7 +21,7 @@ const { width } = Dimensions.get("window");
 const API = "https://ai-video-detector-production-a305.up.railway.app";
 const DOWNLOAD_URL = "https://expo.dev/artifacts/eas/oUG3Z0GPBAub2rp4xlimg7lDoai3D16thT3n-m3Uhow.apk";
 
-const APP_VERSION = "1.9.9";
+const APP_VERSION = "2.0.0";
 
 // The signature bold brand gradient — violet → magenta → cyan.
 const GRAD = ["#7c3aed", "#d946ef", "#22e3ee"] as const;
@@ -1148,6 +1148,8 @@ function AppInner() {
   const handleIncomingUrl = useCallback((url: string | null) => {
     if (!url) return;
     if (url.startsWith("verifai://")) {
+      // The floating button opens this when a free user hits the daily limit.
+      if (url.includes("paywall")) { setShowPremium(true); return; }
       const match = url.match(/[?&]url=([^&]+)/);
       if (match) {
         const videoUrl = decodeURIComponent(match[1]);

@@ -1681,6 +1681,19 @@ def upgrade(body: UpgradeRequest):
     return {"checkout_url": url}
 
 
+@app.post("/entitlement", tags=["billing"])
+@limiter.limit("60/hour")
+def entitlement(request: Request, body: RegisterRequest):
+    """Lightweight Pro check keyed by email — returns tier only, never a secret.
+    Lets a device with no stored API key (fresh reinstall, or a subscription
+    paid on another device) still discover it's Pro and lift the paywall.
+    Safe to expose: leaks only a coarse tier for an email the caller already
+    typed, and is rate-limited."""
+    k = get_key_by_email(body.email)
+    tier = k.tier if k else "free"
+    return {"tier": tier, "is_pro": tier != "free"}
+
+
 @app.post("/stripe/webhook", tags=["billing"])
 async def stripe_webhook(request: Request):
     """Stripe sends payment events here."""
