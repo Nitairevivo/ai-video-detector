@@ -29,6 +29,13 @@ check("free daily gate exists (allowFreeCheckOrPrompt)", /boolean allowFreeCheck
 check("a cancelled tap refunds the free check", /finishDetection\(\);\s*\n\s*refundFreeCheck\(\)/.test(svc));
 check("promptAllFilesAccess opens the All-Files-Access screen",
   /ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION/.test(svc));
+// The shipped code must DELEGATE to the lab-tested DetectionPolicy (else the
+// Java tests would be testing dead code while the real logic drifts).
+check("OverlayService delegates freemium/fallback/folders to DetectionPolicy",
+  /DetectionPolicy\.quota/.test(svc) && /DetectionPolicy\.refund/.test(svc) &&
+  /DetectionPolicy\.fileUnavailable/.test(svc) && /DetectionPolicy\.appVideoDirs/.test(svc));
+check("DetectionPolicy.java is bundled into the Android build",
+  /DetectionPolicy\.java/.test(read("mobile/plugins/withAndroidOverlay.js")));
 
 // ── billing.ts: the paid-but-not-unlocked bug class ──
 const billing = read("mobile/billing.ts");

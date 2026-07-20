@@ -30,16 +30,19 @@ sys.exit(0 if ok else 1)
 PY
 run node -c mobile/plugins/withAndroidOverlay.js
 
-step "3/6  Native decision-logic model (freemium + WhatsApp/Telegram + paywall)"
+step "3/7  REAL native policy — compiled + run with javac (no emulator)"
+run bash -c 'rm -rf lab/.jout && mkdir -p lab/.jout && javac -d lab/.jout mobile/plugins/DetectionPolicy.java lab/java/DetectionPolicyTest.java 2>&1 | grep -v "Picked up JAVA_TOOL_OPTIONS" ; java -Dfile.encoding=UTF-8 -cp lab/.jout com.verifai.app.DetectionPolicyTest 2>/dev/null'
+
+step "4/7  Native decision-flow model (whole-tap state machine)"
 run node lab/logic.mjs
 
-step "4/6  Source invariants (fixes cannot silently regress)"
+step "5/7  Source invariants (fixes cannot silently regress)"
 run node lab/invariants.mjs
 
-step "5/6  Server billing / entitlement (database layer)"
+step "6/7  Server billing / entitlement (database layer)"
 run python3 -m pytest tests/test_entitlement_billing.py tests/test_database.py -q
 
-step "6/6  Detection engine sanity (existing suite)"
+step "7/7  Detection engine sanity (existing suite)"
 run python3 -m pytest tests/test_bugfixes.py -q
 
 echo ""

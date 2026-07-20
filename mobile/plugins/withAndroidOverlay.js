@@ -205,6 +205,7 @@ public final class BuildFlags {
 
       // Copy the Java files
       for (const fname of [
+        "DetectionPolicy.java",
         "OverlayService.java",
         "OverlayModule.java",
         "OverlayPackage.java",

@@ -668,7 +668,9 @@ public class OverlayService extends Service {
      *  fall back to reading the on-screen frames. */
     private void onLocalFileUnavailable() {
         if (!detectionPending) return;
-        if (!hasAllFilesAccess()) {
+        // Pure, lab-tested decision: prompt for the permission if that's the
+        // blocker, else read the on-screen frames — never screen silently.
+        if (DetectionPolicy.PROMPT_ACCESS.equals(DetectionPolicy.fileUnavailable(hasAllFilesAccess()))) {
             mainHandler.post(this::promptAllFilesAccess);
         } else {
             mainHandler.post(this::startScreenCaptureFallback);
@@ -710,23 +712,10 @@ public class OverlayService extends Service {
     }
 
     private java.util.List<String> appVideoDirs(String pkg) {
-        java.util.List<String> dirs = new java.util.ArrayList<>();
-        if (pkg == null) return dirs;
         String ext;
         try { ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath(); }
         catch (Exception e) { ext = "/storage/emulated/0"; }
-        if (pkg.contains("telegram") || pkg.contains("challegram")) {
-            dirs.add(ext + "/Android/media/org.telegram.messenger/Telegram/Telegram Video");
-            dirs.add(ext + "/Android/media/org.telegram.messenger.web/Telegram/Telegram Video");
-            dirs.add(ext + "/Telegram/Telegram Video");
-            dirs.add(ext + "/Android/media/org.telegram.plus/Telegram/Telegram Video");
-        } else if (pkg.contains("whatsapp")) {
-            dirs.add(ext + "/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video");
-            dirs.add(ext + "/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Sent");
-            dirs.add(ext + "/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Video");
-            dirs.add(ext + "/WhatsApp/Media/WhatsApp Video");
-        }
-        return dirs;
+        return DetectionPolicy.appVideoDirs(ext, pkg);   // pure, lab-tested list
     }
 
     private boolean isVideoFile(String name) {
@@ -848,30 +837,24 @@ public class OverlayService extends Service {
     private void refundFreeCheck() {
         android.content.SharedPreferences p =
             getSharedPreferences("verifai_overlay", MODE_PRIVATE);
-        if (p.getBoolean("pro", false)) return;
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-        if (today.equals(p.getString("quota_day", ""))) {
-            int c = p.getInt("quota_count", 0);
-            if (c > 0) p.edit().putInt("quota_count", c - 1).apply();
-        }
+        int refunded = DetectionPolicy.refund(
+            p.getBoolean("pro", false), today, p.getString("quota_day", ""), p.getInt("quota_count", 0));
+        p.edit().putInt("quota_count", refunded).apply();
     }
 
     private boolean allowFreeCheckOrPrompt() {
         android.content.SharedPreferences p =
             getSharedPreferences("verifai_overlay", MODE_PRIVATE);
-        if (p.getBoolean("pro", false)) return true;
-
+        boolean pro = p.getBoolean("pro", false);
         int limit = p.getInt("free_daily_limit", 3);
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-        String storedDay = p.getString("quota_day", "");
-        int count = today.equals(storedDay) ? p.getInt("quota_count", 0) : 0;
-
-        if (count >= limit) {
-            promptUpgrade(limit);
-            return false;
-        }
-        p.edit().putString("quota_day", today).putInt("quota_count", count + 1).apply();
-        return true;
+        // Pure, lab-tested decision (DetectionPolicy) — this class only does I/O.
+        DetectionPolicy.Quota q = DetectionPolicy.quota(
+            pro, limit, today, p.getString("quota_day", ""), p.getInt("quota_count", 0));
+        if (q.paywall) { promptUpgrade(limit); return false; }
+        if (!pro) p.edit().putString("quota_day", today).putInt("quota_count", q.newCount).apply();
+        return q.allow;
     }
 
     /** Soft paywall: show an in-overlay message and open the app on the Pro
