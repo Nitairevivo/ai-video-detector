@@ -423,10 +423,8 @@ public class OverlayService extends Service {
      *  datacenter bot-wall does NOT apply, so we get the real file (and can
      *  then read its actual code/metadata) without any proxy. */
     private String resolveYouTubeCdnUrl(String pageUrl) {
-        java.util.regex.Matcher m = java.util.regex.Pattern
-            .compile("(?:v=|youtu\\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})").matcher(pageUrl);
-        if (!m.find()) return null;
-        String vid = m.group(1);
+        String vid = DetectionPolicy.youtubeVideoId(pageUrl);   // pure, lab-tested
+        if (vid == null) return null;
         // Try several innertube clients, each impersonating a real YouTube app.
         // YouTube has locked down the ANDROID client (needs a PoToken now), but
         // the IOS and ANDROID_VR clients still return un-ciphered progressive

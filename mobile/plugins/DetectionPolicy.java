@@ -55,6 +55,19 @@ public final class DetectionPolicy {
         return hasAllFilesAccess ? SCREEN : PROMPT_ACCESS;
     }
 
+    // ── Link parsing: YouTube video id ────────────────────────────────────
+    private static final java.util.regex.Pattern YT_ID = java.util.regex.Pattern.compile(
+        "(?:v=|youtu\\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{11})");
+
+    /** Extract the 11-char YouTube video id from any watch/shorts/youtu.be/embed
+     *  URL, or null if it isn't one. A bug here means a link never resolves, so
+     *  it is unit-tested against every URL shape. Pure regex — no Android. */
+    public static String youtubeVideoId(String url) {
+        if (url == null) return null;
+        java.util.regex.Matcher m = YT_ID.matcher(url);
+        return m.find() ? m.group(1) : null;
+    }
+
     // ── WhatsApp / Telegram saved-video folders ───────────────────────────
     /** The exact public folders WhatsApp/Telegram write received videos to.
      *  Scanned directly (File API) because WhatsApp's .nomedia keeps them out

@@ -47,6 +47,15 @@ public class DetectionPolicyTest {
         check("unknown app -> no folders", DetectionPolicy.appVideoDirs("/sd", "com.youtube").isEmpty());
         check("null package -> no folders (no NPE)", DetectionPolicy.appVideoDirs("/sd", null).isEmpty());
 
+        // ── Link parsing: a bug here means a YouTube link never resolves ──
+        check("watch?v= id", "dQw4w9WgXcQ".equals(DetectionPolicy.youtubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")));
+        check("youtu.be/ id", "dQw4w9WgXcQ".equals(DetectionPolicy.youtubeVideoId("https://youtu.be/dQw4w9WgXcQ?t=5")));
+        check("/shorts/ id", "abcDEF12345".equals(DetectionPolicy.youtubeVideoId("https://youtube.com/shorts/abcDEF12345")));
+        check("/embed/ id", "abcDEF12345".equals(DetectionPolicy.youtubeVideoId("https://www.youtube.com/embed/abcDEF12345")));
+        check("watch?v= with extra params", "abcDEF12345".equals(DetectionPolicy.youtubeVideoId("https://m.youtube.com/watch?feature=x&v=abcDEF12345&t=1")));
+        check("non-YouTube URL -> null", DetectionPolicy.youtubeVideoId("https://tiktok.com/@u/video/123") == null);
+        check("null URL -> null (no NPE)", DetectionPolicy.youtubeVideoId(null) == null);
+
         if (failed > 0) { System.out.println("\nJAVA-POLICY: " + failed + " test(s) FAILED"); System.exit(1); }
         System.out.println("JAVA-POLICY: all real-Java policy tests passed");
     }

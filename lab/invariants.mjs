@@ -36,6 +36,8 @@ check("OverlayService delegates freemium/fallback/folders to DetectionPolicy",
   /DetectionPolicy\.fileUnavailable/.test(svc) && /DetectionPolicy\.appVideoDirs/.test(svc));
 check("DetectionPolicy.java is bundled into the Android build",
   /DetectionPolicy\.java/.test(read("mobile/plugins/withAndroidOverlay.js")));
+check("YouTube link parsing goes through the lab-tested policy",
+  /DetectionPolicy\.youtubeVideoId/.test(svc));
 
 // ── billing.ts: the paid-but-not-unlocked bug class ──
 const billing = read("mobile/billing.ts");

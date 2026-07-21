@@ -42,8 +42,8 @@ run node lab/invariants.mjs
 step "6/7  Server billing / entitlement (database layer)"
 run python3 -m pytest tests/test_entitlement_billing.py tests/test_database.py -q
 
-step "7/7  Detection engine sanity (existing suite)"
-run python3 -m pytest tests/test_bugfixes.py -q
+step "7/7  Engine READS a real file's code → verdict (+ existing suite)"
+run python3 -m pytest tests/test_engine_reads_file.py tests/test_bugfixes.py -q
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
