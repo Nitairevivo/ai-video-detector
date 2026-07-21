@@ -45,7 +45,21 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[#060314] text-white">{children}</body>
+      <body className="min-h-full bg-[#060314] text-white">
+        {/* Always offer the REAL native Android app (the APK), on every page —
+            not a PWA/web shortcut. Slim, sticky, one tap to download. */}
+        <a
+          href="https://github.com/Nitairevivo/ai-video-detector/releases/tag/apk-latest"
+          dir="rtl"
+          className="sticky top-0 z-50 flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-bold text-black no-underline"
+          style={{ background: "linear-gradient(135deg,#5eead4,#2fe0a4)" }}
+        >
+          <span aria-hidden="true">📱</span>
+          קבל את אפליקציית VerifAI לאנדרואיד — הורדה חינם
+          <span aria-hidden="true">›</span>
+        </a>
+        {children}
+      </body>
     </html>
   );
 }
