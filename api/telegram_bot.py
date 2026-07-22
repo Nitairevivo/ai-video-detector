@@ -314,15 +314,18 @@ def handle_update(update: dict):
 
 
 def main():
+    # Clear, greppable logs so Railway → View logs shows exactly what happened.
     if not TOKEN:
-        print("ERROR: TELEGRAM_BOT_TOKEN not set", file=sys.stderr)
-        sys.exit(1)
+        print("[telegram] TELEGRAM_BOT_TOKEN not set — bot disabled", flush=True)
+        return  # return (not sys.exit) so the supervisor can decide/retry
 
     me = _get("getMe")
     if not me.get("ok"):
-        print(f"ERROR: bad token / getMe failed: {me}", file=sys.stderr)
-        sys.exit(1)
-    print(f"VerifAI Telegram bot online as @{me['result'].get('username')}")
+        # Almost always: the token is wrong, or was revoked in BotFather after
+        # being pasted somewhere. Fix the TELEGRAM_BOT_TOKEN variable in Railway.
+        print(f"[telegram] getMe FAILED — token wrong or revoked? response: {me}", flush=True)
+        return
+    print(f"[telegram] ✅ bot ONLINE as @{me['result'].get('username')}", flush=True)
 
     offset = None
     while True:

@@ -48,14 +48,26 @@ threading.Thread(target=_build_frame_model_bg, daemon=True).start()
 # Run the Telegram bot in-process (long polling) when a token is configured.
 # One Railway service then serves BOTH the API and the bot — no extra config.
 def _run_telegram_bot_bg():
-    try:
-        if not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
-            return
-        from api.telegram_bot import main as _tg_main
-        print("[startup] launching Telegram bot…")
-        _tg_main()
-    except Exception as e:
-        print(f"[startup] telegram bot stopped: {e}")
+    # No token → nothing to run. This is a config choice, not an error, so we
+    # exit quietly and do NOT retry (retrying can't invent a token).
+    if not os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
+        print("[telegram] TELEGRAM_BOT_TOKEN not set — bot disabled", flush=True)
+        return
+    # Self-heal: main() polls forever, but it returns early on a transient
+    # getMe failure (e.g. Telegram briefly unreachable at boot). Restart it with
+    # capped backoff so a blip doesn't kill the bot for the whole deploy.
+    backoff = 5
+    while True:
+        try:
+            from api.telegram_bot import main as _tg_main
+            print("[startup] launching Telegram bot…", flush=True)
+            _tg_main()
+            # main() returned = getMe failed. Back off and try again.
+            print(f"[telegram] bot exited; retrying in {backoff}s", flush=True)
+        except Exception as e:
+            print(f"[telegram] bot crashed: {e}; retrying in {backoff}s", flush=True)
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 300)
 threading.Thread(target=_run_telegram_bot_bg, daemon=True).start()
 
 app = FastAPI(
