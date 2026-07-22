@@ -102,7 +102,11 @@ public class OverlayService extends Service {
             startForegroundService();
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             showButton();
-            startGalleryWatcher();
+            // NOTE: gallery auto-watch is intentionally OFF. It analyzed EVERY
+            // newly saved video (screen recordings, downloads, WhatsApp auto-save,
+            // even our own screen-capture) and popped a "verdict" the user never
+            // asked for. Detection is user-initiated only: the floating button or
+            // Share → VerifAI.
 
             // If the accessibility service already knows which app is in front,
             // sync the button visibility immediately. (Play build has no
