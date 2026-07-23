@@ -284,14 +284,20 @@ _QUIZ_DIR = Path(tempfile.gettempdir()) / "verifai_quiz"
 _QUIZ_MANIFEST: list = []
 
 
-def _fetch_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VerifAI quiz cacher)"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = r.read()
-        return data if data and len(data) > 3000 else None
-    except Exception:
-        return None
+def _fetch_bytes(url: str, timeout: int = 15, tries: int = 3) -> Optional[bytes]:
+    # Retry: the AI-face host rate-limits, so a single miss used to leave the
+    # quiz with only the "real" images loaded (looked like "just one photo").
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VerifAI quiz cacher)"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = r.read()
+            if data and len(data) > 3000:
+                return data
+        except Exception:
+            pass
+        time.sleep(1 + attempt)  # brief backoff between retries
+    return None
 
 
 def _ensure_quiz_cache(n_each: int = 6):
@@ -315,11 +321,12 @@ def _ensure_quiz_cache(n_each: int = 6):
                 items.append({"id": fid, "is_ai": True})
             except Exception:
                 pass
-    # Real photographs.
-    reals = [("men", 32), ("women", 44), ("men", 75), ("women", 68),
-             ("men", 11), ("women", 22), ("men", 59), ("women", 90)]
-    for i, (g, n) in enumerate(reals[:n_each]):
-        data = _fetch_bytes(f"https://randomuser.me/api/portraits/{g}/{n}.jpg")
+    # Real photographs. i.pravatar.cc serves REAL portrait photos at up to
+    # 1000px (reliable CDN) — the old randomuser source was capped at 128px,
+    # which looked blurry blown up to a full-screen phone tile.
+    real_ids = [12, 5, 13, 9, 32, 25, 47, 60]
+    for i, pid in enumerate(real_ids[:n_each]):
+        data = _fetch_bytes(f"https://i.pravatar.cc/1000?img={pid}")
         if data:
             fid = f"real{i}"
             try:
@@ -371,8 +378,8 @@ def quiz(request: Request):
         # Cache couldn't populate (e.g. upstream unreachable) — fall back to the
         # direct hosts so the client at least has something to try.
         ai = [{"url": f"https://thispersondoesnotexist.com/?vqz={i}", "is_ai": True} for i in range(1, 5)]
-        real = [{"url": f"https://randomuser.me/api/portraits/{g}/{n}.jpg", "is_ai": False}
-                for g, n in (("men", 32), ("women", 44), ("men", 75), ("women", 68))]
+        real = [{"url": f"https://i.pravatar.cc/1000?img={pid}", "is_ai": False}
+                for pid in (12, 5, 13, 9)]
         items = ai + real
         _rnd.shuffle(items)
     return {"items": items[:8]}

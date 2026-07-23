@@ -39,15 +39,16 @@ const DEFAULT_QUIZ: QuizItem[] = [
   { url: "https://thispersondoesnotexist.com/?vqz=4", is_ai: true },
   { url: "https://thispersondoesnotexist.com/?vqz=5", is_ai: true },
   { url: "https://thispersondoesnotexist.com/?vqz=6", is_ai: true },
-  // Real photographs (very reliable host).
-  { url: "https://randomuser.me/api/portraits/men/32.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/women/44.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/men/75.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/women/68.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/men/11.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/women/22.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/men/59.jpg", is_ai: false },
-  { url: "https://randomuser.me/api/portraits/women/90.jpg", is_ai: false },
+  // Real photographs at 1000px (i.pravatar.cc — reliable CDN, high-res, so the
+  // full-screen tile stays crisp; randomuser was capped at a blurry 128px).
+  { url: "https://i.pravatar.cc/1000?img=12", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=5", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=13", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=9", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=32", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=25", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=47", is_ai: false },
+  { url: "https://i.pravatar.cc/1000?img=60", is_ai: false },
 ];
 
 // ─── copy ────────────────────────────────────────────────────────────────────
