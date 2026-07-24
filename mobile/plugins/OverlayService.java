@@ -370,11 +370,79 @@ public class OverlayService extends Service {
         return new JSONObject(sb.toString());
     }
 
+    /** Follow HTTP redirects (up to 5 hops) so a short link like
+     *  vm.tiktok.com/ZxYy/ becomes the canonical .../video/<id> URL. Runs on the
+     *  phone's residential IP. Returns the final URL, or the input on failure. */
+    private String expandRedirects(String startUrl) {
+        String current = startUrl;
+        try {
+            for (int hop = 0; hop < 5; hop++) {
+                URL u = new URL(current);
+                HttpURLConnection c = (HttpURLConnection) u.openConnection();
+                c.setInstanceFollowRedirects(false);
+                c.setRequestMethod("GET");
+                c.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36");
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                int code = c.getResponseCode();
+                if (code >= 300 && code < 400) {
+                    String loc = c.getHeaderField("Location");
+                    c.disconnect();
+                    if (loc == null || loc.isEmpty()) break;
+                    current = loc.startsWith("http") ? loc : new URL(u, loc).toString();
+                    continue;
+                }
+                c.disconnect();
+                break; // 2xx or terminal — this is the final URL
+            }
+        } catch (Exception ignored) {}
+        return current;
+    }
+
+    /** Fetch the TikTok video page HTML (residential IP) and pull the playable
+     *  CDN URL out of the embedded rehydration JSON. More reliable than the
+     *  internal feed API, which increasingly needs signed requests. */
+    private String scrapeTikTokPlayAddr(String pageUrl) {
+        try {
+            URL u = new URL(pageUrl);
+            HttpURLConnection c = (HttpURLConnection) u.openConnection();
+            c.setInstanceFollowRedirects(true);
+            c.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(12000);
+            if (c.getResponseCode() != 200) { c.disconnect(); return null; }
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                String line; while ((line = br.readLine()) != null) sb.append(line);
+            }
+            String html = sb.toString();
+            // "playAddr":"https:\/\/v16-...\/video\/..." — take the first hit and unescape.
+            java.util.regex.Matcher pm = java.util.regex.Pattern
+                .compile("\"playAddr\":\"(http[^\"]+)\"").matcher(html);
+            if (pm.find()) {
+                return pm.group(1).replace("\\u002F", "/").replace("\\/", "/");
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     private String resolveTikTokCdnUrl(String shareUrl) {
-        // Extract video ID from TikTok share URL
+        // Short links (vm.tiktok.com/ZxYy/, /t/…) carry no video id — expand them
+        // first, otherwise the id regex misses and we fall back to the blocked
+        // datacenter server. This was why most shared TikTok links never worked.
+        String pageUrl = shareUrl;
+        if (!shareUrl.matches("(?s).*/video/\\d+.*")) {
+            pageUrl = expandRedirects(shareUrl);
+        }
+        // Extract video ID from the (expanded) TikTok URL
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("/video/(\\d+)");
-        java.util.regex.Matcher m = p.matcher(shareUrl);
-        if (!m.find()) return null;
+        java.util.regex.Matcher m = p.matcher(pageUrl);
+        if (!m.find()) {
+            // No id even after expanding — try scraping whatever page we landed on.
+            return scrapeTikTokPlayAddr(pageUrl);
+        }
         String videoId = m.group(1);
 
         // Call TikTok's internal API to get CDN URL (works from phone with residential IP)
@@ -418,7 +486,9 @@ public class OverlayService extends Service {
                 }
             } catch (Exception ignored) {}
         }
-        return null;
+        // Feed API blocked/empty (increasingly needs signed requests) — fall back
+        // to scraping the public page HTML, which the phone can still fetch.
+        return scrapeTikTokPlayAddr(pageUrl);
     }
 
     /** Resolve a YouTube watch/shorts/youtu.be URL to a directly-downloadable
