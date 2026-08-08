@@ -1,5 +1,10 @@
 # VerifAI — What's New
 
+## 2026-08-08 — Nightly model refresh
+
+- Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).
+- Image detector trained on 5,570 samples (AUC 0.843).
+
 ## 2026-08-07 — Nightly model refresh
 
 - Video detector now at 0.999 AUC with a 0.3% false-positive rate (trained on 7,364 videos).
@@ -157,14 +162,6 @@
 
 - Video detector now at 0.975 AUC with a 2.7% false-positive rate (trained on 882 videos).
 - Image detector trained on 1,249 samples (AUC 1.000).
-- Add user's real media as permanent training seed (69 images + 4 videos).
-- Fix image false-positive: tool tokens matched in compressed pixel bytes.
-- Add gated auto-promote: ship nightly-trained models to production safely.
-- Detect AI-generated images too (code-first, like the video engine).
-
-## 2026-07-10 — Model & detection improvements
-
-- Video detector now at 0.975 AUC with a 2.7% false-positive rate (trained on 882 videos).
 - Add user's real media as permanent training seed (69 images + 4 videos).
 - Fix image false-positive: tool tokens matched in compressed pixel bytes.
 - Add gated auto-promote: ship nightly-trained models to production safely.
